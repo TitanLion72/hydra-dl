@@ -12,6 +12,8 @@ v0.2 kapsamı çalışıyor ve **gerçek içerikle doğrulandı**: segmentli HTT
 yt-dlp medya indirme (tek tıkla kurulum dahil), BitTorrent motoru, masaüstü kalite paneli,
 telefon için web arayüzü, tarayıcı eklentisi (panel + avcı modu).
 
+**Repo public:** <https://github.com/TitanLion72/hydra-dl> (AGPL-3.0, ilk commit `9495fd4`).
+
 ## Doğrulanmış (bu oturum, kanıt var)
 
 | Ne | Kanıt |

@@ -153,7 +153,11 @@ Video indirmeleri için `yt-dlp` gerekir. Uygulama şu sırayla arar:
 3. Uygulama kaynak/çalıştırılabilir klasörünün yanındaki `bin\yt-dlp.exe`
 4. `%APPDATA%\com.hydradl.app\bin\yt-dlp.exe`
 
-Kurulum:
+**En kolay yol:** Ayarlar → *Medya (yt-dlp)* → **“yt-dlp'yi indir ve kur”**. Uygulama resmî
+son sürümü indirir, `%APPDATA%\com.hydradl.app\bin\yt-dlp.exe` altına koyar ve `--version`
+ile çalıştığını doğrular. İlerleme canlı gösterilir; hata olursa dosya geri alınır.
+
+Elle kurmak istersen:
 
 ```powershell
 winget install yt-dlp.yt-dlp
@@ -162,6 +166,9 @@ winget install yt-dlp.yt-dlp
 
 `yt-dlp` bulunamazsa yalnız medya indirmeleri devre dışı kalır; düz HTTP indirmeleri
 çalışmaya devam eder.
+
+> Seçtiğin kalite video-only bir akışsa Hydra sesi otomatik ekler (`137+bestaudio/137`),
+> yani sessiz video inmez.
 
 ## Mimari
 
