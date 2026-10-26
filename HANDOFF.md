@@ -14,6 +14,10 @@ telefon için web arayüzü, tarayıcı eklentisi (panel + avcı modu).
 
 **Repo public:** <https://github.com/TitanLion72/hydra-dl> (AGPL-3.0, ilk commit `9495fd4`).
 
+**Kurulu sürüm:** v0.2.2, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
+girdisi temizlendi, kullanıcının 4 indirmesi korundu). Kurulum paketi:
+`src-tauri\target\release\bundle\nsis\Hydra DL_0.2.2_x64-setup.exe`.
+
 ## Doğrulanmış (bu oturum, kanıt var)
 
 | Ne | Kanıt |
