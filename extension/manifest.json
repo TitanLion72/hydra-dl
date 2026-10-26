@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Hydra DL Yakalayıcı",
+  "version": "0.2.0",
+  "description": "Hydra DL için IDM tarzı yakalayıcı: indirme paneli, kalite seçimi ve avcı modu.",
+  "permissions": ["contextMenus", "notifications", "storage", "tabs"],
+  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["hunter.js"],
+      "css": ["hunter.css"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "action": {
+    "default_title": "Hydra DL",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "32": "icons/icon32.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_page": "options.html",
+  "icons": {
+    "32": "icons/icon32.png",
+    "128": "icons/icon128.png"
+  }
+}

@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hydra DL</title>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <div class="mark" aria-hidden="true">
+            <span class="dot c1"></span><span class="dot c2"></span><span class="dot c3"></span>
+            <svg viewBox="0 0 24 24" class="mark-arrow"><path d="M12 9v7m0 0l-4-4m4 4l4-4" /></svg>
+          </div>
+          <div class="brand-text">
+            <h1>Hydra<span>DL</span></h1>
+            <p id="tagline">çok başlı, çok bağlantılı indirici</p>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <button class="ghost icon-btn" id="capture-pill" title="Tarayıcı yakalama durumu">
+            <span class="status-dot" id="capture-dot"></span>
+            <span id="capture-label">yakalama kapalı</span>
+          </button>
+          <button class="ghost icon-btn" id="settings-btn" title="Ayarlar (Ctrl+,)">
+            <svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.32a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.64 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.68 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.64 1.7 1.7 0 0 0 10.03 3.08V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15 4.68a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.36 9v.09A1.7 1.7 0 0 0 20.92 10H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z"/></svg>
+            <span>Ayarlar</span>
+          </button>
+        </div>
+      </header>
+
+      <section class="addbar">
+        <form id="add-form" autocomplete="off">
+          <div class="url-field">
+            <svg viewBox="0 0 24 24" class="url-icon"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11.4 4.53"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07l1.42-1.42"/></svg>
+            <input id="url-input" type="text" placeholder="Bağlantıyı yapıştır — dosya ya da video sayfası" spellcheck="false" />
+            <button type="button" class="ghost mini" id="paste-btn" title="Panodan yapıştır">Yapıştır</button>
+          </div>
+          <select id="kind-select" title="İndirme türü">
+            <option value="auto">Otomatik</option>
+            <option value="file">Dosya</option>
+            <option value="media">Video / medya</option>
+            <option value="torrent">Torrent</option>
+          </select>
+          <button type="button" class="ghost" id="probe-btn" title="Kalite/format seçeneklerini gör (Ctrl+Enter)">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <span>İncele</span>
+          </button>
+          <button type="submit" class="primary" id="add-btn">
+            <svg viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg>
+            <span>Ekle</span>
+          </button>
+        </form>
+        <p class="add-hint" id="add-hint">İpucu: tarayıcı eklentisiyle bağlantıları tek tıkla buraya gönder.</p>
+      </section>
+
+      <section class="toolbar">        <div class="filters" id="filters" role="tablist">
+          <button class="chip active" data-filter="all">Tümü <b id="count-all">0</b></button>
+          <button class="chip" data-filter="active">Aktif <b id="count-active">0</b></button>
+          <button class="chip" data-filter="queued">Bekleyen <b id="count-queued">0</b></button>
+          <button class="chip" data-filter="done">Biten <b id="count-done">0</b></button>
+          <button class="chip" data-filter="failed">Sorunlu <b id="count-failed">0</b></button>
+        </div>
+        <div class="toolbar-right">
+          <span class="throughput" id="throughput"></span>
+          <button class="ghost mini" id="clear-btn" title="Tamamlanan, iptal edilen ve hatalı kayıtları listeden temizle">Bitmişleri temizle</button>
+        </div>
+      </section>
+
+      <main class="content">
+        <ul class="list" id="list" aria-live="polite"></ul>
+        <div class="empty" id="empty">
+          <div class="empty-mark" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>
+          <h2>Henüz indirme yok</h2>
+          <p>Bir bağlantı yapıştırıp <b>Ekle</b>'ye bas. Hydra dosyayı parçalara bölüp paralel çeker; kapatıp açsan bile kaldığı yerden devam eder.</p>
+        </div>
+      </main>
+
+      <footer class="statusbar">
+        <span id="footer-info">Hydra DL</span>
+        <span class="spacer"></span>
+        <span id="capture-footer"></span>
+      </footer>
+    </div>
+
+    <div class="overlay" id="overlay" hidden></div>
+
+    <aside class="drawer" id="settings-drawer" hidden aria-label="Ayarlar">
+      <header class="drawer-head">
+        <h2>Ayarlar</h2>
+        <button class="ghost icon-only" id="settings-close" title="Kapat">✕</button>
+      </header>
+      <div class="drawer-body">
+        <section class="field-group">
+          <h3>İndirme</h3>
+          <label class="field">
+            <span>Klasör</span>
+            <div class="row-inline">
+              <input id="set-dir" type="text" spellcheck="false" />
+              <button class="ghost mini" type="button" id="browse-btn">Gözat</button>
+            </div>
+          </label>
+          <div class="grid-2">
+            <label class="field">
+              <span>Aynı anda indirme</span>
+              <input id="set-concurrent" type="number" min="1" max="10" />
+            </label>
+            <label class="field">
+              <span>Dosya başına bağlantı</span>
+              <input id="set-connections" type="number" min="1" max="16" />
+            </label>
+          </div>
+          <label class="field">
+            <span>Hız limiti (KB/s, 0 = sınırsız)</span>
+            <input id="set-speed" type="number" min="0" step="64" />
+          </label>
+          <label class="switch">
+            <input id="set-autoresume" type="checkbox" />
+            <span class="track"></span>
+            <span>Açılışta yarım kalanları sürdür</span>
+          </label>
+        </section>
+
+        <section class="field-group">
+          <h3>Tarayıcı yakalama</h3>
+          <label class="switch">
+            <input id="set-capture" type="checkbox" />
+            <span class="track"></span>
+            <span>Yerel yakalama sunucusu açık</span>
+          </label>
+          <div class="grid-2">
+            <label class="field">
+              <span>Port</span>
+              <input id="set-capture-port" type="number" min="1024" max="65535" />
+            </label>
+            <label class="field">
+              <span>Sunucu adresi</span>
+              <div class="row-inline">
+                <input id="capture-url" type="text" readonly />
+                <button class="ghost mini" type="button" id="copy-capture">Kopyala</button>
+              </div>
+            </label>
+          </div>
+          <p class="hint">Eklenti kurulumu: <code>extension/</code> klasörünü Chrome'da <code>chrome://extensions</code> → “Paketlenmemiş öğe yükle” ile ekle.</p>
+          <label class="switch">
+            <input id="set-ask" type="checkbox" />
+            <span class="track"></span>
+            <span>Her indirmede seçenek panelini göster</span>
+          </label>
+          <label class="switch">
+            <input id="set-hunter" type="checkbox" />
+            <span class="track"></span>
+            <span>Avcı modu (sayfadan öğe seçerek indir)</span>
+          </label>
+          <p class="hint">Avcı modu kapalıyken eklenti sağ tık menüsü ve araç çubuğuyla çalışmaya devam eder; sayfaya hiçbir betik eklenmez.</p>
+        </section>
+
+        <section class="field-group">
+          <h3>Telefon / web arayüzü</h3>
+          <label class="switch">
+            <input id="set-web" type="checkbox" />
+            <span class="track"></span>
+            <span>Aynı ağdaki cihazlara aç</span>
+          </label>
+          <div class="grid-2">
+            <label class="field">
+              <span>Port</span>
+              <input id="set-web-port" type="number" min="1024" max="65535" />
+            </label>
+            <label class="field">
+              <span>Adres</span>
+              <div class="row-inline">
+                <input id="web-url" type="text" readonly />
+                <button class="ghost mini" type="button" id="copy-web">Kopyala</button>
+              </div>
+            </label>
+          </div>
+          <label class="field">
+            <span>Erişim token'ı (boş = token yok)</span>
+            <div class="row-inline">
+              <input id="set-web-token" type="text" spellcheck="false" placeholder="ör. ev-2026" />
+              <button class="ghost mini" type="button" id="gen-token">Üret</button>
+            </div>
+          </label>
+          <div class="qr-row" id="qr-row" hidden>
+            <img id="web-qr" alt="Web arayüzü QR kodu" />
+            <p class="hint">Telefonla okut: uygulama açıkken aynı Wi-Fi'da indirme listene erişirsin.</p>
+          </div>
+        </section>
+
+        <section class="field-group">
+          <h3>BitTorrent</h3>
+          <label class="switch">
+            <input id="set-torrent" type="checkbox" />
+            <span class="track"></span>
+            <span>Torrent motoru açık (magnet + .torrent)</span>
+          </label>
+          <p class="hint">Torrent'ler kendi motorunda çalışır; DHT ve peer bağlantıları sistem portundan yürür. Yasal uyarı: yalnız hak sahibi olduğun veya izin verilen içerikleri indir.</p>
+        </section>
+
+        <section class="field-group">
+          <h3>Medya (yt-dlp)</h3>
+          <label class="field">
+            <span>yt-dlp yolu (boş = otomatik bul)</span>
+            <input id="set-ytdlp" type="text" spellcheck="false" placeholder="C:\tools\yt-dlp.exe" />
+          </label>
+          <div class="row-inline ytdlp-actions">
+            <button class="ghost mini" type="button" id="install-ytdlp">yt-dlp'yi indir ve kur</button>
+            <span class="hint" id="ytdlp-install-status"></span>
+          </div>
+          <p class="hint" id="ytdlp-status">Kontrol ediliyor…</p>
+        </section>
+
+        <section class="field-group meta-group">
+          <h3>Hakkında</h3>
+          <p class="hint" id="about-info"></p>
+          <p class="hint" id="state-info"></p>
+        </section>
+      </div>
+      <footer class="drawer-foot">
+        <button class="primary" id="save-settings">Kaydet</button>
+        <button class="ghost" id="cancel-settings">Vazgeç</button>
+      </footer>
+    </aside>
+
+    <aside class="sheet" id="probe-sheet" hidden aria-label="İndirme seçenekleri">
+      <header class="sheet-head">
+        <div class="sheet-title">
+          <h2 id="probe-title">İndirme seçenekleri</h2>
+          <p id="probe-sub"></p>
+        </div>
+        <button class="ghost icon-only" id="probe-close" title="Kapat">✕</button>
+      </header>
+      <div class="sheet-body">
+        <div class="probe-summary" id="probe-summary"></div>
+        <div class="probe-formats" id="probe-formats"></div>
+        <div class="probe-extra" id="probe-extra"></div>
+        <label class="field">
+          <span>Dosya adı</span>
+          <input id="probe-filename" type="text" spellcheck="false" />
+        </label>
+        <label class="field">
+          <span>Klasör</span>
+          <input id="probe-dir" type="text" readonly />
+        </label>
+      </div>
+      <footer class="sheet-foot">
+        <button class="primary" id="probe-download">İndir</button>
+        <button class="ghost" id="probe-cancel">Vazgeç</button>
+      </footer>
+    </aside>
+
+    <div class="toasts" id="toasts"></div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

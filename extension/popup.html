@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <title>Hydra DL</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <img src="icons/icon128.png" alt="" />
+      <h1>Hydra DL</h1>
+      <div class="status">
+        <span class="dot" id="dot"></span>
+        <span id="status-text">kontrol…</span>
+      </div>
+    </header>
+
+    <main>
+      <div class="block">
+        <span class="label">Geçerli sekme</span>
+        <div class="page-url" id="page-url">…</div>
+        <button class="primary full" id="inspect" type="button">İncele</button>
+      </div>
+
+      <div class="row">
+        <input id="manual-url" type="text" placeholder="Bağlantı yapıştır" spellcheck="false" />
+        <button id="add-manual" type="button">Ekle</button>
+      </div>
+
+      <div class="switches">
+        <label class="toggle">
+          <input type="checkbox" id="hunter" />
+          <span class="slider"></span>
+          <span class="toggle-text">
+            Avcı modu
+            <small>Sayfadan öğe seçerek indir</small>
+          </span>
+        </label>
+
+        <label class="toggle">
+          <input type="checkbox" id="show-panel" />
+          <span class="slider"></span>
+          <span class="toggle-text">
+            Her indirmede panel göster
+            <small>Format ve kalite seçimi</small>
+          </span>
+        </label>
+      </div>
+
+      <div class="port-line">
+        <span class="label">Port</span>
+        <input id="port" type="number" min="1024" max="65535" placeholder="6712" />
+        <button class="mini" id="test-port" type="button">test</button>
+        <span class="port-result" id="port-result"></span>
+      </div>
+
+      <div class="message" id="message"></div>
+    </main>
+
+    <footer>
+      <a id="options-link">Ayarlar</a>
+      <span id="version"></span>
+    </footer>
+
+    <script src="shared.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

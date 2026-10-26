@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hydra DL Yakalayıcı — Ayarlar</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: "Segoe UI", system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(900px 460px at 8% -10%, rgba(34, 211, 238, 0.13), transparent 60%),
+          radial-gradient(760px 420px at 96% 0%, rgba(139, 92, 246, 0.15), transparent 62%),
+          #070c15;
+        color: #e7eefb;
+        display: grid;
+        place-items: start center;
+        padding: 48px 20px 60px;
+      }
+      .card {
+        width: min(560px, 100%);
+        background: #0d1523;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 16px;
+        padding: 26px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 19px;
+      }
+      h2 {
+        margin: 26px 0 10px;
+        font-size: 13px;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        color: #64748b;
+      }
+      p {
+        color: #8ea1ba;
+        font-size: 13px;
+        line-height: 1.65;
+        margin: 0 0 8px;
+      }
+      .lead {
+        margin-bottom: 20px;
+      }
+      label.field-label {
+        display: block;
+        margin: 16px 0 6px;
+        font-size: 11.5px;
+        font-weight: 600;
+        letter-spacing: 0.4px;
+        text-transform: uppercase;
+        color: #64748b;
+      }
+      input[type="number"] {
+        width: 130px;
+        font: inherit;
+        font-size: 13px;
+        color: inherit;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(148, 163, 184, 0.24);
+        border-radius: 10px;
+        padding: 9px 11px;
+        outline: none;
+      }
+      input[type="number"]:focus {
+        border-color: rgba(34, 211, 238, 0.6);
+        box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.1);
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        margin-top: 20px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      button {
+        font: inherit;
+        font-size: 13px;
+        border: 1px solid rgba(148, 163, 184, 0.24);
+        background: rgba(255, 255, 255, 0.05);
+        color: inherit;
+        border-radius: 10px;
+        padding: 9px 15px;
+        cursor: pointer;
+      }
+      button:hover {
+        filter: brightness(1.1);
+      }
+      button.primary {
+        background: linear-gradient(135deg, #22d3ee, #8b5cf6);
+        border: none;
+        color: #04121a;
+        font-weight: 700;
+      }
+      #result {
+        font-size: 12.5px;
+        color: #8ea1ba;
+      }
+      .switches {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 12px;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .toggle {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 11px 13px;
+        cursor: pointer;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+      }
+      .toggle:last-child {
+        border-bottom: none;
+      }
+      .toggle input {
+        width: 17px;
+        height: 17px;
+        accent-color: #22d3ee;
+        margin: 0;
+      }
+      .toggle-text {
+        display: flex;
+        flex-direction: column;
+        font-size: 13px;
+        line-height: 1.35;
+      }
+      .toggle-text small {
+        font-size: 11.5px;
+        color: #64748b;
+      }
+      code {
+        background: rgba(255, 255, 255, 0.07);
+        padding: 1px 6px;
+        border-radius: 5px;
+        font-size: 12px;
+      }
+      ol {
+        margin: 0;
+        padding-left: 20px;
+        color: #8ea1ba;
+        font-size: 13px;
+        line-height: 1.7;
+      }
+      .privacy {
+        margin-top: 22px;
+        padding: 13px 15px;
+        border-radius: 12px;
+        border: 1px solid rgba(74, 222, 128, 0.24);
+        background: rgba(74, 222, 128, 0.06);
+        font-size: 12.5px;
+        color: #bbf7d0;
+        line-height: 1.6;
+      }
+      footer {
+        margin-top: 22px;
+        padding-top: 16px;
+        border-top: 1px solid rgba(148, 163, 184, 0.14);
+        font-size: 11.5px;
+        color: #64748b;
+        display: flex;
+        justify-content: space-between;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Hydra DL Yakalayıcı</h1>
+      <p class="lead">
+        Eklenti, indirme isteklerini Hydra DL masaüstü uygulamasının yerel yakalama sunucusuna
+        gönderir. Uygulamadaki port ile buradaki port aynı olmalı.
+      </p>
+
+      <label class="field-label" for="port">Yakalama portu</label>
+      <input id="port" type="number" min="1024" max="65535" placeholder="6712" />
+
+      <h2>Varsayılan davranış</h2>
+      <div class="switches">
+        <label class="toggle">
+          <input type="checkbox" id="show-panel" />
+          <span class="toggle-text">
+            Her indirmede panel göster
+            <small>IDM tarzı format/kalite seçim ekranı açılır</small>
+          </span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="hunter" />
+          <span class="toggle-text">
+            Avcı modu
+            <small>Sayfadaki öğeye tıklayarak indir (Alt+Shift+D)</small>
+          </span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="ask" />
+          <span class="toggle-text">
+            Her indirmede onay iste
+            <small>Panele ek olarak uygulama tarafındaki onay ayarı</small>
+          </span>
+        </label>
+      </div>
+
+      <div class="row">
+        <button class="primary" id="save" type="button">Kaydet</button>
+        <button id="test" type="button">Bağlantıyı test et</button>
+        <span id="result"></span>
+      </div>
+
+      <h2>Kurulum</h2>
+      <ol>
+        <li><code>chrome://extensions</code> (Edge: <code>edge://extensions</code>) adresini aç.</li>
+        <li>Sağ üstten “Geliştirici modu”nu aç.</li>
+        <li>“Paketlenmemiş öğe yükle” → bu <code>extension</code> klasörünü seç.</li>
+        <li>Hydra DL uygulamasını aç ve yakalama sunucusunun çalıştığını doğrula.</li>
+      </ol>
+
+      <div class="privacy">
+        Gizlilik: Eklenti hiçbir veriyi dışarıya göndermez. Tüm istekler yalnız
+        <code>127.0.0.1</code> / <code>localhost</code> adresindeki yerel Hydra DL sunucusuna gider.
+        Geçmiş, çerez veya sayfa içeriği toplanmaz.
+      </div>
+
+      <footer>
+        <span id="version">Hydra DL eklentisi</span>
+        <span id="health">durum bilinmiyor</span>
+      </footer>
+    </div>
+
+    <script src="shared.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>

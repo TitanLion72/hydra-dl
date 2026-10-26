@@ -1,0 +1,117 @@
+name: Hata bildirimi
+description: Beklenmeyen bir davranış veya çökme bildirin
+title: "[Hata]: "
+labels: ["bug", "triage"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Teşekkürler! Lütfen formu doldururken **kişisel bilgi, token, çerez veya tam dosya
+        yolu** paylaşmayın. Güvenlik açıkları için bu formu kullanmayın —
+        [SECURITY.md](../blob/main/SECURITY.md) izleyin.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Ön kontroller
+      options:
+        - label: En son `main` dalını veya en son sürümü denedim.
+          required: true
+        - label: Aynı hatayı bildiren mevcut bir issue olup olmadığını aradım.
+          required: true
+        - label: Bu bir güvenlik açığı değil.
+          required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Ne oldu?
+      description: Hatanın kısa ve net açıklaması.
+      placeholder: İndirme %80'de duraklıyor ve "yeniden dene" hiçbir şey yapmıyor.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Ne bekliyordunuz?
+      placeholder: İndirme kaldığı yerden devam etmeliydi.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Yeniden üretme adımları
+      description: Hatayı tekrar oluşturmak için izlediğiniz adımlar.
+      placeholder: |
+        1. Ayarlar → eşzamanlı indirme = 3
+        2. 2 GB'lık bir dosya ekle
+        3. İndirmeyi duraklat, sonra devam ettir
+        4. ...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Hydra DL sürümü
+      description: Ayarlar → Hakkında veya `src-tauri/Cargo.toml` içindeki sürüm.
+      placeholder: "0.2.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: İşletim sistemi
+      options:
+        - Windows 11
+        - Windows 10
+        - Linux
+        - macOS
+        - Diğer
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Ortam
+      description: Node, Rust, WebView2 ve yt-dlp sürümleri (biliyorsanız).
+      placeholder: "Node 22.11, Rust 1.83, WebView2 131, yt-dlp 2026.01.15"
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Etkilenen alan
+      multiple: true
+      options:
+        - İndirme motoru (HTTP/Range)
+        - Kuyruk / eşzamanlılık
+        - Duraklat / devam / iptal
+        - yt-dlp / medya
+        - Torrent
+        - Tarayıcı eklentisi
+        - Telefon / yerel ağ arayüzü
+        - Arayüz (Türkçe, tema, filtre)
+        - Kurulum / derleme
+        - Diğer
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Günlükler
+      description: |
+        İlgili günlük parçası (`tauri-dev.log`, geliştirici konsolu) veya hata mesajı.
+        Kişisel yolları ve token'ları maskeleyin. Kod bloğu içine alın.
+      render: shell
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Ek bağlam
+      description: Ekran görüntüsü, ekran kaydı, denediğiniz çözümler.

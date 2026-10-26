@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Hydra DL</title>
+    <meta
+      name="description"
+      content="Telefonundan Hydra DL indirmelerini yönet: bağlantı yapıştır, kalite seç, indir."
+    />
+    <meta name="theme-color" content="#070c15" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Hydra DL" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+    <link rel="apple-touch-icon" href="./icon.svg" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">İçeriğe geç</a>
+
+    <header class="appbar">
+      <div class="brand">
+        <svg class="brand-logo" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <defs>
+            <linearGradient id="hydra-grad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#22d3ee" />
+              <stop offset="1" stop-color="#8b5cf6" />
+            </linearGradient>
+          </defs>
+          <path
+            d="M16 3c4.6 5.2 8.4 9.2 8.4 13.7A8.4 8.4 0 0 1 16 25.1a8.4 8.4 0 0 1-8.4-8.4C7.6 12.2 11.4 8.2 16 3Z"
+            fill="url(#hydra-grad)"
+            opacity="0.92"
+          />
+          <path
+            d="M12.4 17.2c1.2 1.5 2.4 2.2 3.6 2.2s2.4-.7 3.6-2.2"
+            fill="none"
+            stroke="#070c15"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+          <circle cx="16" cy="13" r="1.4" fill="#070c15" />
+        </svg>
+        <span class="brand-name">Hydra DL</span>
+      </div>
+      <div class="appbar-actions">
+        <span id="conn" class="conn is-pending" role="status" aria-live="polite">
+          <span class="conn-dot" aria-hidden="true"></span>
+          <span id="connText" class="conn-text">Bağlanıyor…</span>
+        </span>
+        <button id="settingsBtn" class="icon-btn" type="button" aria-label="Ayarları aç">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path
+              d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+            />
+            <path
+              d="M19.4 13.4a7.7 7.7 0 0 0 0-2.8l1.7-1.3-1.8-3.1-2 .8a7.6 7.6 0 0 0-2.4-1.4L14.5 3h-5l-.4 2.6c-.9.3-1.7.8-2.4 1.4l-2-.8L2.9 9.3l1.7 1.3a7.7 7.7 0 0 0 0 2.8l-1.7 1.3 1.8 3.1 2-.8c.7.6 1.5 1.1 2.4 1.4l.4 2.6h5l.4-2.6c.9-.3 1.7-.8 2.4-1.4l2 .8 1.8-3.1-1.7-1.3Z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.4"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <main id="main">
+      <!-- İndirmeler -->
+      <section id="view-downloads" class="view" aria-labelledby="viewDownloadsTitle">
+        <h1 id="viewDownloadsTitle" class="sr-only">İndirmeler</h1>
+
+        <form id="quickForm" class="pastebar" autocomplete="off">
+          <label class="sr-only" for="pasteUrl">Bağlantı adresi</label>
+          <input
+            id="pasteUrl"
+            class="input paste-input"
+            type="url"
+            name="url"
+            inputmode="url"
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
+            enterkeyhint="go"
+            placeholder="Bağlantı yapıştır…"
+            aria-describedby="pasteHint"
+          />
+          <button id="probeBtn" class="btn primary" type="submit">İncele</button>
+          <p id="pasteHint" class="sr-only">
+            Bağlantıyı yapıştırıp İncele'ye bas; kalite ve dosya adını kontrol edip indir.
+          </p>
+        </form>
+
+        <div class="filters" role="tablist" aria-label="İndirme filtresi">
+          <button
+            class="chip is-active"
+            type="button"
+            role="tab"
+            aria-selected="true"
+            data-filter="all"
+          >
+            Tümü <span class="chip-count" data-count="all">0</span>
+          </button>
+          <button class="chip" type="button" role="tab" aria-selected="false" data-filter="active">
+            Aktif <span class="chip-count" data-count="active">0</span>
+          </button>
+          <button class="chip" type="button" role="tab" aria-selected="false" data-filter="queued">
+            Bekleyen <span class="chip-count" data-count="queued">0</span>
+          </button>
+          <button class="chip" type="button" role="tab" aria-selected="false" data-filter="done">
+            Biten <span class="chip-count" data-count="done">0</span>
+          </button>
+          <button
+            class="chip"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            data-filter="problem"
+          >
+            Sorunlu <span class="chip-count" data-count="problem">0</span>
+          </button>
+        </div>
+
+        <div id="listSkeleton" class="skeleton-list" aria-hidden="true">
+          <div class="card skeleton"><span class="sk-line w60"></span><span class="sk-line w90"></span><span class="sk-line w40"></span></div>
+          <div class="card skeleton"><span class="sk-line w50"></span><span class="sk-line w80"></span><span class="sk-line w30"></span></div>
+          <div class="card skeleton"><span class="sk-line w70"></span><span class="sk-line w90"></span><span class="sk-line w40"></span></div>
+        </div>
+
+        <div id="errorState" class="state" hidden>
+          <p class="state-emoji" aria-hidden="true">📡</p>
+          <h2 class="state-title">Sunucuya ulaşılamadı</h2>
+          <p id="errorText" class="state-text">Aynı Wi-Fi'da mısın? Masaüstü uygulaması açık mı?</p>
+          <button id="retryBtn" class="btn primary" type="button">Tekrar dene</button>
+        </div>
+
+        <div id="emptyState" class="state" hidden>
+          <p class="state-emoji" aria-hidden="true">💧</p>
+          <h2 class="state-title">Henüz indirme yok</h2>
+          <p class="state-text">
+            Yukarıdaki alana bir bağlantı yapıştır. Masaüstünde açık Hydra DL aynı ağdaki bu
+            cihazdan indirmeyi başlatır.
+          </p>
+        </div>
+
+        <p id="filterEmpty" class="state-text filter-empty" hidden>Bu filtrede indirme yok.</p>
+
+        <ul id="list" class="list" aria-label="İndirme listesi"></ul>
+      </section>
+
+      <!-- Yeni -->
+      <section id="view-new" class="view" hidden aria-labelledby="viewNewTitle">
+        <h1 id="viewNewTitle" class="view-title">Yeni indirme</h1>
+        <form id="newForm" class="panel form" autocomplete="off">
+          <label class="field">
+            <span class="field-label">Bağlantı</span>
+            <textarea
+              id="newUrl"
+              class="input textarea"
+              rows="3"
+              inputmode="url"
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
+              placeholder="Bağlantı veya magnet:?…"
+              required
+            ></textarea>
+          </label>
+
+          <label class="field">
+            <span class="field-label">Dosya adı <em class="hint">(isteğe bağlı)</em></span>
+            <input
+              id="newFilename"
+              class="input"
+              type="text"
+              autocapitalize="off"
+              spellcheck="false"
+              placeholder="otomatik"
+            />
+          </label>
+
+          <label class="field">
+            <span class="field-label" for="newMedia">Tür</span>
+            <select id="newMedia" class="input select">
+              <option value="auto">Otomatik algıla</option>
+              <option value="file">Doğrudan dosya (HTTP)</option>
+              <option value="media">Video / medya (yt-dlp)</option>
+            </select>
+          </label>
+
+          <div class="form-actions">
+            <button id="newProbe" class="btn ghost" type="button">İncele</button>
+            <button id="newAdd" class="btn primary" type="submit">İndir</button>
+          </div>
+          <p id="newStatus" class="form-status" role="status" aria-live="polite"></p>
+        </form>
+
+        <div class="panel tips">
+          <h2 class="panel-title">Kısayollar</h2>
+          <ul class="tips-list">
+            <li>Bağlantı panodaysa İndirmeler sekmesindeki alana yapıştır.</li>
+            <li>Masaüstünde “Avcı modu” açıksa tarayıcıdaki medyayı doğrudan yakalayabilirsin.</li>
+            <li>Torrent bağlantıları da buradan eklenebilir; liste aynı yerde görünür.</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Ayarlar -->
+      <section id="view-settings" class="view" hidden aria-labelledby="viewSettingsTitle">
+        <h1 id="viewSettingsTitle" class="view-title">Ayarlar</h1>
+
+        <div id="settingsLoading" class="skeleton-list" aria-hidden="true">
+          <div class="card skeleton"><span class="sk-line w60"></span><span class="sk-line w90"></span></div>
+          <div class="card skeleton"><span class="sk-line w50"></span><span class="sk-line w70"></span></div>
+        </div>
+
+        <p id="settingsError" class="form-status is-error" role="alert" hidden></p>
+
+        <form id="settingsForm" class="form" hidden>
+          <section class="panel">
+            <h2 class="panel-title">İndirme</h2>
+
+            <label class="field">
+              <span class="field-label">İndirme klasörü <em class="hint">(masaüstünde değiştirilir)</em></span>
+              <input id="setDir" class="input" type="text" readonly aria-readonly="true" />
+            </label>
+
+            <label class="field">
+              <span class="field-label" for="setMaxConcurrent">Eşzamanlı indirme</span>
+              <input id="setMaxConcurrent" class="input" type="number" min="1" max="10" step="1" inputmode="numeric" />
+              <span class="field-help">Aynı anda çalışacak indirme sayısı (1–10).</span>
+            </label>
+
+            <label class="field">
+              <span class="field-label" for="setConnections">Bağlantı sayısı</span>
+              <input id="setConnections" class="input" type="number" min="1" max="64" step="1" inputmode="numeric" />
+              <span class="field-help">Dosya başına parça sayısı. Yüksek değer daha hızlı olabilir.</span>
+            </label>
+
+            <label class="field">
+              <span class="field-label" for="setSpeed">Hız limiti (KB/sn)</span>
+              <input id="setSpeed" class="input" type="number" min="0" step="50" inputmode="numeric" />
+              <span class="field-help">0 = sınırsız.</span>
+            </label>
+
+            <label class="switch-row">
+              <span class="switch-copy">
+                <span class="field-label">Yarım kalanları sürdür</span>
+                <span class="field-help">Uygulama açıldığında duraklamış indirmeler devam eder.</span>
+              </span>
+              <input id="setAutoResume" class="switch" type="checkbox" role="switch" />
+            </label>
+          </section>
+
+          <section class="panel">
+            <h2 class="panel-title">Yakalama</h2>
+            <label class="switch-row">
+              <span class="switch-copy">
+                <span class="field-label">Yakalama açık</span>
+                <span class="field-help">Tarayıcı eklentisi indirmeleri bu cihaza gönderebilir.</span>
+              </span>
+              <input id="setCapture" class="switch" type="checkbox" role="switch" />
+            </label>
+            <p class="field">
+              <span class="field-label">Yakalama portu</span>
+              <span class="readonly-value" id="setCapturePort">—</span>
+            </p>
+          </section>
+
+          <section class="panel">
+            <h2 class="panel-title">Sunucu</h2>
+            <dl class="facts">
+              <div class="fact">
+                <dt>Web adresi</dt>
+                <dd id="setWebUrl">—</dd>
+              </div>
+              <div class="fact">
+                <dt>Sürüm</dt>
+                <dd id="setVersion">—</dd>
+              </div>
+              <div class="fact">
+                <dt>Çalışma süresi</dt>
+                <dd id="setUptime">—</dd>
+              </div>
+              <div class="fact">
+                <dt>yt-dlp</dt>
+                <dd id="setYtdlp">—</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section class="panel">
+            <h2 class="panel-title">Erişim anahtarı</h2>
+            <label class="field">
+              <span class="field-label" for="setToken">Token</span>
+              <input
+                id="setToken"
+                class="input"
+                type="password"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="boş = token yok"
+              />
+              <span class="field-help">
+                Yalnız bu cihazda saklanır (localStorage). Boş bırakıp kaydedersen bu cihazdaki
+                token silinir.
+              </span>
+            </label>
+            <p id="settingsStatus" class="form-status" role="status" aria-live="polite"></p>
+            <div class="form-actions">
+              <button id="settingsReload" class="btn ghost" type="button">Yenile</button>
+              <button id="settingsSave" class="btn primary" type="submit">Kaydet</button>
+            </div>
+          </section>
+        </form>
+      </section>
+    </main>
+
+    <nav class="tabbar" aria-label="Ana gezinme">
+      <button class="tab is-active" type="button" data-view="downloads" aria-current="page">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M12 4v10m0 0 4-4m-4 4-4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M5 17.5V19a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-1.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+        </svg>
+        <span>İndirmeler</span>
+      </button>
+      <button class="tab" type="button" data-view="new">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" />
+        </svg>
+        <span>Yeni</span>
+      </button>
+      <button class="tab" type="button" data-view="settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z" fill="none" stroke="currentColor" stroke-width="1.7" />
+          <path d="M18.9 13.3a7 7 0 0 0 0-2.6l1.6-1.2-1.7-2.9-1.9.8a7 7 0 0 0-2.2-1.3L14.3 4h-4.6l-.4 2.4c-.8.3-1.5.7-2.2 1.3l-1.9-.8-1.7 2.9 1.6 1.2a7 7 0 0 0 0 2.6l-1.6 1.2 1.7 2.9 1.9-.8c.7.6 1.4 1 2.2 1.3l.4 2.4h4.6l.4-2.4c.8-.3 1.5-.7 2.2-1.3l1.9.8 1.7-2.9-1.6-1.2Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+        </svg>
+        <span>Ayarlar</span>
+      </button>
+    </nav>
+
+    <!-- İnceleme alt sayfası -->
+    <div id="sheet" class="sheet-backdrop" hidden>
+      <div
+        id="sheetPanel"
+        class="sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="sheetTitle"
+        tabindex="-1"
+      >
+        <div class="sheet-grab" aria-hidden="true"></div>
+        <div class="sheet-head">
+          <h2 id="sheetTitle" class="sheet-title">İnceleme</h2>
+          <button id="sheetClose" class="icon-btn" type="button" aria-label="Kapat">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="sheet-body">
+          <div id="sheetLoading" class="sheet-loading" role="status">
+            <span class="spinner" aria-hidden="true"></span>
+            <span>Bağlantı inceleniyor…</span>
+          </div>
+
+          <p id="sheetError" class="sheet-error" role="alert" hidden></p>
+
+          <div id="sheetContent" hidden>
+            <h3 id="probeTitle" class="probe-title"></h3>
+            <p id="probeSub" class="probe-sub"></p>
+
+            <dl id="probeFacts" class="facts"></dl>
+
+            <ul id="probeWarnings" class="warnings" hidden></ul>
+
+            <div id="formatGroup" class="sheet-block" hidden>
+              <p class="field-label" id="formatLabel">Kalite</p>
+              <div id="formatList" class="format-list" role="radiogroup" aria-labelledby="formatLabel"></div>
+            </div>
+
+            <div id="candidateGroup" class="sheet-block" hidden>
+              <p class="field-label" id="candidateLabel">Kaynaklar</p>
+              <div id="candidateList" class="candidate-list" role="radiogroup" aria-labelledby="candidateLabel"></div>
+            </div>
+
+            <label class="field">
+              <span class="field-label" for="probeFilename">Dosya adı</span>
+              <input id="probeFilename" class="input" type="text" autocapitalize="off" spellcheck="false" />
+            </label>
+
+            <div class="sheet-actions">
+              <button id="sheetAdd" class="btn primary wide" type="button">İndir</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

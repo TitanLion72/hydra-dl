@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hydra DL — İndirme seçenekleri</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <img src="icons/icon128.png" alt="" />
+        <div>
+          <h1>İndirme seçenekleri</h1>
+          <div class="sub">Hydra DL yakalayıcı</div>
+        </div>
+        <span class="badge" id="kind-badge">hazırlanıyor</span>
+      </header>
+
+      <main class="layout">
+        <section>
+          <div class="preview" id="preview"></div>
+          <div class="media-meta">
+            <h2 id="title">Başlık alınıyor…</h2>
+            <div class="source" id="source"></div>
+            <div class="chips">
+              <span class="chip" id="size-chip">boyut bilinmiyor</span>
+              <span class="chip" id="kind-chip">tür bilinmiyor</span>
+              <span class="chip" id="resume-chip" hidden>devam ettirilebilir</span>
+            </div>
+          </div>
+          <details class="candidates" id="candidates-box" hidden>
+            <summary>Diğer kaynaklar (<span id="candidate-count">0</span>)</summary>
+            <div class="candidate-list" id="candidates"></div>
+          </details>
+        </section>
+
+        <section class="form-col">
+          <div class="info" id="ytdlp-note" hidden>
+            <span class="glyph">🎬</span>
+            <span>
+              Video sayfası algılandı, en iyi kalite seçildi. Kalite değiştirmek için aşağıdaki
+              listeden format seçebilirsin.
+            </span>
+          </div>
+          <div class="warn-box" id="fallback-note" hidden></div>
+          <div class="warn-box" id="warnings" hidden></div>
+
+          <div class="field">
+            <span class="field-label">Format</span>
+            <div class="formats" id="formats"></div>
+          </div>
+
+          <div class="field">
+            <label for="filename">Dosya adı</label>
+            <input id="filename" type="text" spellcheck="false" autocomplete="off" />
+          </div>
+
+          <div class="field dir-row" id="dir-row" hidden>
+            <span class="field-label">Hedef klasör</span>
+            <div class="dir" id="dir"></div>
+          </div>
+
+          <div class="actions">
+            <button class="primary" id="download" type="button">İndir</button>
+            <button id="cancel" type="button">İptal</button>
+            <button class="mini" id="copy" type="button">Bağlantıyı kopyala</button>
+          </div>
+          <div class="message" id="message"></div>
+        </section>
+      </main>
+
+      <footer>
+        <span id="version">Hydra DL eklentisi</span>
+        <span class="spacer"></span>
+        <a id="open-options">Eklenti ayarları</a>
+        <a id="close-panel">Bu paneli kapat</a>
+      </footer>
+    </div>
+
+    <div class="loading" id="loading">
+      <div>
+        <div class="spinner"></div>
+        <p>Bağlantı inceleniyor…</p>
+      </div>
+    </div>
+
+    <div class="error-screen" id="error-screen" hidden>
+      <div class="error-card">
+        <div class="glyph">⚠</div>
+        <h2 id="error-title">Hydra DL'ye ulaşılamadı</h2>
+        <p id="error-detail"></p>
+        <ul>
+          <li>Hydra DL uygulamasını aç (masaüstü uygulaması çalışıyor olmalı).</li>
+          <li>Yakalama sunucusunun açık olduğundan emin ol: Ayarlar → yakalama.</li>
+          <li>Port numarası eklenti ayarlarıyla aynı mı? Varsayılan <code>6712</code>.</li>
+        </ul>
+        <div class="error-actions">
+          <button class="primary" id="retry" type="button">Tekrar dene</button>
+          <button id="error-options" type="button">Eklenti ayarları</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="shared.js"></script>
+    <script src="panel.js"></script>
+  </body>
+</html>

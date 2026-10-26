@@ -1,0 +1,92 @@
+name: Özellik önerisi
+description: Yeni bir özellik veya davranış değişikliği önerin
+title: "[Özellik]: "
+labels: ["enhancement", "triage"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Önerinizi paylaştığınız için teşekkürler. Büyük değişikliklerde önce bu issue'da
+        tasarımı netleştiriyoruz; böylece aynı işi iki kişi yapmıyor.
+
+        Lütfen DRM atlatma, ücretli üyelik/reklam atlama veya izinsiz içerik dağıtımı
+        içeren önerilerde bulunmayın — bunlar kapsam dışıdır.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Ön kontroller
+      options:
+        - label: Benzer bir öneri olup olmadığını aradım.
+          required: true
+        - label: Öneri `PLAN.md` içindeki "yapılmayacaklar" listesiyle çelişmiyor.
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Hangi sorunu çözüyor?
+      description: Özellik değil, sorun üzerinden anlatın.
+      placeholder: Büyük dosyalarda hangi parçanın yavaş kaldığını göremiyorum.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Önerilen çözüm
+      description: Nasıl çalışmasını istersiniz?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Düşünülen alternatifler
+      description: Başka hangi yaklaşımları değerlendirdiniz?
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: İlgili alan
+      multiple: true
+      options:
+        - İndirme motoru (HTTP/Range)
+        - Kuyruk / eşzamanlılık
+        - yt-dlp / medya
+        - Torrent
+        - Tarayıcı eklentisi
+        - Telefon / yerel ağ arayüzü
+        - Arayüz (Türkçe, tema, filtre)
+        - API / genişletilebilirlik
+        - Dokümantasyon
+        - Diğer
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Tahmini kapsam
+      options:
+        - Küçük (tek dosya / metin)
+        - Orta (bir modül)
+        - Büyük (mimari değişiklik)
+        - Bilmiyorum
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Katkı
+      options:
+        - label: Bu özelliği uygulamak için PR açmaya hazırım.
+        - label: Tasarım konusunda yardım istiyorum.
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Ek bağlam
+      description: Ekran görüntüsü, benzer uygulamalardaki örnekler, bağlantılar.

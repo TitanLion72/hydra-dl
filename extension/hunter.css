@@ -1,0 +1,13 @@
+/*
+ * Hydra DL avcı modu — sayfa CSS'inden yalıtılmıştır.
+ * Gerçek arayüz Shadow DOM içinde kurulur; bu dosya yalnız barındırıcı
+ * öğenin sayfa düzenini bozmamasını garanti eder.
+ */
+#hydra-hunter-host {
+  all: initial;
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  pointer-events: none;
+  contain: layout style;
+}

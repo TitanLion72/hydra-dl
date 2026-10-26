@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Soru ve fikirler (Discussions)
+    url: https://github.com/TitanLion72/hydra-dl/discussions
+    about: Kurulum soruları, kullanım ipuçları ve açık uçlu tartışmalar için.
+  - name: 📖 Sık sorulan sorular
+    url: https://github.com/TitanLion72/hydra-dl/blob/main/docs/FAQ.md
+    about: Kurulum, yt-dlp, port çakışması ve telefon erişimi sorunlarının çözümleri.
+  - name: 🔐 Güvenlik açığı bildirimi
+    url: https://github.com/TitanLion72/hydra-dl/security/advisories/new
+    about: Güvenlik açıklarını lütfen herkese açık issue olarak açmayın; özel bildirim kullanın.
+  - name: 🤝 Katkı rehberi
+    url: https://github.com/TitanLion72/hydra-dl/blob/main/CONTRIBUTING.md
+    about: Geliştirme akışı, kod stili ve test beklentileri.

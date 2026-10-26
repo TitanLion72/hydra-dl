@@ -1,0 +1,237 @@
+.sheet {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -46%) scale(0.98);
+  width: min(720px, 94vw);
+  max-height: min(86vh, 820px);
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #0f1827, #0a111d);
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+  z-index: 22;
+  opacity: 0;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.sheet[hidden] {
+  display: none;
+}
+
+.sheet.open {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.sheet-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.sheet-title {
+  min-width: 0;
+}
+
+.sheet-title h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheet-title p {
+  margin: 3px 0 0;
+  font-size: 11.5px;
+  color: var(--muted-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheet-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 20px 18px;
+}
+
+.sheet-body::-webkit-scrollbar {
+  width: 10px;
+}
+
+.sheet-body::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+.probe-summary {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 12px;
+  padding: 8px 11px;
+  border-radius: 9px;
+  background: rgba(34, 211, 238, 0.06);
+  border: 1px solid rgba(34, 211, 238, 0.14);
+}
+
+.probe-summary[hidden] {
+  display: none;
+}
+
+.probe-formats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.format-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.025);
+  cursor: pointer;
+  transition: 0.14s ease;
+}
+
+.format-row:hover {
+  border-color: var(--line-strong);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.format-row.selected {
+  border-color: rgba(34, 211, 238, 0.5);
+  background: rgba(34, 211, 238, 0.08);
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.18) inset;
+}
+
+.format-row input {
+  accent-color: var(--accent);
+  margin: 0;
+  flex: none;
+}
+
+.format-label {
+  font-size: 12.8px;
+  font-weight: 550;
+}
+
+.format-note {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted-2);
+}
+
+.probe-extra {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.candidates {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.candidates summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+  user-select: none;
+}
+
+.candidate {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+  font-size: 11.5px;
+  color: var(--muted-2);
+}
+
+.candidate code {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 55%;
+}
+
+.sheet-foot {
+  display: flex;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--line);
+  background: rgba(8, 13, 22, 0.6);
+}
+
+.sheet-foot .primary {
+  flex: 1;
+}
+
+.qr-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.qr-row[hidden] {
+  display: none;
+}
+
+.qr-row img {
+  width: 132px;
+  height: 132px;
+  border-radius: 8px;
+  background: #fff;
+  padding: 5px;
+  flex: none;
+}
+
+.ytdlp-actions {
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.ytdlp-actions .hint {
+  margin: 0;
+  flex: 1;
+}
+
+@media (max-width: 720px) {
+  .sheet {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    transform: translateY(100%);
+    width: 100%;
+    max-height: 88vh;
+    border-radius: 18px 18px 0 0;
+  }
+  .sheet.open {
+    transform: translateY(0);
+  }
+}
