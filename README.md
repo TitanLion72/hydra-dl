@@ -116,9 +116,31 @@ Depoda imzalı ikili dosya dağıtılmaz; kurulum paketini kendiniz üretirsiniz
 
 ## Tarayıcı eklentisi
 
+Tek kaynak `extension/` klasörüdür. İki tarayıcı için ayrı paket üretilir (manifestleri
+farklı: Chrome service worker kullanır, Firefox arka plan betiklerini):
+
+```powershell
+node tools/build-extension.mjs            # ikisi
+# çıktı: build/extensions/chrome, build/extensions/firefox
+```
+
+**Chrome / Edge / Brave**
+
 1. `chrome://extensions` (Edge'de `edge://extensions`) → **Geliştirici modu**.
-2. **Paketlenmemiş öğe yükle** → depodaki `extension/` klasörünü seçin.
+2. **Paketlenmemiş öğe yükle** → `build/extensions/chrome` klasörünü seçin.
 3. Eklenti ayarlarından portu Hydra DL ile aynı yapın (varsayılan `6712`).
+
+**Firefox**
+
+1. `about:debugging#/runtime/this-firefox` → **Geçici Eklenti Yükle**.
+2. `build/extensions/firefox/manifest.json` dosyasını seçin.
+3. Araç çubuğundaki Hydra DL simgesine tıklayın → **Ayarlar** → *Yerel erişim izni ver*
+   (Firefox, MV3'te yerel adres iznini kurulumda otomatik vermez; bu düğme tek tıkla ister).
+4. Portu `6712` yapın ve **Bağlantıyı test et**'e basın.
+
+> Geçici eklenti Firefox kapanınca silinir. Kalıcı kurulum için eklenti Mozilla
+> (addons.mozilla.org) tarafından imzalanmalı ya da `xpinstall.signatures.required`
+> kapatılmış bir Firefox sürümü kullanılmalıdır. Bu adım henüz otomatikleştirilmedi.
 
 Kullanım:
 

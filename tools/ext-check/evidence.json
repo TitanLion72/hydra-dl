@@ -1,0 +1,128 @@
+{
+  "session": "2026-10-26",
+  "purpose": "hydra-dl eklentisi: Chrome/Edge regresyonu + Firefox paket doğrulaması",
+  "harness": {
+    "note": "Bu oturumda kabuk aracı yoktu; senaryolar Playwright MCP uzerinden headless Edge ile kosturuldu. Kalici .mjs harness yazilmadi cunku node ile dogrulanamazdi.",
+    "browser": "Microsoft Edge 156.0.4314.42 (Chromium)",
+    "launch": "launchPersistentContext(dir, {channel:'msedge', headless:true, args:['--disable-extensions-except=<dist/extension-chrome>','--load-extension=<dist/extension-chrome>']})",
+    "extensionId": "hfgbeajafkakjihadfadoncjjpfnkcoh",
+    "fakeCaptureServer": "Playwright route: http://127.0.0.1:6799/{health,settings,probe,add}",
+    "screenshots": "%TEMP%\\hydra-ext-check\\{panel,popup,options,options-final,popup-final}.png",
+    "chromeBrandedNote": "Google Chrome 156 markali derlemede --load-extension servis calistirmadi (ctx.serviceWorkers() bos); Edge calisti."
+  },
+  "distSyncCheck": { "filesCompared": 26, "diffs": [], "result": "dist/extension-{chrome,firefox} === extension/ (birebir)" },
+  "runtime": {
+    "serviceWorker": { "registered": true, "url": "chrome-extension://hfgbeajafkakjihadfadoncjjpfnkcoh/background.js" },
+    "supervisor": {
+      "hasHX": "object",
+      "manifestVersion": "0.2.0",
+      "hasContextMenus": true,
+      "createMenus": "ok",
+      "createMenusTwice": "ok",
+      "consoleDuringMenus": []
+    },
+    "panel": {
+      "getURL": "chrome-extension://hfgbeajafkakjihadfadoncjjpfnkcoh/panel.html",
+      "version": "Hydra DL eklentisi v0.2.0",
+      "scriptOrder": ["compat.js", "shared.js", "panel.js"],
+      "errorDisplayWithAppDown": "flex",
+      "errorDetailWithAppDown": "Hydra DL'ye ulasilamadi: Failed to fetch"
+    },
+    "messageRouting": {
+      "appDown": { "threw": false, "response": { "ok": false, "error": "Hydra DL'ye ulasilamadi: Failed to fetch", "code": "network" } },
+      "appUp": { "threw": false, "response": { "ok": true, "data": { "ok": true, "app": "hydra-dl", "version": "test" } } }
+    },
+    "popup": { "version": "v0.2.0", "statusText": "uygulama kapali", "consoleErrors": [] },
+    "options": {
+      "isFirefoxDetectedInEdge": true,
+      "apiIsChrome": false,
+      "typeofBrowserInEdgeExtension": "object",
+      "permissionsContains": true,
+      "permissionRowHidden": true,
+      "storedAfterSave": { "askOnDownload": true, "hunterEnabled": false, "port": 6799, "showPanel": true },
+      "result": "Bagli - hydra-dl v9.9.9 - 2 indirme, 1 aktif",
+      "health": "sunucu calisiyor"
+    },
+    "panelFile": {
+      "badge": "dosya",
+      "formatRows": 1,
+      "formatRadioValue": "",
+      "addBody": "{\"url\":\"http://127.0.0.1:6799/file.zip\",\"filename\":\"file.zip\",\"dir\":\"C:/Users/titan/Downloads\",\"referer\":\"http://127.0.0.1:6799/watch.html\"}",
+      "message": "Kuyruga eklendi: eklendi.zip",
+      "hiddenCss": { "candidates-box": "none", "ytdlp-note": "none", "resume-chip": "block", "dir-row": "flex" }
+    },
+    "panelVideo": {
+      "badge": "sayfa",
+      "formatIds": ["137", "140"],
+      "checkedId": "137",
+      "sizeChip": "boyut: 150 MB",
+      "sizeChipAfterSelect": "boyut: 4,00 MB",
+      "addBody": "{\"url\":\"http://127.0.0.1:6799/watch.html\",\"format\":\"140\",\"filename\":\"watch.html\",\"dir\":\"C:/Users/titan/Downloads\",\"referer\":\"http://127.0.0.1:6799/watch.html\"}"
+    },
+    "addErrorHandling": {
+      "status400": { "requests": ["POST /add BODY {...}"], "getFallback": false, "message": "Eklenemedi: sunucu reddetti", "errorScreen": false },
+      "status404": { "requests": ["POST /add BODY {...}", "GET /add?url=..."], "getFallback": true },
+      "probe404": { "errorDisplay": "none", "fallbackNoteDisplay": "block", "formatRows": 1 }
+    },
+    "hunter": {
+      "sendMessageHunterSet": { "ok": true, "active": true },
+      "dom": { "host": true, "barDisplay": "flex", "shadowChildren": 4 },
+      "autoActivateOnLoad": { "host": true, "barDisplay": "flex" },
+      "linkPickOpenedPanel": "chrome-extension://.../panel.html?url=http%3A%2F%2F127.0.0.1%3A6799%2Ffile.zip&referer=http%3A%2F%2F127.0.0.1%3A6799%2Fwatch.html&title=Hydra+Test",
+      "blobPick": {
+        "videoSrc": "blob:http://127.0.0.1:6799/732c0a47-b109",
+        "panelUrlParam": "http://127.0.0.1:6799/watch.html",
+        "isBlobInPanelUrl": false
+      }
+    },
+    "errors": { "pageErrors": [], "consoleErrorsExcludingConnectionRefused": [] }
+  },
+  "firefoxStatic": {
+    "manifestJson": "valid",
+    "backgroundScripts": ["compat.js", "shared.js", "background.js"],
+    "hasServiceWorker": false,
+    "geckoId": "hydra-dl@titanlion72",
+    "strictMinVersion": "115.0",
+    "strictMinOk": true,
+    "missingBackgroundFiles": [],
+    "contentScriptJs": ["compat.js", "hunter.js"],
+    "htmlFirstScript": {
+      "firefox/panel.html": "compat.js",
+      "firefox/popup.html": "compat.js",
+      "firefox/options.html": "compat.js",
+      "chrome/panel.html": "compat.js",
+      "chrome/popup.html": "compat.js",
+      "chrome/options.html": "compat.js"
+    },
+    "compatVm": {
+      "onlyChrome": { "apiIsChrome": true, "isFirefox": false },
+      "onlyBrowser": { "apiIsBrowser": true, "isFirefox": true },
+      "both": { "apiIsBrowser": true, "isFirefox": true }
+    },
+    "directChromeCalls": "yok (yalniz compat.js yorum satirlari)",
+    "optionsPermissionGuard": "extension/options.js:99 -> if (!HX.isFirefox) return;"
+  },
+  "syntaxCheck": {
+    "method": "new Function(src) ile parse (node --check esdegeri; kabuk yok)",
+    "files": {
+      "extension/compat.js": "OK",
+      "extension/shared.js": "OK",
+      "extension/background.js": "OK",
+      "extension/hunter.js": "OK",
+      "extension/panel.js": "OK",
+      "extension/popup.js": "OK",
+      "extension/options.js": "OK",
+      "webapp/app.js": "OK",
+      "webapp/sw.js": "OK"
+    },
+    "notVerified": ["tools/*.mjs (ESM, parse edilemedi)"]
+  },
+  "findings": [
+    {
+      "severity": "orta-dusuk",
+      "title": "HX.isFirefox Edge'de yanlis true",
+      "detail": "Edge eklenti baglaminda promise tabanli globalThis.browser tanimliyor (browser !== chrome). compat.js:16 yalniz typeof globalThis.browser baktigi icin Edge Firefox sayiliyor; islevsel kirilma yok cunku api promise donduruyor ve permissions.contains()=true.",
+      "suggestion": "Olcut: !!globalThis.browser?.runtime?.getBrowserInfo"
+    }
+  ]
+}

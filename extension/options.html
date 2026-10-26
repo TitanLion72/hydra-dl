@@ -215,6 +215,13 @@
         <span id="result"></span>
       </div>
 
+      <div class="row" id="permission-row" hidden>
+        <button id="grant-permission" type="button">Yerel erişim izni ver</button>
+        <span id="permission-result">
+          Firefox, eklentilerin yerel adreslere erişmesi için ayrıca izin ister.
+        </span>
+      </div>
+
       <h2>Kurulum</h2>
       <ol>
         <li><code>chrome://extensions</code> (Edge: <code>edge://extensions</code>) adresini aç.</li>
@@ -235,6 +242,7 @@
       </footer>
     </div>
 
+    <script src="compat.js"></script>
     <script src="shared.js"></script>
     <script src="options.js"></script>
   </body>

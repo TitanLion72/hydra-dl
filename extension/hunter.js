@@ -106,16 +106,13 @@
   };
 
   function sendMessage(message) {
-    return new Promise((resolve) => {
-      try {
-        chrome.runtime.sendMessage(message, (response) => {
-          void chrome.runtime.lastError;
-          resolve(response || null);
-        });
-      } catch (_err) {
-        resolve(null);
-      }
-    });
+    // Firefox `browser.*` callback kabul etmez, promise döner; Chrome'da da
+    // promise destekli. Tek yol: promise + hata yutma.
+    try {
+      return Promise.resolve(HX.api.runtime.sendMessage(message)).catch(() => null);
+    } catch (_err) {
+      return Promise.resolve(null);
+    }
   }
 
   function applyShadowStyles(shadow) {
@@ -428,7 +425,7 @@
     if (!started) showToast("Hydra DL açık değil; uygulamayı başlatıp tekrar deneyin.", "warn");
   }
 
-  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  HX.api.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!message || message.type !== "hunter-set") return false;
     if (message.enabled === true) {
       void activate().then((started) => sendResponse({ ok: true, active: started }));
@@ -441,7 +438,7 @@
 
   (async () => {
     try {
-      const stored = await chrome.storage.sync.get({ hunterEnabled: false });
+      const stored = await HX.api.storage.sync.get({ hunterEnabled: false });
       if (stored.hunterEnabled === true) await activate();
     } catch (_err) {
       // sessiz

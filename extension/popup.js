@@ -24,16 +24,11 @@ let currentTab = null;
 let settings = { ...H.DEFAULT_SETTINGS };
 
 function send(message) {
-  return new Promise((resolve) => {
-    try {
-      chrome.runtime.sendMessage(message, (response) => {
-        void chrome.runtime.lastError;
-        resolve(response || null);
-      });
-    } catch (_err) {
-      resolve(null);
-    }
-  });
+  try {
+    return Promise.resolve(HX.api.runtime.sendMessage(message)).catch(() => null);
+  } catch (_err) {
+    return Promise.resolve(null);
+  }
 }
 
 function say(text, tone) {
@@ -61,14 +56,14 @@ function openPanel(url, referer, title) {
   const params = new URLSearchParams({ url });
   if (referer) params.set("referer", referer);
   if (title) params.set("title", title);
-  return chrome.tabs.create({
-    url: chrome.runtime.getURL(`panel.html?${params.toString()}`),
+  return HX.api.tabs.create({
+    url: HX.api.runtime.getURL(`panel.html?${params.toString()}`),
   });
 }
 
 async function loadTab() {
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [tab] = await HX.api.tabs.query({ active: true, currentWindow: true });
     currentTab = tab || null;
     const url = tab?.url || "";
     el.pageUrl.textContent = url || "Bu sekmede adres yok.";
@@ -168,9 +163,9 @@ el.testPort.addEventListener("click", async () => {
   }
 });
 
-el.optionsLink.addEventListener("click", () => chrome.runtime.openOptionsPage());
+el.optionsLink.addEventListener("click", () => HX.api.runtime.openOptionsPage());
 
-chrome.storage.onChanged.addListener((changes, area) => {
+HX.api.storage.onChanged.addListener((changes, area) => {
   if (area !== "sync") return;
   if (changes.hunterEnabled) el.hunter.checked = changes.hunterEnabled.newValue === true;
   if (changes.showPanel) el.showPanel.checked = changes.showPanel.newValue !== false;
@@ -178,7 +173,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 async function init() {
-  el.version.textContent = `v${chrome.runtime.getManifest().version}`;
+  el.version.textContent = `v${HX.api.runtime.getManifest().version}`;
   await loadSettings();
   await loadTab();
   const online = await refreshHealth();

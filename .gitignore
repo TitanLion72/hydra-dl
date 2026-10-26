@@ -9,3 +9,5 @@ desktop.ini
 .vscode/
 .idea/
 .playwright-mcp/
+tools/ui-harness/artifacts/
+build/

@@ -14,6 +14,8 @@ cargo clippy --manifest-path src-tauri\Cargo.toml --all-targets -- -D warnings
 cargo test  --manifest-path src-tauri\Cargo.toml
 node tools/e2e.mjs --capture-port 6712 --dir "$env:TEMP\hydra-e2e"   # uygulama açıkken
 node tools/web-smoke.mjs --port 6790                                 # web API'si (opsiyonel)
+node tools/build-extension.mjs                                       # eklenti paketleri
+node tools/ui-harness/run.mjs                                        # masaüstü UI (mock API)
 ```
 
 **Bitiş tanımı:** `cargo test` + `cargo clippy -D warnings` + `npm run build` yeşil.
@@ -35,7 +37,8 @@ Ağ/indirme davranışına dokunduysan `tools/e2e.mjs` de koşar. Üçünden bir
 | `src-tauri/src/commands.rs` | Tauri komut yüzeyi |
 | `src/` | masaüstü arayüzü (vanilla TS); durum yalnız `downloads:changed` |
 | `webapp/` | telefonda çalışan statik arayüz (derleme yok, SSE) |
-| `extension/` | Chrome/Edge MV3: panel, avcı modu, sağ tık |
+| `extension/` | Chrome/Edge MV3: panel, avcı modu, sağ tık. **Tek kaynak**; `node tools/build-extension.mjs` ile `build/extensions/{chrome,firefox}` üretilir |
+| `tools/build-extension.mjs` | Chrome (service_worker) ve Firefox (background.scripts + gecko id) manifestlerini üretir ve dosya bütünlüğünü doğrular |
 | `tools/` | ikon üretici, e2e, web smoke |
 | `docs/API.md` | **API sözleşmesi — kırıcı değişiklik önce buraya** |
 
@@ -95,6 +98,13 @@ Ağ/indirme davranışına dokunduysan `tools/e2e.mjs` de koşar. Üçünden bir
 - Torrent testleri gerçek ağ trafiği üretir; CI'da yalnız kaynak tanıma testleri koşar.
 - `src-tauri/target`, `node_modules`, `dist`, `*.log` üretim/geçici — git'e girmez.
 - Yakalama API'si `127.0.0.1`'e kilitli; web API'si LAN'a açılır. İkisini karıştırma.
+- **Tarayıcı API farkı:** Chrome `chrome.*`, Firefox `browser.*` (promise tabanlı) sunar.
+  Bu yüzden kod `chrome.` yerine `HX.api.` kullanır (`extension/compat.js` her bağlamda
+  **ilk** yüklenmeli: `importScripts`, `content_scripts.js[0]`, HTML'de ilk `<script>`).
+  Yeni kod yazarken callback'li `chrome.*` çağrısı ekleme — Firefox'ta çalışmaz.
+- **Firefox MV3 host izni** kurulumda otomatik gelmez: ayarlar sayfasındaki
+  *Yerel erişim izni ver* düğmesi `permissions.request` çağırır. Bu düğmeyi kaldırma.
+- `build/extensions/*` üretilen çıktıdır; elle düzenleme, `extension/`'ı düzenle.
 
 ## Yeni özellik akışı
 

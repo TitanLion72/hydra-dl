@@ -16,6 +16,29 @@ const HYDRA_HOST = "127.0.0.1";
 const PORT_MIN = 1024;
 const PORT_MAX = 65535;
 
+// Firefox MV3, host izinlerini kurulumda otomatik vermez; kullanıcı onayı ister.
+// Chrome/Edge'de bu izinler kurulumda gelir, kontrol her zaman `true` döner.
+const LOCAL_ORIGINS = ["http://127.0.0.1/*", "http://localhost/*"];
+
+async function hasLocalAccess() {
+  try {
+    if (!HX.api.permissions?.contains) return true;
+    return await HX.api.permissions.contains({ origins: LOCAL_ORIGINS });
+  } catch {
+    return true;
+  }
+}
+
+/// Yalnız kullanıcı tıklamasıyla çağrılmalı (tarayıcı jesti gerekir).
+async function requestLocalAccess() {
+  try {
+    if (!HX.api.permissions?.request) return false;
+    return await HX.api.permissions.request({ origins: LOCAL_ORIGINS });
+  } catch {
+    return false;
+  }
+}
+
 function normalizePort(value) {
   const port = Number(value);
   return Number.isInteger(port) && port >= PORT_MIN && port <= PORT_MAX ? port : DEFAULT_SETTINGS.port;
@@ -33,7 +56,7 @@ class HydraError extends Error {
 
 async function getSettings() {
   try {
-    const stored = await chrome.storage.sync.get(DEFAULT_SETTINGS);
+    const stored = await HX.api.storage.sync.get(DEFAULT_SETTINGS);
     return {
       ...DEFAULT_SETTINGS,
       ...stored,
@@ -56,7 +79,7 @@ async function saveSettings(patch) {
     if (patch && patch[key] !== undefined) clean[key] = patch[key] === true;
   }
   try {
-    await chrome.storage.sync.set(clean);
+    await HX.api.storage.sync.set(clean);
   } catch (_err) {
     // storage kapalıysa sessizce varsayılanlarla devam
   }
@@ -192,12 +215,15 @@ function formatBytes(value) {
 
 function notify(title, message) {
   try {
-    chrome.notifications.create({
+    // Firefox `browser.notifications.create` promise döner, Chrome callback bekler;
+    // promise'ı yutmak ikisinde de güvenli.
+    const result = HX.api.notifications.create({
       type: "basic",
       iconUrl: "icons/icon128.png",
       title: title || "Hydra DL",
       message: String(message || "").slice(0, 300),
     });
+    if (result && typeof result.catch === "function") result.catch(() => {});
   } catch (_err) {
     // bildirim izni yoksa yut
   }
@@ -241,5 +267,7 @@ if (typeof window !== "undefined") {
     notify,
     siteHost,
     guessFilename,
+    hasLocalAccess,
+    requestLocalAccess,
   };
 }

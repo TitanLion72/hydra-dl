@@ -10,7 +10,10 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "e2e": "node tools/e2e.mjs"
+    "e2e": "node tools/e2e.mjs",
+    "build:ext": "node tools/build-extension.mjs",
+    "test:ext": "node tools/build-extension.mjs && node tools/test-extension.mjs",
+    "test:ui": "node tools/ui-harness/run.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

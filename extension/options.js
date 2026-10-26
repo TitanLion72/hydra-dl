@@ -13,6 +13,9 @@ const el = {
   result: document.getElementById("result"),
   version: document.getElementById("version"),
   health: document.getElementById("health"),
+  permissionRow: document.getElementById("permission-row"),
+  grantPermission: document.getElementById("grant-permission"),
+  permissionResult: document.getElementById("permission-result"),
 };
 
 async function load() {
@@ -84,9 +87,37 @@ el.port.addEventListener("keydown", (event) => {
 });
 
 async function init() {
-  el.version.textContent = `Hydra DL eklentisi v${chrome.runtime.getManifest().version}`;
+  el.version.textContent = `Hydra DL eklentisi v${HX.api.runtime.getManifest().version}`;
   await load();
+  await refreshPermission();
   void testConnection();
 }
+
+/// Firefox yerel adres izni vermezse istekler başarısız olur; kullanıcıya
+/// tek tıkla verme yolu gösteriyoruz.
+async function refreshPermission() {
+  if (!HX.isFirefox) return;
+  const granted = await H.hasLocalAccess();
+  el.permissionRow.hidden = granted;
+  if (granted) {
+    el.permissionResult.textContent = "Yerel erişim izni verildi.";
+  }
+}
+
+el.grantPermission.addEventListener("click", async () => {
+  el.grantPermission.disabled = true;
+  try {
+    const granted = await H.requestLocalAccess();
+    el.permissionResult.textContent = granted
+      ? "İzin verildi, bağlantıyı test edebilirsin."
+      : "İzin verilmedi. about:addons → Hydra DL → İzinler bölümünden açabilirsin.";
+    if (granted) {
+      await refreshPermission();
+      void testConnection();
+    }
+  } finally {
+    el.grantPermission.disabled = false;
+  }
+});
 
 void init();

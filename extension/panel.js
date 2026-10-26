@@ -105,15 +105,14 @@ function hideError() {
   el.errorScreen.hidden = true;
 }
 
-function closeTab() {
+async function closeTab() {
   try {
-    chrome.tabs.getCurrent((tab) => {
-      if (tab && tab.id !== undefined && tab.id !== null) {
-        chrome.tabs.remove(tab.id, () => void chrome.runtime.lastError);
-      } else {
-        window.close();
-      }
-    });
+    const tab = await HX.api.tabs.getCurrent();
+    if (tab && tab.id !== undefined && tab.id !== null) {
+      await HX.api.tabs.remove(tab.id);
+    } else {
+      window.close();
+    }
   } catch (_err) {
     window.close();
   }
@@ -516,8 +515,8 @@ el.copy.addEventListener("click", async () => {
 
 el.retry.addEventListener("click", () => void load(state.url));
 
-el.openOptions.addEventListener("click", () => chrome.runtime.openOptionsPage());
-el.errorOptions.addEventListener("click", () => chrome.runtime.openOptionsPage());
+el.openOptions.addEventListener("click", () => HX.api.runtime.openOptionsPage());
+el.errorOptions.addEventListener("click", () => HX.api.runtime.openOptionsPage());
 
 el.closePanel.addEventListener("click", async () => {
   await H.saveSettings({ showPanel: false });
@@ -536,7 +535,7 @@ el.filename.addEventListener("keydown", (event) => {
 });
 
 function init() {
-  el.version.textContent = `Hydra DL eklentisi v${chrome.runtime.getManifest().version}`;
+  el.version.textContent = `Hydra DL eklentisi v${HX.api.runtime.getManifest().version}`;
   void loadSettings();
   void load(state.url);
 }

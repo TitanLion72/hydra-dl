@@ -1,7 +1,7 @@
 // Hydra DL — arka plan service worker: sağ tık menüleri, panel açma, mesaj yönlendirme.
 "use strict";
 
-importScripts("shared.js");
+importScripts("compat.js", "shared.js");
 
 const PANEL_PAGE = "panel.html";
 const MENU_DOWNLOAD = "hydra-download";
@@ -10,36 +10,43 @@ const MENU_HUNTER = "hydra-hunter";
 
 async function createMenus() {
   const settings = await getSettings();
-  chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({
-      id: MENU_DOWNLOAD,
-      title: "Hydra DL ile indir",
-      contexts: ["link", "video", "audio", "image"],
+  try {
+    await HX.api.contextMenus.removeAll();
+  } catch (_err) {
+    // zaten yok
+  }
+  const create = (props) =>
+    Promise.resolve(HX.api.contextMenus.create(props)).catch((err) =>
+      console.warn("[hydra] menü oluşturulamadı", props.id, err?.message ?? err),
+    );
+  await create({
+    id: MENU_DOWNLOAD,
+    title: "Hydra DL ile indir",
+    contexts: ["link", "video", "audio", "image"],
+  });
+  // "Bu sayfayı incele" paneli açar; panel kapalıysa menüde de görünmesin.
+  if (settings.showPanel) {
+    await create({
+      id: MENU_INSPECT,
+      title: "Bu sayfayı incele",
+      contexts: ["page"],
     });
-    // "Bu sayfayı incele" paneli açar; panel kapalıysa menüde de görünmesin.
-    if (settings.showPanel) {
-      chrome.contextMenus.create({
-        id: MENU_INSPECT,
-        title: "Bu sayfayı incele",
-        contexts: ["page"],
-      });
-    }
-    chrome.contextMenus.create({
-      id: MENU_HUNTER,
-      title: "Avcı modunu aç/kapat",
-      contexts: ["page", "link", "video", "audio", "image", "selection"],
-    });
+  }
+  await create({
+    id: MENU_HUNTER,
+    title: "Avcı modunu aç/kapat",
+    contexts: ["page", "link", "video", "audio", "image", "selection"],
   });
 }
 
-chrome.runtime.onInstalled.addListener(() => void createMenus());
-chrome.runtime.onStartup.addListener(() => void createMenus());
+HX.api.runtime.onInstalled.addListener(() => void createMenus());
+HX.api.runtime.onStartup.addListener(() => void createMenus());
 
 function panelUrl(targetUrl, referer, title) {
   const params = new URLSearchParams({ url: targetUrl });
   if (referer) params.set("referer", referer);
   if (title) params.set("title", title);
-  return chrome.runtime.getURL(`${PANEL_PAGE}?${params.toString()}`);
+  return HX.api.runtime.getURL(`${PANEL_PAGE}?${params.toString()}`);
 }
 
 const PANEL_SCHEMES = /^(https?|ftp|magnet|blob):/i;
@@ -49,7 +56,7 @@ async function openPanel(targetUrl, referer, title) {
     notify("Hydra DL", "Bu adres indirilebilir bir bağlantı değil.");
     return { ok: false, error: "geçersiz adres" };
   }
-  await chrome.tabs.create({ url: panelUrl(targetUrl, referer, title) });
+  await HX.api.tabs.create({ url: panelUrl(targetUrl, referer, title) });
   return { ok: true, panel: true };
 }
 
@@ -86,7 +93,7 @@ async function handleDownloadRequest(payload) {
 async function broadcastHunter(enabled) {
   let tabs = [];
   try {
-    tabs = await chrome.tabs.query({});
+    tabs = await HX.api.tabs.query({});
   } catch (_err) {
     return;
   }
@@ -94,7 +101,7 @@ async function broadcastHunter(enabled) {
     tabs.map(async (tab) => {
       if (!tab.id || !tab.url || !/^https?:/i.test(tab.url)) return;
       try {
-        await chrome.tabs.sendMessage(tab.id, { type: "hunter-set", enabled });
+        await HX.api.tabs.sendMessage(tab.id, { type: "hunter-set", enabled });
       } catch (_err) {
         // içerik betiği olmayan sekmeler: yut
       }
@@ -110,7 +117,7 @@ async function toggleHunter(force) {
   return enabled;
 }
 
-chrome.contextMenus.onClicked.addListener((info, tab) => {
+HX.api.contextMenus.onClicked.addListener((info, tab) => {
   const pageUrl = info.pageUrl || tab?.url || "";
   const target = info.linkUrl || info.srcUrl || info.frameUrl || pageUrl;
 
@@ -137,7 +144,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 });
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+HX.api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message.type !== "string") return false;
 
   switch (message.type) {
@@ -202,7 +209,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-chrome.storage.onChanged.addListener((changes, area) => {
+HX.api.storage.onChanged.addListener((changes, area) => {
   if (area !== "sync") return;
   if (changes.showPanel) void createMenus();
   if (changes.hunterEnabled) void broadcastHunter(changes.hunterEnabled.newValue === true);
