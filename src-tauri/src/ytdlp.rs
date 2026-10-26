@@ -376,12 +376,45 @@ fn parse_progress(payload: &str) -> Option<(u64, Option<u64>, Option<f64>)> {
     Some((downloaded, exact.or(estimate), percent))
 }
 
-fn build_args(url: &str, dir: &Path, print_file: &Path, format: Option<&str>) -> Vec<String> {
+/// yt-dlp'nin kendi dosya adini kurmasini engelliyoruz: basliklar Windows'ta
+/// yasak karakter (`:`, `?`, `|`) icerebiliyor ve `--windows-filenames` bile
+/// hepsini temizlemiyor (NTFS'te "alternate data stream" olusup errno 22
+/// veriyordu). Bu yuzden yt-dlp yalnizca guvenli `%(id)s.%(ext)s` yazar;
+/// gorunen adi biz `util::sanitize_filename` ile kurariz.
+const SAFE_OUTPUT_TEMPLATE: &str = "%(id)s.%(ext)s";
+
+/// Gorunen dosya adi: temizlenmis baslik + uzanti. Baslik bossa `None`.
+pub fn display_filename(title: &str, ext: &str) -> Option<String> {
+    let title = title.trim();
+    if title.is_empty() {
+        return None;
+    }
+    let base = crate::util::sanitize_filename(title);
+    if base == "download" {
+        return None;
+    }
+    let ext = ext.trim().trim_start_matches('.');
+    Some(if ext.is_empty() {
+        base
+    } else {
+        format!("{base}.{ext}")
+    })
+}
+
+fn build_args(
+    url: &str,
+    dir: &Path,
+    print_file: &Path,
+    title_file: &Path,
+    format: Option<&str>,
+) -> Vec<String> {
     let mut args: Vec<String> = vec![
         "--newline".into(),
         "--no-playlist".into(),
         "--no-mtime".into(),
         "--continue".into(),
+        // Basliktaki yasak karakterler dosya adina sizmasin.
+        "--windows-filenames".into(),
         "--progress".into(),
         "--progress-template".into(),
         format!(
@@ -390,6 +423,9 @@ fn build_args(url: &str, dir: &Path, print_file: &Path, format: Option<&str>) ->
         "--print-to-file".into(),
         "after_move:filepath".into(),
         print_file.to_string_lossy().to_string(),
+        "--print-to-file".into(),
+        "before_dl:%(title)s".into(),
+        title_file.to_string_lossy().to_string(),
     ];
     // Format URL ise (HLS varyanti) dogrudan onu indir.
     if let Some(format) = format.filter(|f| !f.is_empty()) {
@@ -399,7 +435,7 @@ fn build_args(url: &str, dir: &Path, print_file: &Path, format: Option<&str>) ->
             args.push("-P".into());
             args.push(dir.to_string_lossy().to_string());
             args.push("-o".into());
-            args.push("%(title).100B [%(id)s].%(ext)s".into());
+            args.push(SAFE_OUTPUT_TEMPLATE.into());
             return args;
         }
         args.push("-f".into());
@@ -411,7 +447,7 @@ fn build_args(url: &str, dir: &Path, print_file: &Path, format: Option<&str>) ->
     args.push("-P".into());
     args.push(dir.to_string_lossy().to_string());
     args.push("-o".into());
-    args.push("%(title).150B [%(id)s].%(ext)s".into());
+    args.push(SAFE_OUTPUT_TEMPLATE.into());
     args.push(url.into());
     args
 }
@@ -436,12 +472,15 @@ pub async fn run(state: Arc<AppState>, id: String, cancel: Arc<CancelToken>) {
     let _ = tokio::fs::create_dir_all(&parts).await;
     let print_file = parts.join("filepath.txt");
     let _ = tokio::fs::remove_file(&print_file).await;
+    let title_file = parts.join("title.txt");
+    let _ = tokio::fs::remove_file(&title_file).await;
 
     let mut cmd = tokio::process::Command::new(binary);
     cmd.args(build_args(
         &item.url,
         &item.dir,
         &print_file,
+        &title_file,
         item.format.as_deref(),
     ))
     .stdin(Stdio::null())
@@ -586,6 +625,23 @@ pub async fn run(state: Arc<AppState>, id: String, cancel: Arc<CancelToken>) {
         return;
     };
 
+    // yt-dlp guvenli `%(id)s.%(ext)s` ile indirdi; gorunen adi burada kuruyoruz.
+    let title = tokio::fs::read_to_string(&title_file)
+        .await
+        .ok()
+        .and_then(|raw| {
+            raw.lines()
+                .map(str::trim)
+                .find(|l| !l.is_empty())
+                .map(str::to_string)
+        });
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_string();
+    let path = rename_to_display_name(&path, title.as_deref(), &ext);
+
     let size = tokio::fs::metadata(&path)
         .await
         .map(|m| m.len())
@@ -611,6 +667,32 @@ pub async fn run(state: Arc<AppState>, id: String, cancel: Arc<CancelToken>) {
     state.persist();
     state.emit_downloads();
     state.notice(format!("Tamamlandi: {filename}"), "success");
+}
+
+/// Indirilen dosyayi baslik tabanli, Windows-guvenli bir ada tasir.
+/// Yeniden adlandirma basarisiz olursa eski yol korunur (indirme bozulmaz).
+fn rename_to_display_name(path: &Path, title: Option<&str>, ext: &str) -> PathBuf {
+    let Some(title) = title else {
+        return path.to_path_buf();
+    };
+    let Some(name) = display_filename(title, ext) else {
+        return path.to_path_buf();
+    };
+    let dir = match path.parent() {
+        Some(dir) => dir,
+        None => return path.to_path_buf(),
+    };
+    let target = crate::util::unique_path(dir, &name);
+    if target == path {
+        return path.to_path_buf();
+    }
+    match std::fs::rename(path, &target) {
+        Ok(()) => target,
+        Err(err) => {
+            eprintln!("[hydra] yeniden adlandirma basarisiz: {err}");
+            path.to_path_buf()
+        }
+    }
 }
 
 fn newest_file_in(dir: &Path, since: std::time::SystemTime) -> Option<PathBuf> {
@@ -657,6 +739,7 @@ mod tests {
             "https://x/y",
             Path::new("C:/out"),
             Path::new("C:/tmp/p.txt"),
+            Path::new("C:/tmp/t.txt"),
             None,
         );
         assert!(args.contains(&"--no-playlist".to_string()));
@@ -672,6 +755,7 @@ mod tests {
             "https://x/y",
             Path::new("C:/out"),
             Path::new("C:/tmp/p.txt"),
+            Path::new("C:/tmp/t.txt"),
             Some("137+140"),
         );
         let index = args.iter().position(|a| a == "-f").expect("-f yok");
@@ -685,11 +769,12 @@ mod tests {
             "https://x/y",
             Path::new("C:/out"),
             Path::new("C:/tmp/p.txt"),
+            Path::new("C:/tmp/t.txt"),
             Some("https://cdn/x/1080.m3u8"),
         );
         assert!(args.contains(&"https://cdn/x/1080.m3u8".to_string()));
         assert!(!args.contains(&"-f".to_string()));
-        assert_eq!(args.last().unwrap(), "%(title).100B [%(id)s].%(ext)s");
+        assert_eq!(args.last().unwrap(), "%(id)s.%(ext)s");
     }
 
     #[test]
@@ -717,6 +802,70 @@ mod tests {
             .expect("ses formati yok");
         assert_eq!(audio.filesize.or(audio.filesize_approx), Some(4_000_000));
         assert!(audio.label().contains("ses"));
+    }
+
+    #[test]
+    fn gorunen_ad_windows_guvenli() {
+        // Gercek hata: basliktaki ':' Windows'ta yasak, yt-dlp errno 22 veriyordu.
+        let name = display_filename(
+            "Kimi K3.1 Pro'yu Canlı Zorluyoruz: Açık Model Nereye Kadar Gider?",
+            "mp4",
+        )
+        .expect("ad uretilmedi");
+        assert!(!name.contains(':'), "iki nokta kalmamali: {name}");
+        assert!(name.ends_with(".mp4"));
+        assert!(name.contains("Kimi K3.1"));
+
+        // Baslik bossa ad uretme, mevcut ad korunur.
+        assert_eq!(display_filename("   ", "mp4"), None);
+        // Uzanti noktayla da verilse tek nokta kalsin.
+        assert_eq!(
+            display_filename("rapor", ".pdf").as_deref(),
+            Some("rapor.pdf")
+        );
+        // Uzanti bossa nokta eklenmesin.
+        assert_eq!(display_filename("arsiv", "").as_deref(), Some("arsiv"));
+    }
+
+    #[test]
+    fn yt_dlp_guvenli_sablon_kullanir() {
+        let args = build_args(
+            "https://x/y",
+            Path::new("C:/out"),
+            Path::new("C:/tmp/p.txt"),
+            Path::new("C:/tmp/t.txt"),
+            Some("137"),
+        );
+        let idx = args.iter().position(|a| a == "-o").expect("-o yok");
+        assert_eq!(args[idx + 1], "%(id)s.%(ext)s", "baslik sablonda olmamali");
+        assert!(args.contains(&"--windows-filenames".to_string()));
+        // Baslik ayri dosyaya yazilmali (gorunen ad icin).
+        let pidx = args
+            .iter()
+            .position(|a| a == "before_dl:%(title)s")
+            .expect("baslik yazdirma yok");
+        assert_eq!(args[pidx + 1], "C:/tmp/t.txt");
+    }
+
+    #[test]
+    fn yeniden_adlandirma_guvenli_ada_tasir() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("dQw4w9WgXcQ.mp4");
+        std::fs::write(&src, b"x").unwrap();
+        let out = rename_to_display_name(
+            &src,
+            Some("Kimi K3.1 Pro'yu Canlı Zorluyoruz: Açık Model"),
+            "mp4",
+        );
+        assert!(out.is_file(), "hedef dosya yok: {out:?}");
+        assert!(!src.exists(), "eski dosya kalmamali");
+        let name = out.file_name().unwrap().to_string_lossy().to_string();
+        assert!(!name.contains(':'), "yasak karakter: {name}");
+        assert!(name.ends_with(".mp4"));
+
+        // Baslik yoksa dosya yerinde kalir.
+        let out2 = rename_to_display_name(&out, None, "mp4");
+        assert_eq!(out2, out);
     }
 
     #[test]
