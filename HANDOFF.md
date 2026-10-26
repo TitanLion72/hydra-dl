@@ -31,6 +31,11 @@ telefon için web arayüzü, tarayıcı eklentisi (panel + avcı modu).
 
 ## Bu oturumda düzeltilen gerçek hatalar
 
+0. **YouTube indirmesi `OSError: [Errno 22] Invalid argument` (kullanıcı bildirdi).**
+   Video başlığında `:` vardı; Windows dosya adında yasak, `--windows-filenames` bile
+   temizlemiyor, NTFS'te alternate data stream oluşup 0 baytta patlıyordu. Artık yt-dlp
+   yalnız `%(id)s.%(ext)s` ile indiriyor, görünen adı `util::sanitize_filename` kuruyor
+   (`rename_to_display_name`, testli). 1080p 401 MB gerçek indirmeyle doğrulandı.
 1. **Video-only format sessiz iniyordu.** `yt-dlp` listesindeki video-only akışlar
    (`vcodec≠none, acodec=none`) seçilince ses gelmiyordu. Artık format kimliği
    `137+bestaudio/137` biçiminde üretiliyor (`extract.rs`, testli).
@@ -48,11 +53,13 @@ telefon için web arayüzü, tarayıcı eklentisi (panel + avcı modu).
 
 ## Bilinen açık uçlar
 
+- **Firefox hiç çalıştırılmadı.** Paket ve `compat.js` statik + VM simülasyonuyla doğrulandı
+  (19 test). Gerçek Firefox'ta `about:debugging` ile yüklenip denenmeli.
 - **Torrent gerçek magnet ile denenmedi.** Parse + motor testleri var; etik/yasal nedenle
   canlı torrent indirilmedi. Kullanıcı onayıyla denenmeli.
-- **Eklenti Chrome'a yüklenip elle denenmedi.** Sözleşme ve DOM testleri geçti; gerçek
-  tarayıcıda sağ tık → panel akışı bir kez gözle görülmeli.
-- **Web arayüzü gerçek telefonda açılmadı.** LAN + SSE sunucu tarafında doğrulandı.
+- **Eklenti Chrome/Edge'de gerçek tarayıcıda doğrulandı** (Edge 156 + Playwright, 17 madde;
+  `tools/ext-check/REPORT.md`). Google Chrome markalı derlemede `--load-extension` kapalı
+  olduğu için Chrome yerine Edge kullanıldı; elle yükleme yolu değişmedi.
 - `webapp/` içinde yt-dlp kurulum düğmesi **yok** (API var, arayüz bağlanmadı).
 - Avcı modunda ağ isteği dinleme (`webRequest`) yok; HLS/manifest yakalama v0.3'te.
 
