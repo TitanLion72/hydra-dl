@@ -84,7 +84,13 @@ Ağ/indirme davranışına dokunduysan `tools/e2e.mjs` de koşar. Üçünden bir
 - PowerShell 5.1 `Set-Content -Encoding UTF8` BOM ekler; Rust dosyalarında BOM bırakma.
   Dosyaları `write`/`edit` araçlarıyla düzenle.
 - Vite portu 1420 `strictPort`. Yakalama 6712, web 6790 varsayılan; çakışırsa ayarlardan değiştir.
-- `webapp/` statik: derleme adımı yok. Tauri paketine `bundle.resources` ile girer.
+- `webapp/` statik: derleme adımı yok. Tauri paketine `resources` ile **hedef adı verilerek**
+  girer (`{"../webapp": "webapp"}`). Kaynak `src-tauri` dışındaysa Tauri dosyaları
+  `resource/_up_/` altına koyar; kod her iki yolu da dener (`web::pick_webapp_dir`).
+- **Kurulum paketi ayrı test edilmeli:** `tauri dev` çalışsa bile NSIS paketi bozuk olabilir
+  (bu bir kez oldu: web arayüzü 404). Değişiklikten sonra
+  `npm run tauri build` → `setup.exe /S /D=%TEMP%\hydra-test` → farklı cwd'den çalıştır →
+  `/health` + `/` kontrol et.
 - yt-dlp yoksa medya indirmesi çalışmaz; arayüz bunu "bulunamadı" olarak göstermeli, sessiz düşmemeli.
 - Torrent testleri gerçek ağ trafiği üretir; CI'da yalnız kaynak tanıma testleri koşar.
 - `src-tauri/target`, `node_modules`, `dist`, `*.log` üretim/geçici — git'e girmez.

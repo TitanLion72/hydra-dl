@@ -55,6 +55,15 @@ telefon için web arayüzü, tarayıcı eklentisi (panel + avcı modu).
 - **Web arayüzü gerçek telefonda açılmadı.** LAN + SSE sunucu tarafında doğrulandı.
 - `webapp/` içinde yt-dlp kurulum düğmesi **yok** (API var, arayüz bağlanmadı).
 - Avcı modunda ağ isteği dinleme (`webRequest`) yok; HLS/manifest yakalama v0.3'te.
+
+## Paketleme (bu oturumda bulunan ve düzeltilen hata)
+
+İlk NSIS paketi kurulduğunda web arayüzü **404** veriyordu: `resources: ["../webapp"]`
+dosyaları `resource/_up_/webapp` altına koyuyor, kod ise `resource/webapp` arıyordu.
+Düzeltme: `resources` nesne biçimine çevrildi (`{"../webapp": "webapp"}`) + `webapp_dir`
+artık `_up_/webapp`, exe yanı ve cwd'yi de sırayla deniyor (`pick_webapp_dir`, testli).
+**Kurulum paketi her değişiklikten sonra gerçekten kurulup denenmeli** — sadece `tauri dev`
+yeterli değil.
 - Masaüstü kurulum paketi (NSIS) denenmedi: `npm run tauri build`.
 
 ## Sıradaki iş

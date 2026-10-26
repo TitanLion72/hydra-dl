@@ -354,21 +354,37 @@ async fn index(State(state): State<Arc<AppState>>) -> Response {
 
 /// Statik dosyalar calisma aninda diskten okunur: `webapp/` gelistirme
 /// dizininde ya da paket kaynaklarinda (`<kaynak>/webapp`) bulunur.
+/// Aday köklerden `index.html` içeren ilk `webapp/` klasörünü seçer.
+/// Saf fonksiyon: paket yolları değişince testle yakalanabilsin.
+pub fn pick_webapp_dir(candidates: &[PathBuf]) -> Option<PathBuf> {
+    candidates
+        .iter()
+        .find(|base| base.join("index.html").is_file())
+        .cloned()
+}
+
+/// Statik dosyalar çalışma anında diskten okunur. Aranan yerler, sırayla:
+/// 1. Paket kaynakları: `resource/webapp` (tauri `resources` hedefi)
+/// 2. Paket kaynakları: `resource/_up_/webapp` (kaynak `src-tauri` dışındaysa
+///    Tauri dosyaları `_up_` altına koyar — eski paketlerle uyumluluk)
+/// 3. Geliştirme: çalışma dizini ve bir üstü (repo kökü)
 fn webapp_dir(state: &AppState) -> PathBuf {
+    let mut candidates: Vec<PathBuf> = Vec::new();
     if let Ok(resource) = state.app.path().resource_dir() {
-        let candidate = resource.join("webapp");
-        if candidate.join("index.html").is_file() {
-            return candidate;
+        candidates.push(resource.join("webapp"));
+        candidates.push(resource.join("_up_").join("webapp"));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join("webapp"));
+            candidates.push(dir.join("_up_").join("webapp"));
         }
     }
     let cwd = std::env::current_dir().unwrap_or_default();
-    for base in [cwd.clone(), cwd.join("..")] {
-        let candidate = base.join("webapp");
-        if candidate.join("index.html").is_file() {
-            return candidate;
-        }
-    }
-    cwd.join("webapp")
+    candidates.push(cwd.join("webapp"));
+    candidates.push(cwd.join("..").join("webapp"));
+
+    pick_webapp_dir(&candidates).unwrap_or_else(|| cwd.join("webapp"))
 }
 
 fn content_type_for(path: &str) -> &'static str {
@@ -668,6 +684,21 @@ mod tests {
         let uri = qr_svg_data_uri("http://192.168.1.20:6790?token=abc").unwrap();
         assert!(uri.starts_with("data:image/svg+xml;base64,"));
         assert!(uri.len() > 500);
+    }
+
+    #[test]
+    fn webapp_dizini_adaylardan_seciliir() {
+        let temp = tempfile::tempdir().unwrap();
+        let bos = temp.path().join("bos");
+        std::fs::create_dir_all(&bos).unwrap();
+        // Hicbir adayda index.html yoksa None.
+        assert!(pick_webapp_dir(std::slice::from_ref(&bos)).is_none());
+
+        let dolu = temp.path().join("webapp");
+        std::fs::create_dir_all(&dolu).unwrap();
+        std::fs::write(dolu.join("index.html"), b"<html></html>").unwrap();
+        // Ikinci aday dolu; ilk bos oldugu icin ikincisi secilmeli.
+        assert_eq!(pick_webapp_dir(&[bos, dolu.clone()]), Some(dolu));
     }
 
     #[test]
