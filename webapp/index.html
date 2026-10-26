@@ -235,13 +235,13 @@
             <label class="field">
               <span class="field-label" for="setMaxConcurrent">Eşzamanlı indirme</span>
               <input id="setMaxConcurrent" class="input" type="number" min="1" max="10" step="1" inputmode="numeric" />
-              <span class="field-help">Aynı anda çalışacak indirme sayısı (1–10).</span>
+              <span class="field-help">Aynı anda çalışacak indirme sayısı (1–10). Hat tektir: N indirme varsa hız N'e bölünür, tek dosya tam hız için 1 yap.</span>
             </label>
 
             <label class="field">
               <span class="field-label" for="setConnections">Bağlantı sayısı</span>
-              <input id="setConnections" class="input" type="number" min="1" max="64" step="1" inputmode="numeric" />
-              <span class="field-help">Dosya başına parça sayısı. Yüksek değer daha hızlı olabilir.</span>
+              <input id="setConnections" class="input" type="number" min="1" max="16" step="1" inputmode="numeric" />
+              <span class="field-help">Dosya başına parça sayısı (1–16). Toplam 32 bağlantı açık indirmelere paylaştırılır.</span>
             </label>
 
             <label class="field">

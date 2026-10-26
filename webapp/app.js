@@ -1261,7 +1261,7 @@ async function saveSettings() {
   if (!state.rawSettings) return;
   const next = { ...state.rawSettings };
   next.maxConcurrent = clampInt(els.setMaxConcurrent.value, 1, 10, 3);
-  next.connections = clampInt(els.setConnections.value, 1, 64, 8);
+  next.connections = clampInt(els.setConnections.value, 1, 16, 8);
   next.speedLimitKbps = clampInt(els.setSpeed.value, 0, 10_000_000, 0);
   next.captureEnabled = els.setCapture.checked;
   next.autoResume = els.setAutoResume.checked;

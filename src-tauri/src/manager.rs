@@ -2,8 +2,9 @@
 
 use crate::engine::http::{self, HttpError};
 use crate::engine::{CancelToken, RateLimiter};
-use crate::model::{plan_segments, Download, Kind, Status};
+use crate::model::{fair_connections, plan_segments, Download, Kind, Status};
 use crate::store::{Settings, Store};
+use crate::torrent::TorrentJob;
 use crate::util;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -90,6 +91,16 @@ impl AppState {
 
     pub fn limiter(&self) -> &Arc<RateLimiter> {
         &self.limiter
+    }
+
+    /// Su anda indiren HTTP is sayisi (baglanti butcesini paylastirmak icin).
+    pub fn active_http_downloads(&self) -> usize {
+        let store = self.store.lock().unwrap();
+        store
+            .items
+            .iter()
+            .filter(|d| d.kind == Kind::Http && d.status == Status::Downloading)
+            .count()
     }
 
     pub fn uptime_secs(&self) -> u64 {
@@ -248,7 +259,11 @@ async fn run_http(state: Arc<AppState>, id: String, cancel: Arc<CancelToken>) {
     let _ = tokio::fs::create_dir_all(&parts_dir).await;
 
     if local.segments.is_empty() {
-        local.segments = plan_segments(local.total_bytes, local.resumable, local.connections);
+        // Baglanti butcesi tum acik indirmelere paylastirilir: 4 indirme × 16
+        // baglanti = 64 soket acmak yerine 32'yi gecmeyiz.
+        let active = state.active_http_downloads();
+        let connections = fair_connections(local.connections, active);
+        local.segments = plan_segments(local.total_bytes, local.resumable, connections);
     }
     if !local.resumable {
         // Range yok: onceki yarim veri guvenilmez, bastan basla.
@@ -643,11 +658,14 @@ async fn add_torrent(
         .torrent
         .add(
             state,
-            item.id.clone(),
-            source,
-            item.dir.clone(),
-            Some(item.filename.clone()),
-            false,
+            state.http(),
+            TorrentJob {
+                id: item.id.clone(),
+                source,
+                dir: item.dir.clone(),
+                name: Some(item.filename.clone()),
+                start_paused: false,
+            },
         )
         .await
     {
@@ -889,7 +907,17 @@ pub fn resume_torrents(state: &Arc<AppState>) {
                 .unwrap_or(false);
             if let Err(err) = state
                 .torrent
-                .add(&state, id.clone(), &source, dir, Some(filename), paused)
+                .add(
+                    &state,
+                    state.http(),
+                    TorrentJob {
+                        id: id.clone(),
+                        source: &source,
+                        dir,
+                        name: Some(filename),
+                        start_paused: paused,
+                    },
+                )
                 .await
             {
                 state.update_item(&id, |d| {

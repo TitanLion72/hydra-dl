@@ -2,7 +2,7 @@
 
 > Yeni oturum: **önce bu dosyayı oku**, sonra `git status`. Bitirdiğin dilimi en alta 10 satır yaz.
 
-**Son güncelleme:** 2026-10-26 (akşam) · v0.2.1 · AGPL-3.0-or-later
+**Son güncelleme:** 2026-10-27 · v0.2.2 · AGPL-3.0-or-later
 
 ---
 
@@ -18,7 +18,7 @@ telefon için web arayüzü, tarayıcı eklentisi (panel + avcı modu).
 
 | Ne | Kanıt |
 |---|---|
-| Rust testleri | `cargo test` → **56 passed** |
+| Rust testleri | `cargo test` → **67 passed** (1 ağ testi `#[ignore]`) |
 | Clippy | `cargo clippy --all-targets -- -D warnings` → 0 uyarı |
 | Arayüz derlemesi | `npm run build` → 21.84 kB JS |
 | Segmentli indirme | `node tools/e2e.mjs` → 16 MB, sha256 eşleşti |
@@ -66,11 +66,28 @@ telefon için web arayüzü, tarayıcı eklentisi (panel + avcı modu).
     olduğu halde URL'den ad üretiliyordu → `media_filename_from_title` (testli).
 13. **Eklenti paneli indirmeye basınca 1.1 sn sonra kendini kapatıyordu** ("sayfa gidiyor").
     Artık açık kalır, sonucu gösterir; düğme "Eklendi" olur, ikinci tıklama çift eklemez.
+14. **`.torrent` indirme sayfası torrent sanılıyordu** (kullanıcı bildirdi: "bu linkten indirme
+    yapmıyor"). Bazı siteler `.torrent` adresinde ilk istekte HTML döndürüp gerçek dosyayı
+    yalnızca çerez + tarayıcı UA ile veriyor. Artık `resolve_add_source`: magnet/info-hash →
+    doğrudan, yerel dosya → okunur, `http(s)` → bencode mu? değilse çerezle tekrar, olmazsa
+    sayfadaki gerçek `.torrent`/`magnet:` bağlantısı izlenir (`looks_like_torrent`,
+    `find_torrent_link`, testli; yerel axum sunucusuyla iki uçtan uca test).
+    Gerçek dosyadrive.vip linki: **79878 bayt geçerli .torrent** (yalnız metadata çekildi,
+    içerik indirilmedi). Yasal Ubuntu `.torrent` ile `/add` → ad + 3,3 GB boyut doğrulandı.
+15. **Eşzamanlı indirmelerde bağlantı patlaması.** "10 indirme × 16 bağlantı = 160 soket"
+    olabiliyordu; her akış yavaşlıyor, toplam hız düşüyordu. Artık toplam 32 bağlantı bütçesi
+    açık indirmelere paylaştırılıyor (`fair_connections`, testli: 1→16, 4→8, 10→3).
+16. **Medya indirmeleri paralel parça çekmiyordu** (yt-dlp varsayılanı tek parça = yavaş)
+    → `--concurrent-fragments 4`. Ayrıca **hız limiti medyada uygulanmıyordu** →
+    `--limit-rate <bayt/sn>` (limit 0 ise eklenmez).
+17. Ayarlarda "eşzamanlı indirme" açıklaması: hat tektir, N indirme = hız/N; tek dosya tam
+    hız için 1 yap (`index.html`, `webapp/index.html`). webapp'te bağlantı sınırı 64→16.
 
 ## Bilinen açık uçlar
 
-- **Firefox hiç çalıştırılmadı.** Paket ve `compat.js` statik + VM simülasyonuyla doğrulandı
-  (19 test). Gerçek Firefox'ta `about:debugging` ile yüklenip denenmeli.
+- **Firefox/Zen**: `compat.js` + `HX.api` + `background.scripts` + gecko id ile paket hazır;
+  19 statik test + kullanıcı Zen'de yükleyip çalıştırdı ("çözdüm şimdi oldu"). MV3 arka plan
+  sayfası boşta about:debugging'de "Stopped" görünür — normal, hata değil.
 - **Torrent etik sınırı:** motor gerçek ve yasal torrentlerle (Ubuntu, Big Buck Bunny)
   doğrulandı; telifli içerik test edilmedi, edilmeyecek.
 - **Eklenti Chrome/Edge'de gerçek tarayıcıda doğrulandı** (Edge 156 + Playwright, 17 madde;
@@ -91,8 +108,8 @@ yeterli değil.
 
 ## Sıradaki iş
 
-1. Kullanıcının bildirdiği **eklenti** ve **torrent** semptomlarını netleştir (aşağıdaki
-   düzeltmeler bunları kapatmış olabilir; yeni 0.2.1 paketiyle tekrar denenmeli).
+1. Kullanıcı 0.2.2'yi kurup bildirdiği `.torrent` linkini tekrar denesin; hız bölünmesi için
+   "Aynı anda indirme"yi 1 yapıp tek dosya hızını ölçsün.
 2. Telefondan `http://<LAN-IP>:6790` aç, QR eşleşmesini gör.
 3. `webapp/`'e yt-dlp kurulum düğmesi ekle (`POST /ytdlp/install`).
 4. v0.3: çerez/oturum aktarımı, `Retry-After` + backoff, proxy, yt-dlp'siz HLS/DASH.

@@ -401,6 +401,21 @@ pub fn display_filename(title: &str, ext: &str) -> Option<String> {
     })
 }
 
+/// Ag ayarlari: parca eszamanliligi ve (ayarliysa) hiz limiti.
+///
+/// yt-dlp varsayilan olarak HLS/DASH parcalarini **tek tek** ceker; 4 parca ile
+/// eszamanli cekmek ayni baglantida 3-4 kat hiz veriyor. Hiz limiti ayarliysa
+/// medya indirmesi de uyar (yt-dlp bizim token bucket'imizi paylasamadigi icin
+/// tam limiti alir; HTTP indirmeleriyle ayni anda calisirsa toplam limit asilabilir).
+fn network_args(speed_limit_bps: u64) -> Vec<String> {
+    let mut args: Vec<String> = vec!["--concurrent-fragments".into(), "4".into()];
+    if speed_limit_bps > 0 {
+        args.push("--limit-rate".into());
+        args.push(speed_limit_bps.to_string());
+    }
+    args
+}
+
 fn build_args(
     url: &str,
     dir: &Path,
@@ -476,16 +491,17 @@ pub async fn run(state: Arc<AppState>, id: String, cancel: Arc<CancelToken>) {
     let _ = tokio::fs::remove_file(&title_file).await;
 
     let mut cmd = tokio::process::Command::new(binary);
-    cmd.args(build_args(
-        &item.url,
-        &item.dir,
-        &print_file,
-        &title_file,
-        item.format.as_deref(),
-    ))
-    .stdin(Stdio::null())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped());
+    cmd.args(network_args(settings.speed_limit_bytes()))
+        .args(build_args(
+            &item.url,
+            &item.dir,
+            &print_file,
+            &title_file,
+            item.format.as_deref(),
+        ))
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     #[cfg(windows)]
     {
         cmd.creation_flags(WINDOWS_NO_WINDOW);
@@ -731,6 +747,24 @@ mod tests {
             Some((500, Some(1000), Some(50.0)))
         );
         assert_eq!(parse_progress("1,234|NA|NA|NA"), Some((1234, None, None)));
+    }
+
+    #[test]
+    fn ag_ayarlari_parca_ve_hiz_limiti() {
+        // Parcalar eszamanli cekilir (yt-dlp varsayilani tek tek = yavas).
+        let unlimited = network_args(0);
+        assert!(unlimited
+            .windows(2)
+            .any(|w| w == ["--concurrent-fragments", "4"]));
+        assert!(!unlimited.iter().any(|a| a == "--limit-rate"));
+
+        // Hiz limiti ayarliysa medya indirmesi de uyar (bayt/sn).
+        let limited = network_args(1024 * 512);
+        let index = limited
+            .iter()
+            .position(|a| a == "--limit-rate")
+            .expect("--limit-rate yok");
+        assert_eq!(limited[index + 1], (1024 * 512).to_string());
     }
 
     #[test]

@@ -93,6 +93,17 @@ Gövde: `{ "url": "...", "media": true|false|null }`
 Torrent'ler `/downloads` listesinde `kind: "torrent"` olarak da görünür.
 `filePath` tek dosyalı torrentte dosyanın kendisi, çok dosyalıda **indirme klasörüdür**.
 
+`/add` ve `/torrents` kaynağı şu biçimlerde kabul eder:
+
+- `magnet:?xt=...`
+- 40 karakterlik hex info-hash
+- `http(s)` **.torrent dosyası** veya `.torrent` indirme sayfası
+- diskteki `.torrent` dosyası yolu
+
+İndirme siteleri `.torrent` adresinde ilk istekte HTML sayfası dönebilir. Sunucu bu durumda
+tarayıcı UA'sı + çerez ile tekrar dener, ardından sayfadaki gerçek `.torrent`/`magnet:`
+bağlantısını izler. Hepsi başarısız olursa `400` ve "indirme sayfası gibi görünüyor" hatası döner.
+
 ## Medya araçları (yt-dlp)
 
 | Metot | Yol | Not |

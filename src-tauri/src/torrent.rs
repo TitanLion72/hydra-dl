@@ -12,6 +12,16 @@ use tokio::sync::Mutex;
 
 type ManagedTorrentHandle = Arc<ManagedTorrent>;
 
+/// Motora verilecek tek bir torrent isi.
+pub struct TorrentJob<'a> {
+    pub id: String,
+    /// Magnet, info-hash, `.torrent` adresi ya da yerel dosya yolu.
+    pub source: &'a str,
+    pub dir: PathBuf,
+    pub name: Option<String>,
+    pub start_paused: bool,
+}
+
 #[derive(Default)]
 pub struct TorrentEngine {
     session: Mutex<Option<Arc<Session>>>,
@@ -47,13 +57,21 @@ impl TorrentEngine {
     pub async fn add(
         &self,
         state: &Arc<AppState>,
-        id: String,
-        source: &str,
-        dir: PathBuf,
-        name: Option<String>,
-        start_paused: bool,
+        client: &reqwest::Client,
+        job: TorrentJob<'_>,
     ) -> Result<(), String> {
+        let TorrentJob {
+            id,
+            source,
+            dir,
+            name,
+            start_paused,
+        } = job;
         let session = self.ensure_session(&dir).await?;
+        let add = match resolve_add_source(client, source).await? {
+            TorrentSource::Url(url) => AddTorrent::from_url(url),
+            TorrentSource::Bytes(bytes) => AddTorrent::from_bytes(bytes),
+        };
         let opts = AddTorrentOptions {
             paused: start_paused,
             overwrite: true,
@@ -61,7 +79,7 @@ impl TorrentEngine {
             ..Default::default()
         };
         let response = session
-            .add_torrent(AddTorrent::from_url(source.to_string()), Some(opts))
+            .add_torrent(add, Some(opts))
             .await
             .map_err(|e| format!("Torrent eklenemedi: {e}"))?;
         let (torrent_id, handle) = match response {
@@ -305,8 +323,256 @@ impl TorrentEngine {
     }
 }
 
-/// Tamamlanan torrent'in diskteki yolunu bulur.
+/// Bazi siteler UA'siz istegi indirme sayfasina yonlendiriyor; tarayici gibi gorunuyoruz.
+const BROWSER_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
+     (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
+
+/// Cozulmus torrent kaynagi: motor ya URL (magnet/.torrent) ya da bellekteki
+/// `.torrent` dosyasi ile beslenir.
+#[derive(Debug)]
+pub enum TorrentSource {
+    Url(String),
+    Bytes(Vec<u8>),
+}
+
+/// Kullanici kaynagini motora verilecek hale getirir.
 ///
+/// - `magnet:` ve 40 karakterlik info-hash → dogrudan motor (indirme yok)
+/// - diskte var olan yol → dosya okunur
+/// - `http(s)` → `fetch_torrent_source` (cerez/UA/sayfa takibi)
+pub async fn resolve_add_source(
+    client: &reqwest::Client,
+    source: &str,
+) -> Result<TorrentSource, String> {
+    let trimmed = source.trim();
+    if trimmed.starts_with("magnet:") || is_info_hash(trimmed) {
+        return Ok(TorrentSource::Url(trimmed.to_string()));
+    }
+    if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
+        let bytes = tokio::fs::read(trimmed)
+            .await
+            .map_err(|e| format!("Torrent dosyası okunamadı: {e}"))?;
+        return Ok(TorrentSource::Bytes(bytes));
+    }
+    fetch_torrent_source(client, trimmed).await
+}
+
+/// 40 karakterlik hex info-hash (magnet yerine kabul edilir).
+pub fn is_info_hash(value: &str) -> bool {
+    value.len() == 40 && value.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// `http(s)` torrent kaynagini indirir.
+///
+/// Gercek dunya sorunu (kullanici bildirdi): bazi siteler `.torrent` adresinde ilk
+/// istekte **HTML indirme sayfasi** donuyor ve gercek dosyayi yalnizca cerez +
+/// tarayici UA ile ikinci istekte veriyor. Bu yuzden sirayla denenir:
+/// 1. istek → bencode mu? 2. cerezle tekrar → bencode mu?
+/// 3. sayfadaki `.torrent`/`magnet:` baglantisi → ayni iki adim.
+pub async fn fetch_torrent_source(
+    client: &reqwest::Client,
+    source: &str,
+) -> Result<TorrentSource, String> {
+    let (body, cookie) = http_get(
+        client,
+        source,
+        None,
+        "text/html,application/xhtml+xml,application/x-bittorrent;q=0.9,*/*;q=0.8",
+    )
+    .await?;
+    if looks_like_torrent(&body) {
+        return Ok(TorrentSource::Bytes(body));
+    }
+
+    // Cerezle tekrar: bazi siteler ilk istekte cerez birakip gercek dosyayi
+    // ikinci istekte veriyor (dosyadrive.vip tam olarak boyle).
+    let (body, cookie) = http_get(
+        client,
+        source,
+        cookie.as_deref(),
+        "application/x-bittorrent,*/*;q=0.8",
+    )
+    .await?;
+    if looks_like_torrent(&body) {
+        return Ok(TorrentSource::Bytes(body));
+    }
+
+    // Sayfa: icindeki gercek baglantiyi bul ve ayni adimlari orada dene.
+    if let Some(link) = find_torrent_link(&String::from_utf8_lossy(&body), source) {
+        if link.starts_with("magnet:") {
+            return Ok(TorrentSource::Url(link));
+        }
+        if link != source {
+            let (body, cookie) = http_get(
+                client,
+                &link,
+                cookie.as_deref(),
+                "application/x-bittorrent,*/*;q=0.8",
+            )
+            .await?;
+            if looks_like_torrent(&body) {
+                return Ok(TorrentSource::Bytes(body));
+            }
+            let (body, _) = http_get(
+                client,
+                &link,
+                Some(cookie.as_deref().unwrap_or_default()),
+                "application/x-bittorrent,*/*;q=0.8",
+            )
+            .await?;
+            if looks_like_torrent(&body) {
+                return Ok(TorrentSource::Bytes(body));
+            }
+        }
+    }
+
+    Err(
+        "Bu adres .torrent dosyası değil, indirme sayfası gibi görünüyor. \
+         Sayfadaki gerçek .torrent bağlantısını (veya magnet bağlantısını) kullanın."
+            .into(),
+    )
+}
+
+/// Tek bir HTTP istegi; yanitla birlikte `Set-Cookie` basliklarini da dondurur.
+async fn http_get(
+    client: &reqwest::Client,
+    url: &str,
+    cookie: Option<&str>,
+    accept: &str,
+) -> Result<(Vec<u8>, Option<String>), String> {
+    let mut request = client
+        .get(url)
+        .timeout(Duration::from_secs(30))
+        .header(reqwest::header::USER_AGENT, BROWSER_UA)
+        .header(reqwest::header::ACCEPT, accept)
+        .header(reqwest::header::REFERER, url);
+    if let Some(cookie) = cookie.filter(|c| !c.is_empty()) {
+        request = request.header(reqwest::header::COOKIE, cookie);
+    }
+    let response = request
+        .send()
+        .await
+        .map_err(|e| format!("Torrent bağlantısı açılamadı: {e}"))?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(format!("Torrent bağlantısı {status} döndü"));
+    }
+    let cookies = response
+        .headers()
+        .get_all(reqwest::header::SET_COOKIE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .filter_map(|value| value.split(';').next())
+        .map(|pair| pair.trim().to_string())
+        .filter(|pair| pair.contains('='))
+        .collect::<Vec<_>>();
+    let body = response
+        .bytes()
+        .await
+        .map_err(|e| format!("Torrent dosyası okunamadı: {e}"))?
+        .to_vec();
+    let cookie = if cookies.is_empty() {
+        None
+    } else {
+        Some(cookies.join("; "))
+    };
+    Ok((body, cookie))
+}
+
+/// Bencode'lenmis torrent dosyasi mi? (HTML sayfasi `<!DOCTYPE` ile baslar.)
+pub fn looks_like_torrent(bytes: &[u8]) -> bool {
+    if bytes.first() != Some(&b'd') {
+        return false;
+    }
+    // `4:info` anahtari torrent sozlugunun zorunlu parcasi.
+    bytes.windows(6).any(|window| window == b"4:info")
+}
+
+/// Sayfadaki ilk `.torrent` ya da `magnet:` baglantisini bulur (taban adrese gore cozer).
+///
+/// Yalnizca `href`/`src`/`data-url` ozniteliklerindeki adreslere bakilir: sayfa
+/// basliginda gecen ".torrent" kelimesi baglanti degildir (dosyadrive.vip'in
+/// `<title>... .torrent</title>` satiri tam olarak boyle bir tuzakti).
+pub fn find_torrent_link(html: &str, base: &str) -> Option<String> {
+    // magnet: dogrudan kullanilabilir.
+    if let Some(index) = html.find("magnet:?") {
+        let rest = &html[index..];
+        let end = rest
+            .find(|c: char| c == '"' || c == '\'' || c == '<' || c.is_whitespace())
+            .unwrap_or(rest.len());
+        let link = rest[..end].trim();
+        if link.len() > "magnet:?".len() {
+            return Some(link.to_string());
+        }
+    }
+
+    let lowered = html.to_ascii_lowercase();
+    for attribute in ["href=", "src=", "data-url="] {
+        let mut from = 0;
+        while let Some(offset) = lowered[from..].find(attribute) {
+            let value_start = from + offset + attribute.len();
+            from = value_start;
+            let Some(value) = attribute_value(&html[value_start..]) else {
+                continue;
+            };
+            if is_torrent_link(&value) {
+                return Some(absolute_link(&value, base));
+            }
+        }
+    }
+    None
+}
+
+/// `href=...` sonrasindaki degeri okur (tirnakli ya da bosluga kadar).
+fn attribute_value(rest: &str) -> Option<String> {
+    let rest = rest.trim_start();
+    let mut chars = rest.chars();
+    let value: String = match chars.next()? {
+        quote @ ('"' | '\'') => rest[1..]
+            .split(quote)
+            .next()
+            .unwrap_or_default()
+            .to_string(),
+        _ => rest
+            .split(|c: char| c.is_whitespace() || c == '>')
+            .next()
+            .unwrap_or_default()
+            .to_string(),
+    };
+    let value = value.trim().to_string();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+/// Adres `.torrent` dosyasini mi gosteriyor? (sorgu/parca yok sayilir)
+pub fn is_torrent_link(value: &str) -> bool {
+    let lowered = value.to_ascii_lowercase();
+    let path = lowered
+        .split(['?', '#'])
+        .next()
+        .unwrap_or_default()
+        .trim_end_matches('/');
+    path.ends_with(".torrent")
+}
+
+/// Goreli adresi taban adrese gore mutlak hale getirir.
+fn absolute_link(link: &str, base: &str) -> String {
+    if link.starts_with("http://") || link.starts_with("https://") || link.starts_with("magnet:") {
+        return link.to_string();
+    }
+    match url::Url::parse(base)
+        .ok()
+        .and_then(|base| base.join(link).ok())
+    {
+        Some(joined) => joined.to_string(),
+        None => link.to_string(),
+    }
+}
+
+/// Tamamlanan torrent'in diskteki yolunu bulur.
 /// `handle.name()` her zaman klasor adi degil: bazi torrentlerde dosyalar dogrudan
 /// indirme klasorune cikiyor ve `folder/name` diye bir yol olusmuyor. O yuzden once
 /// torrentin gercek dosya listesine bakiyoruz.
@@ -399,5 +665,227 @@ mod tests {
             pick_completed_path(named.path(), Some("Koleksiyon"), &[]),
             Some(inner)
         );
+    }
+
+    #[test]
+    fn bencode_ve_html_ayrilir() {
+        let mut torrent = b"d8:announce22:udp://opentor.net:696913:announce-list".to_vec();
+        torrent.extend_from_slice(b"ll4:infod4:name4:teste");
+        assert!(looks_like_torrent(&torrent));
+        assert!(!looks_like_torrent(
+            b"<!DOCTYPE html>\n<html><head><title>x.torrent</title></head></html>"
+        ));
+        assert!(!looks_like_torrent(b""));
+    }
+
+    #[test]
+    fn info_hash_tanima() {
+        assert!(is_info_hash("0123456789abcdef0123456789abcdef01234567"));
+        assert!(!is_info_hash("0123456789abcdef0123456789abcdef0123456"));
+        assert!(!is_info_hash("magnet:?xt=urn:btih:0123456789abcdef0123456"));
+        assert!(!is_info_hash("zzzz456789abcdef0123456789abcdef01234567"));
+    }
+
+    #[test]
+    fn torrent_baglantisi_yalnizca_ozniteliklerden_bulunur() {
+        // Gercek sayfa: baslikta ".torrent" var ama baglanti href'te.
+        let html = r#"<!DOCTYPE html>
+            <html><head><title>SimpleFileSharer | 007- Oyunindir vip.torrent</title></head>
+            <body>
+              <h2 class='dfname'>007- Oyunindir vip.torrent <small>78.01 KB</small></h2>
+              <a href='/filess/ee4b49af51d5462eca72fd6db53a96ed.torrent' class='btn'>Download</a>
+            </body></html>"#;
+        assert_eq!(
+            find_torrent_link(html, "https://www.dosyadrive.vip/filess/ee4b.torrent"),
+            Some(
+                "https://www.dosyadrive.vip/filess/ee4b49af51d5462eca72fd6db53a96ed.torrent".into()
+            )
+        );
+    }
+
+    #[test]
+    fn torrent_baglantisi_magnet_ve_goreli_yol() {
+        let magnet =
+            r#"<a href="magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=x">m</a>"#;
+        assert_eq!(
+            find_torrent_link(magnet, "https://ornek.test/sayfa"),
+            Some("magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=x".into())
+        );
+
+        let relative = r#"<a href="indir/dosya.torrent">indir</a>"#;
+        assert_eq!(
+            find_torrent_link(relative, "https://ornek.test/klasor/sayfa.html"),
+            Some("https://ornek.test/klasor/indir/dosya.torrent".into())
+        );
+
+        // Baglanti yoksa None; ".torrent" kelimesi metinde gecmesi yetmez.
+        assert_eq!(
+            find_torrent_link("<p>bu bir .torrent aciklamasi</p>", "https://ornek.test/"),
+            None
+        );
+    }
+
+    #[test]
+    fn torrent_uzantisi_sorguyu_yok_sayar() {
+        assert!(is_torrent_link("https://ornek.test/a.TORRENT"));
+        assert!(is_torrent_link("/filess/x.torrent?token=1"));
+        assert!(!is_torrent_link("https://ornek.test/indir?file=x.torrent"));
+        assert!(!is_torrent_link(
+            "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567"
+        ));
+    }
+
+    #[tokio::test]
+    async fn magnet_ve_hash_istek_yapmadan_cozulur() {
+        let client = reqwest::Client::new();
+        // Ag erisimi olmadan dogrudan motor kaynagi donmeli.
+        let magnet =
+            "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Big+Buck+Bunny";
+        assert!(matches!(
+            resolve_add_source(&client, magnet).await,
+            Ok(TorrentSource::Url(url)) if url == magnet
+        ));
+        assert!(matches!(
+            resolve_add_source(&client, "0123456789abcdef0123456789abcdef01234567").await,
+            Ok(TorrentSource::Url(_))
+        ));
+    }
+
+    /// Minimal bencode: icinde `4:info` gecen sozluk.
+    fn ornek_torrent() -> Vec<u8> {
+        let mut bytes = b"d8:announce20:http://x/announce4:infod4:name5:orneke".to_vec();
+        bytes.truncate(bytes.len() - 1);
+        bytes.push(b'e');
+        bytes
+    }
+
+    async fn yerel_sunucu(app: axum::Router) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        format!("http://{addr}")
+    }
+
+    #[tokio::test]
+    async fn cerez_isteyen_site_ikinci_istekte_torrent_verir() {
+        // Gercek hata (kullanici bildirimi): dosyadrive.vip `.torrent` adresinde ilk
+        // istekte HTML indirme sayfasi donuyor, gercek dosya yalnizca cerez +
+        // tarayici UA ile ikinci istekte geliyor.
+        use axum::extract::State;
+        use axum::http::{HeaderMap, StatusCode};
+        use axum::response::IntoResponse;
+        use axum::routing::get;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        async fn handler(
+            State(hits): State<Arc<AtomicUsize>>,
+            headers: HeaderMap,
+        ) -> impl IntoResponse {
+            let cookie = headers
+                .get("cookie")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or_default()
+                .to_string();
+            if cookie.contains("izin=1") {
+                return (
+                    StatusCode::OK,
+                    [("content-type", "application/force-download")],
+                    ornek_torrent(),
+                )
+                    .into_response();
+            }
+            hits.fetch_add(1, Ordering::Relaxed);
+            (
+                StatusCode::OK,
+                [("content-type", "text/html; charset=utf-8"), ("set-cookie", "izin=1; Path=/")],
+                "<!DOCTYPE html><html><head><title>007.torrent</title></head><body>indir</body></html>",
+            )
+                .into_response()
+        }
+
+        let hits = Arc::new(AtomicUsize::new(0));
+        let app = axum::Router::new()
+            .route("/files/x.torrent", get(handler))
+            .with_state(hits.clone());
+        let base = yerel_sunucu(app).await;
+
+        let client = reqwest::Client::new();
+        let resolved = fetch_torrent_source(&client, &format!("{base}/files/x.torrent"))
+            .await
+            .expect("cerezli ikinci istek torrenti getirmeli");
+        assert!(
+            matches!(&resolved, TorrentSource::Bytes(bytes) if looks_like_torrent(bytes)),
+            "bencode bekleniyordu: {resolved:?}"
+        );
+        assert_eq!(hits.load(Ordering::Relaxed), 1, "ilk istek HTML donmeli");
+    }
+
+    #[tokio::test]
+    async fn indirme_sayfasindaki_baglanti_izlenir() {
+        // Sayfa hic torrent donmezse icindeki gercek baglanti denenir.
+        use axum::routing::get;
+
+        async fn page() -> impl axum::response::IntoResponse {
+            (
+                [("content-type", "text/html")],
+                r#"<html><head><title>dosya.torrent</title></head>
+                   <body><a href="/gercek/dosya.torrent">indir</a></body></html>"#,
+            )
+        }
+        async fn file() -> impl axum::response::IntoResponse {
+            (
+                [("content-type", "application/x-bittorrent")],
+                ornek_torrent(),
+            )
+        }
+
+        let app = axum::Router::new()
+            .route("/sayfa", get(page))
+            .route("/gercek/dosya.torrent", get(file));
+        let base = yerel_sunucu(app).await;
+
+        let client = reqwest::Client::new();
+        let resolved = fetch_torrent_source(&client, &format!("{base}/sayfa"))
+            .await
+            .expect("sayfadaki baglanti izlenmeli");
+        assert!(matches!(&resolved, TorrentSource::Bytes(bytes) if looks_like_torrent(bytes)));
+    }
+
+    #[tokio::test]
+    async fn torrent_olmayan_adres_anlasilir_hata_verir() {
+        use axum::routing::get;
+        async fn page() -> &'static str {
+            "<html><body>burada indirme yok</body></html>"
+        }
+        let app = axum::Router::new().route("/bos", get(page));
+        let base = yerel_sunucu(app).await;
+
+        let err = fetch_torrent_source(&reqwest::Client::new(), &format!("{base}/bos"))
+            .await
+            .expect_err("torrent yoksa hata donmeli");
+        assert!(err.contains(".torrent"), "mesaj: {err}");
+    }
+
+    /// Gercek site testi (CI'da kosmaz): `HYDRA_TEST_TORRENT_URL` verilirse
+    /// cerez/UA takibi gercek sitede de calisiyor mu diye bakar.
+    #[tokio::test]
+    #[ignore = "gercek ag erisimi gerekir"]
+    async fn gercek_site_cerez_ile_torrent_verir() {
+        let Ok(url) = std::env::var("HYDRA_TEST_TORRENT_URL") else {
+            return;
+        };
+        let resolved = fetch_torrent_source(&reqwest::Client::new(), &url)
+            .await
+            .expect("gercek siteden torrent alinamadi");
+        match resolved {
+            TorrentSource::Bytes(bytes) => {
+                assert!(looks_like_torrent(&bytes), "bencode bekleniyordu");
+                assert!(bytes.len() > 1000, "boyut: {}", bytes.len());
+                println!("OK: {} bayt .torrent", bytes.len());
+            }
+            TorrentSource::Url(url) => println!("OK: magnet: {url}"),
+        }
     }
 }

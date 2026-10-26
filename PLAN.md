@@ -18,6 +18,8 @@ v0.2 = "IDM'den iyi" temeli. Sıra bağımlılığa göre; üstteki bitmeden alt
 - [x] **Video-only formatlara otomatik ses ekleme** (`137+bestaudio/137`)
 - [x] AGPL-3.0 lisansı, GitHub şablonu, CI, README/ARCHITECTURE/FAQ
 - [x] Görsel/UI koşum takımı: `tools/ui-harness` (mock API + Playwright)
+- [x] Sağlamlık: `.torrent` indirme sayfası takibi (çerez/UA), bağlantı bütçesi
+      (toplam 32 soket), medyada parça eşzamanlılığı + hız limiti
 
 ## v0.3 — bir sonraki dilim
 

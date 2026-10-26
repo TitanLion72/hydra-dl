@@ -149,6 +149,22 @@ impl Download {
     }
 }
 
+/// Tum acik indirmelerin toplam soket butcesi. `connections` ayari dosya basina
+/// ust sinirdir; ayni anda N indirme varsa butce paylasilir. Aksi halde
+/// "10 indirme × 16 baglanti = 160 soket" olusup tek tek akislarin hizi da
+/// toplam hiz da dusuyordu (kullanici bildirimi: "eszamanli indirmelerde hiz bolunuyor").
+pub const MAX_TOTAL_CONNECTIONS: usize = 32;
+
+/// Ayni anda calisan indirmelere baglanti butcesini paylastirir.
+///
+/// Ornek: 1 indirme → 16, 2 → 16, 3 → 10, 4 → 8, 10 → 3.
+pub fn fair_connections(connections: usize, active: usize) -> usize {
+    let connections = connections.clamp(1, MAX_CONNECTIONS);
+    let active = active.max(1);
+    let share = (MAX_TOTAL_CONNECTIONS / active).max(1);
+    connections.min(share).max(1)
+}
+
 /// Dosyayi `connections` parcaya boler. `end` dahildir, parcalar arasinda
 /// bosluk veya cakisma olmaz; toplam uzunluk her zaman `total`a esittir.
 pub fn plan_segments(total: Option<u64>, resumable: bool, connections: usize) -> Vec<Segment> {
@@ -257,6 +273,27 @@ mod tests {
                 }
                 assert!(segs.len() <= conns.clamp(1, MAX_CONNECTIONS));
             }
+        }
+    }
+
+    #[test]
+    fn baglanti_butcesi_eszamanli_indirmelere_paylastirilir() {
+        // Kullanici bildirimi: eszamanli indirmelerde hiz bolunuyor.
+        // Toplam soket sayisi MAX_TOTAL_CONNECTIONS'i asmamali.
+        assert_eq!(fair_connections(16, 1), 16);
+        assert_eq!(fair_connections(16, 2), 16);
+        assert_eq!(fair_connections(16, 3), 10);
+        assert_eq!(fair_connections(16, 4), 8);
+        assert_eq!(fair_connections(16, 10), 3);
+        // Asiri istek de butceye uyar, ayar 1 ise tek baglanti kalir.
+        assert_eq!(fair_connections(99, 4), 8);
+        assert_eq!(fair_connections(1, 4), 1);
+        assert_eq!(fair_connections(0, 0), 1);
+        for active in 1..=10usize {
+            assert!(
+                fair_connections(16, active) * active <= MAX_TOTAL_CONNECTIONS,
+                "active={active}"
+            );
         }
     }
 
