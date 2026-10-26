@@ -224,16 +224,10 @@ impl TorrentEngine {
                 if state_live {
                     active = true;
                 }
-                let name = entry.handle.name();
-                let folder = entry.handle.output_folder().to_path_buf();
 
                 if finished && entry.resolved_path.is_none() {
-                    let resolved = name
-                        .as_deref()
-                        .map(|n| folder.join(n))
-                        .filter(|p| p.exists());
-                    entry.resolved_path = resolved.clone();
-                    if let Some(path) = resolved {
+                    entry.resolved_path = resolve_completed_path(&entry.handle);
+                    if let Some(path) = entry.resolved_path.clone() {
                         finished_now.push((id.clone(), path));
                     }
                 }
@@ -279,13 +273,21 @@ impl TorrentEngine {
         }
 
         for (id, path) in finished_now {
-            let filename = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("torrent")
-                .to_string();
-            state.update_item(&id, |item| item.filename = filename.clone());
-            state.notice(format!("Torrent tamamlandı: {filename}"), "success");
+            // Cok dosyali torrentte `path` klasordur. O durumda gorunen ad torrent
+            // adi kalir; klasor adini dosya adi gibi yazmiyoruz.
+            if path.is_file() {
+                if let Some(filename) = path.file_name().and_then(|n| n.to_str()).map(String::from)
+                {
+                    state.update_item(&id, |item| item.filename = filename.clone());
+                    state.notice(format!("Torrent tamamlandı: {filename}"), "success");
+                }
+            } else {
+                let label = state
+                    .item(&id)
+                    .map(|d| d.filename)
+                    .unwrap_or_else(|| "Torrent".into());
+                state.notice(format!("Torrent tamamlandı: {label}"), "success");
+            }
         }
         active
     }
@@ -300,6 +302,45 @@ impl TorrentEngine {
             session.stop().await;
         }
         self.handles.lock().await.clear();
+    }
+}
+
+/// Tamamlanan torrent'in diskteki yolunu bulur.
+///
+/// `handle.name()` her zaman klasor adi degil: bazi torrentlerde dosyalar dogrudan
+/// indirme klasorune cikiyor ve `folder/name` diye bir yol olusmuyor. O yuzden once
+/// torrentin gercek dosya listesine bakiyoruz.
+fn resolve_completed_path(handle: &ManagedTorrentHandle) -> Option<PathBuf> {
+    let folder = handle.output_folder().to_path_buf();
+    let files: Vec<PathBuf> = handle
+        .with_metadata(|meta| {
+            meta.file_infos
+                .iter()
+                .map(|info| folder.join(&info.relative_filename))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    pick_completed_path(&folder, handle.name().as_deref(), &files)
+}
+
+/// Var olan dosyalara bakarak yolu secer.
+///
+/// - tek dosya  -> dosyanin kendisi (acilinca oynar)
+/// - cok dosya  -> indirme klasoru (acilinca klasor acilir)
+/// - hicbiri yok -> `folder/name` varsa o, yoksa `None`
+fn pick_completed_path(
+    folder: &std::path::Path,
+    name: Option<&str>,
+    files: &[PathBuf],
+) -> Option<PathBuf> {
+    let existing: Vec<&PathBuf> = files.iter().filter(|p| p.exists()).collect();
+    match existing.len() {
+        0 => name
+            .map(|n| folder.join(n))
+            .filter(|p| p.exists())
+            .or_else(|| Some(folder.to_path_buf()).filter(|p| p.is_dir())),
+        1 => Some(existing[0].clone()),
+        _ => Some(folder.to_path_buf()),
     }
 }
 
@@ -328,5 +369,35 @@ mod tests {
         let engine = TorrentEngine::new();
         assert!(!engine.handles.lock().await.contains_key("yok"));
         assert!(!engine.has("yok").await);
+    }
+
+    #[test]
+    fn tamamlanan_yol_tek_dosyada_dosya_cok_dosyada_klasor() {
+        // Gercek hata: cok dosyali torrentte filePath bos kaliyordu, "dosyayi ac" olu.
+        let dir = tempfile::tempdir().unwrap();
+        let single = dir.path().join("film.mp4");
+        std::fs::write(&single, b"x").unwrap();
+        assert_eq!(
+            pick_completed_path(dir.path(), Some("film"), std::slice::from_ref(&single)),
+            Some(single.clone()),
+            "tek dosyada dosyanin kendisi donmeli"
+        );
+
+        let other = dir.path().join("altyazi.srt");
+        std::fs::write(&other, b"y").unwrap();
+        assert_eq!(
+            pick_completed_path(dir.path(), Some("film"), &[single, other]),
+            Some(dir.path().to_path_buf()),
+            "cok dosyada indirme klasoru donmeli"
+        );
+
+        // Dosya listesi bos: torrent adiyla olusan klasor varsa o kullanilir.
+        let named = tempfile::tempdir().unwrap();
+        let inner = named.path().join("Koleksiyon");
+        std::fs::create_dir(&inner).unwrap();
+        assert_eq!(
+            pick_completed_path(named.path(), Some("Koleksiyon"), &[]),
+            Some(inner)
+        );
     }
 }

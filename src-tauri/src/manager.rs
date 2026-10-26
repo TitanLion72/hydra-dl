@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use tauri::async_runtime::JoinHandle;
 use tauri::{AppHandle, Emitter};
-use tokio::task::JoinHandle;
 
 pub const EVENT_DOWNLOADS: &str = "downloads:changed";
 pub const EVENT_NOTICE: &str = "hydra:notice";
@@ -206,7 +206,11 @@ fn spawn_worker(state: Arc<AppState>, id: String) {
     let worker_cancel = cancel.clone();
     let task_id = id.clone();
 
-    let join = tokio::spawn(async move {
+    // `tokio::spawn` çağıran thread'de runtime bağlamı ister; `setup()` ana thread'de
+    // çalıştığı için yarım kalan indirme varken uygulama açılışta
+    // "there is no reactor running" paniğiyle çöküyordu (0xc0000409).
+    // Tauri'nin runtime'ı her bağlamdan çağrılabilir.
+    let join = tauri::async_runtime::spawn(async move {
         let kind = worker_state.item(&task_id).map(|d| d.kind);
         match kind {
             Some(Kind::Http) => {

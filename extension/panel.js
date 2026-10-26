@@ -32,6 +32,7 @@ const state = {
   selectedFormat: "",
   busy: false,
   filenameDirty: false,
+  added: false,
 };
 
 const el = {
@@ -84,6 +85,13 @@ function setMessage(text, tone) {
 }
 
 function setBusy(busy) {
+  // Eklendikten sonra düğme "İndir"e dönmemeli: ikinci tıklama aynı indirmeyi
+  // tekrar kuyruğa sokuyordu.
+  if (state.added) {
+    el.download.disabled = true;
+    el.download.textContent = "Eklendi";
+    return;
+  }
   el.download.disabled = busy;
   el.download.textContent = busy ? "Ekleniyor…" : "İndir";
 }
@@ -396,6 +404,9 @@ async function load(targetUrl) {
 
   showLoading(true);
   state.filenameDirty = false;
+  state.added = false;
+  el.cancel.textContent = "İptal";
+  setBusy(false);
   state.probe = null;
   state.fallback = false;
   state.blob = /^blob:/i.test(targetUrl);
@@ -468,8 +479,13 @@ async function submit() {
   setMessage("");
   try {
     const data = await H.hydraAdd(payload);
+    state.added = true;
     setMessage(`Kuyruğa eklendi: ${data.filename || H.guessFilename(target)}`, "ok");
-    setTimeout(closeTab, 1100);
+    // Panel açık kalır. Eskiden 1.1 sn sonra sekme kendini kapatıyordu; kullanıcı
+    // "indire basınca sayfa gidiyor" diye görüyordu ve sonucu okuyamıyordu.
+    el.cancel.textContent = "Kapat";
+    el.download.textContent = "Eklendi";
+    el.download.disabled = true;
   } catch (err) {
     if (isOffline(err)) {
       showError(err);

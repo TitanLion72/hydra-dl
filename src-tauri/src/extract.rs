@@ -752,15 +752,22 @@ pub async fn probe(
 
     let mut result = ProbeResult::base(raw_url, kind);
     result.final_url = final_url;
-    result.title = title;
     // Dosya adi: gercek dosya adayi > manifest adayi > sayfa adresi.
     let best_for_name = candidates
         .iter()
         .find(|c| matches!(c.kind.as_str(), "video" | "audio" | "file"))
         .or_else(|| candidates.first());
-    result.filename = best_for_name
+    let name_from_url = best_for_name
         .and_then(|c| crate::util::filename_from_url(&c.url))
         .or_else(|| crate::util::filename_from_url(raw_url));
+    // Medya sayfalarinda URL'den turetilen ad anlamsiz olur (YouTube'da "watch").
+    // Baslik varsa onu kullan; yoksa eski davranisa don.
+    result.filename = if kind == "media" {
+        media_filename_from_title(title.as_deref(), formats.first()).or(name_from_url)
+    } else {
+        name_from_url
+    };
+    result.title = title;
     result.size = candidates.iter().find_map(|c| c.size);
     result.mime = candidates.first().map(|c| c.kind.clone());
     result.duration_secs = duration_secs;
@@ -796,6 +803,27 @@ fn human_size(bytes: u64) -> String {
         unit += 1;
     }
     format!("{value:.1} {}", UNITS[unit])
+}
+
+/// Medya sayfasinda basliktan Windows-guvenli dosya adi uretir: `Baslik.mp4`.
+///
+/// YouTube gibi adreslerde URL'den turetilen ad anlamsiz oluyor ("watch");
+/// baslik varsa kullaniciya onu gosteriyoruz. Uzanti secilen formattan gelir.
+fn media_filename_from_title(title: Option<&str>, best: Option<&Format>) -> Option<String> {
+    let title = title?.trim();
+    if title.is_empty() {
+        return None;
+    }
+    let base = crate::util::sanitize_filename(title);
+    if base == "download" {
+        return None;
+    }
+    let ext = best
+        .and_then(|f| f.ext.clone())
+        .map(|e| e.trim_start_matches('.').to_string())
+        .filter(|e| !e.is_empty())
+        .unwrap_or_else(|| "mp4".into());
+    Some(format!("{base}.{ext}"))
 }
 
 pub fn torrent_name_hint(source: &str) -> Option<String> {
@@ -1021,5 +1049,38 @@ mod tests {
         assert_eq!(human_size(512), "512 B");
         assert_eq!(human_size(1536), "1.5 KB");
         assert_eq!(human_size(16 * 1024 * 1024), "16.0 MB");
+    }
+
+    #[test]
+    fn medya_adi_basliktan_uretilir() {
+        // Gercek sorun: YouTube'da liste "watch" gosteriyordu, baslik elde oldugu halde.
+        let format = Format {
+            id: "137+bestaudio/137".into(),
+            label: "1080p · mp4".into(),
+            ext: Some("mp4".into()),
+            height: Some(1080),
+            filesize: None,
+            vcodec: Some("avc1".into()),
+            acodec: Some("none".into()),
+            note: Some("en iyi kalite".into()),
+        };
+        let name = media_filename_from_title(
+            Some("Kimi K3.1 Pro'yu Canlı Zorluyoruz: Açık Model Nereye Kadar Gider?"),
+            Some(&format),
+        )
+        .expect("ad uretilmedi");
+        assert!(name.starts_with("Kimi K3.1"), "{name}");
+        assert!(name.ends_with(".mp4"), "{name}");
+        assert!(!name.contains(':'), "yasak karakter: {name}");
+
+        // Baslik yoksa URL'den gelen ad kullanilir (None doner).
+        assert_eq!(media_filename_from_title(None, Some(&format)), None);
+        assert_eq!(media_filename_from_title(Some("   "), Some(&format)), None);
+
+        // Uzanti bilinmiyorsa mp4 varsayilir.
+        assert_eq!(
+            media_filename_from_title(Some("Deneme videosu"), None).as_deref(),
+            Some("Deneme videosu.mp4")
+        );
     }
 }

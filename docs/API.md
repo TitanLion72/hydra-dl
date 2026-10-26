@@ -88,9 +88,10 @@ Gövde: `{ "url": "...", "media": true|false|null }`
 | Metot | Yol | Gövde |
 |---|---|---|
 | POST | `/torrents` | `{ "source": "magnet:..." \| "base64 .torrent", "dir": "...", "name": "..." }` |
-| GET | `/torrents` | Aktif torrent özetleri |
+| GET | `/torrents` | `{ "ok": true, "torrents": [{ "id", "filename", "status", "downloadedBytes", "totalBytes", "speedBps", "peers", "error", "filePath" }] }` |
 
 Torrent'ler `/downloads` listesinde `kind: "torrent"` olarak da görünür.
+`filePath` tek dosyalı torrentte dosyanın kendisi, çok dosyalıda **indirme klasörüdür**.
 
 ## Medya araçları (yt-dlp)
 

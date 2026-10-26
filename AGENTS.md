@@ -98,6 +98,8 @@ Ağ/indirme davranışına dokunduysan `tools/e2e.mjs` de koşar. Üçünden bir
 - Torrent testleri gerçek ağ trafiği üretir; CI'da yalnız kaynak tanıma testleri koşar.
 - `src-tauri/target`, `node_modules`, `dist`, `*.log` üretim/geçici — git'e girmez.
 - Yakalama API'si `127.0.0.1`'e kilitli; web API'si LAN'a açılır. İkisini karıştırma.
+- **`setup()` ana thread'de çalışır.** Orada `tokio::spawn` çağırma → "there is no reactor
+  running" paniği, süreç 0xc0000409 ile sessizce kapanır. `tauri::async_runtime::spawn` kullan.
 - **Tarayıcı API farkı:** Chrome `chrome.*`, Firefox `browser.*` (promise tabanlı) sunar.
   Bu yüzden kod `chrome.` yerine `HX.api.` kullanır (`extension/compat.js` her bağlamda
   **ilk** yüklenmeli: `importScripts`, `content_scripts.js[0]`, HTML'de ilk `<script>`).

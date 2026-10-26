@@ -307,6 +307,32 @@ async fn put_settings(
     }
 }
 
+/// `GET /torrents` — indirme listesindeki torrent'lerin ozeti (dokumandaki soz).
+///
+/// Ayrintili veri `/downloads` icinde durur; bu ucnokta hata ayiklarken torrent
+/// durumunu tek yerden gormek icin var.
+async fn list_torrents(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
+    let torrents: Vec<serde_json::Value> = state
+        .snapshot()
+        .into_iter()
+        .filter(|d| matches!(d.kind, Kind::Torrent))
+        .map(|d| {
+            serde_json::json!({
+                "id": d.id,
+                "filename": d.filename,
+                "status": d.status,
+                "downloadedBytes": d.downloaded_bytes,
+                "totalBytes": d.total_bytes,
+                "speedBps": d.speed_bps,
+                "peers": d.swarm.as_ref().map(|s| s.peers),
+                "error": d.error,
+                "filePath": d.file_path,
+            })
+        })
+        .collect();
+    Json(serde_json::json!({ "ok": true, "torrents": torrents }))
+}
+
 async fn add_torrent(
     State(state): State<Arc<AppState>>,
     Json(body): Json<TorrentBody>,
@@ -460,7 +486,7 @@ pub fn api_router(state: Arc<AppState>) -> Router {
         .route("/downloads/{id}/cancel", post(cancel))
         .route("/downloads/{id}", delete(remove))
         .route("/settings", get(get_settings).put(put_settings))
-        .route("/torrents", post(add_torrent))
+        .route("/torrents", post(add_torrent).get(list_torrents))
         .route("/ytdlp", get(ytdlp_status))
         .route("/ytdlp/install", post(install_ytdlp))
         .route("/assets/{*path}", get(static_file))
