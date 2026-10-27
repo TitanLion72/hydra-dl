@@ -121,10 +121,10 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
   olduğu için Chrome yerine Edge kullanıldı; elle yükleme yolu değişmedi.
 - `webapp/` içinde yt-dlp kurulum düğmesi **var** (0.2.3). Telefondan gerçek kurulum
   denenmedi: arayüz mock API ile, sunucu tarafı gerçek istekle doğrulandı.
-- Torrent dosya listesi gerçek motorla **birim testinde** (yerel `.torrent`, 3 dosya,
-  `apply_selection`, `selected_total`) doğrulandı; **kurulu uygulamada canlı denenmedi**
-  çünkü kullanıcının indirmeleri sürüyordu (uygulama kapatılmadı). Derleme+kurulumdan
-  sonra `POST /torrent/files` bir kez gerçek torrentle denenmeli.
+- Torrent dosya listesi/seçimi **kurulu uygulamada canlı doğrulandı** (0.2.3, yerel 3 dosyalı
+  `.torrent`): `POST /torrent/files` → 3 dosya + doğru boyutlar; `POST /add` `files:[0,2]` →
+  `totalBytes=400000`; `POST /torrent/files {id,files:[1]}` → `totalBytes=200000`,
+  `a.bin:false, b.bin:true, c.bin:false`. Kayıt silindi, artık bırakılmadı.
 - Avcı modunda ağ isteği dinleme (`webRequest`) yok; HLS/manifest yakalama v0.3'te.
 
 ## Paketleme (bu oturumda bulunan ve düzeltilen hata)
@@ -141,8 +141,7 @@ yeterli değil.
 
 1. Telefondan `http://<LAN-IP>:6790` aç: QR eşleşmesi, indirme ekleme, **yt-dlp kur** ve
    torrent dosya seçimini gerçek cihazda dene.
-2. Kurulum paketini 0.2.4 olarak üret ve `POST /torrent/files`'i gerçek torrentle doğrula
-   (liste + kısmi seçim + indirme durmadan seçim değiştirme).
+2. Telefondan torrent dosya seçimini gerçek cihazda dene (sunucu tarafı canlı doğrulandı).
 3. Kullanıcı tek dosya hızını "Aynı anda indirme"=1, bağlantı 16 iken ölçsün; hat sınırına
    ulaşmıyorsa sebep sunucu limiti mi, 64 soketlik bütçe mi ayrıştırılsın.
 4. v0.3: çerez/oturum aktarımı, `Retry-After` + backoff, proxy, yt-dlp'siz HLS/DASH.
