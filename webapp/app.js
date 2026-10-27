@@ -1282,6 +1282,10 @@ function applyYtdlpStatus(status) {
 }
 
 async function refreshYtdlp() {
+  // Sunucu `yt-dlp --version` çalıştırdığı için ilk yanıt ~1 sn gecikebilir;
+  // o arada düğme tıklanıp gereksiz yeniden kurulum başlatılmasın.
+  if (els.setYtdlp) setText(els.setYtdlp, "kontrol ediliyor…");
+  if (els.installYtdlp) els.installYtdlp.disabled = true;
   try {
     const status = await api(ENDPOINTS.ytdlp);
     applyYtdlpStatus(status);
@@ -1289,6 +1293,7 @@ async function refreshYtdlp() {
   } catch (error) {
     setText(els.setYtdlp, "bilinmiyor");
     setYtdlpStatus(error.message || "yt-dlp durumu okunamadı.", "error");
+    if (els.installYtdlp) els.installYtdlp.disabled = false;
   }
 }
 

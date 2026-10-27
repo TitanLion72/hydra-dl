@@ -78,8 +78,12 @@ async function openSettings(page) {
   await page.waitForSelector("#settingsForm:not([hidden])", { timeout: 15000 });
 }
 
-/** API uçlarını mock'lar; `installError` verilirse kurulum 502 döner. */
-async function mockApi(page, { available, version = "2099.01.01", installError = null }) {
+/** API uçlarını mock'lar; `installError` verilirse kurulum 502 döner.
+ *  `statusDelay` ile `/ytdlp` yanıtı geciktirilir (yavaş `--version` taklidi). */
+async function mockApi(
+  page,
+  { available, version = "2099.01.01", installError = null, statusDelay = 0 },
+) {
   let installed = available;
   await page.route("**/events", (route) =>
     route.fulfill({ status: 200, contentType: "text/event-stream", body: ": mock\n\n" }),
@@ -128,16 +132,17 @@ async function mockApi(page, { available, version = "2099.01.01", installError =
       body: JSON.stringify({ ok: true, path: "C:\\fake\\bin\\yt-dlp.exe" }),
     });
   });
-  await page.route("**/ytdlp", (route) =>
-    route.fulfill({
+  await page.route("**/ytdlp", async (route) => {
+    if (statusDelay) await new Promise((resolve) => setTimeout(resolve, statusDelay));
+    await route.fulfill({
       ...JSON_OK,
       body: JSON.stringify(
         installed
           ? { available: true, path: "C:\\fake\\bin\\yt-dlp.exe", version }
           : { available: false, path: null, version: null },
       ),
-    }),
-  );
+    });
+  });
 }
 
 const server = await startStaticServer();
@@ -219,6 +224,25 @@ try {
     check(await page.locator("#installYtdlp").isEnabled(), "hatadan sonra düğme etkin");
     const label = (await page.textContent("#installYtdlp")).trim();
     check(/kur/i.test(label) && !/Kuruluyor/.test(label), `düğme metni geri döndü: ${label}`);
+    await page.close();
+  }
+
+  // 4) Yavaş /ytdlp (sunucu `--version` çalıştırıyor): beklerken düğme kilitli,
+  //    satır "kontrol ediliyor…" der; yanıt gelince düğme gizlenir.
+  {
+    const page = await browser.newPage();
+    await mockApi(page, { available: true, statusDelay: 1500 });
+    await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+    await page.click('.tab[data-view="settings"]');
+    await page.waitForSelector("#settingsForm:not([hidden])", { timeout: 15000 });
+    const waiting = (await page.textContent("#setYtdlp")).trim();
+    check(waiting.startsWith("kontrol ediliyor"), `beklerken satır: ${waiting}`);
+    check(await page.locator("#installYtdlp").isDisabled(), "beklerken kur düğmesi kilitli");
+    await page.waitForFunction(
+      () => /2099\.01\.01/.test(document.querySelector("#setYtdlp")?.textContent || ""),
+      { timeout: 15000 },
+    );
+    check(await page.locator("#installYtdlp").isHidden(), "yanıt gelince düğme gizli");
     await page.close();
   }
 } finally {

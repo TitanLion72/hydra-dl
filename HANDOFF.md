@@ -91,8 +91,9 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
     `POST /ytdlp/install` (120 sn zaman aşımı), kurulunca sürüm tazelenir ve düğme gizlenir;
     hata olursa kırmızı mesaj + yeniden denenebilir. `api()` artık istek başına zaman aşımı
     alıyor. Ayarlar ekranı ikinci kez açıldığında da yt-dlp durumu tazeleniyor (eski durum
-    önbellekte kalmıyor). Yeni QA: `node tools/web-ui-check.mjs` (statik sunucu + mock API,
-    17 kontrol).
+    önbellekte kalmıyor); yanıt gelene kadar satır "kontrol ediliyor…" der ve kur düğmesi
+    kilitli (sunucu `yt-dlp --version` çalıştırdığı için ilk yanıt ~1 sn gecikebiliyor).
+    Yeni QA: `node tools/web-ui-check.mjs` (statik sunucu + mock API, 20 kontrol).
 
 ## Bilinen açık uçlar
 
