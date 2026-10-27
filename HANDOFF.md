@@ -2,7 +2,7 @@
 
 > Yeni oturum: **önce bu dosyayı oku**, sonra `git status`. Bitirdiğin dilimi en alta 10 satır yaz.
 
-**Son güncelleme:** 2026-10-27 (2) · v0.2.3 · AGPL-3.0-or-later
+**Son güncelleme:** 2026-10-28 · v0.2.3 (0.2.4 hazırlanıyor) · AGPL-3.0-or-later
 
 ---
 
@@ -22,7 +22,7 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
 
 | Ne | Kanıt |
 |---|---|
-| Rust testleri | `cargo test` → **67 passed** (1 ağ testi `#[ignore]`) |
+| Rust testleri | `cargo test` → **69 passed** (1 ağ testi `#[ignore]`) |
 | Clippy | `cargo clippy --all-targets -- -D warnings` → 0 uyarı |
 | Arayüz derlemesi | `npm run build` → 21.84 kB JS |
 | Segmentli indirme | `node tools/e2e.mjs` → 16 MB, sha256 eşleşti |
@@ -34,8 +34,9 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
 | **Torrent duraklat/devam** | `paused` → hız 0, `resume` → indirme sürdü |
 | **Açılışta kurtarma** | 4 yarım indirme varken açılış çökmeden devam etti |
 | LAN erişimi | `http://192.168.1.106:6790/health` → 200 |
-| Masaüstü UI | `tools/ui-harness` → 38 OK, 4 ekran görüntüsü, konsol hatası yok |
+| Masaüstü UI | `tools/ui-harness` → torrent dosya seçimi dahil, konsol hatası yok |
 | Eklenti (statik) | `node tools/test-extension.mjs` → 19 OK |
+| Telefon arayüzü | `node tools/web-ui-check.mjs` → PASS (yt-dlp + torrent dosya seçimi) |
 
 ## Bu oturumda düzeltilen gerçek hatalar
 
@@ -98,6 +99,16 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
     kilitli (sunucu `yt-dlp --version` çalıştırdığı için ilk yanıt ~1 sn gecikebiliyor).
     Yeni QA: `node tools/web-ui-check.mjs` (statik sunucu + mock API, 20 kontrol).
 
+19. **Torrent'te dosya seçimi yoktu** (kullanıcı bildirdi: "hangi dosyalar inecek seçebileyim").
+    `POST /torrent/files` (kaynak → liste, `id`+`files` → seçim), `AddOptions.files` /
+    `TorrentJob.files` → `AddTorrentOptions.only_files`, `update_only_files` ile indirme
+    durmadan seçim değişir. `Download.torrentFiles` seçim durumunu taşır. Masaüstünde
+    indirme seçenekleri panelinde dosya listesi + Tümü/Hiçbiri; satır eyleminde
+    "Dosyaları seç" sayfası. Telefonda aynı akış. `MAX_TOTAL_CONNECTIONS` 32→64
+    (10 indirme → dosya başına 6 bağlantı). QA: ui-harness 4 dosyalı senaryo,
+    `tools/web-ui-check.mjs` torrent senaryosu. Ayrıca DHT başlatılamazsa motor DHT'siz
+    devam ediyor (test ortamında torrent açılabilsin diye).
+
 ## Bilinen açık uçlar
 
 - **Firefox/Zen**: `compat.js` + `HX.api` + `background.scripts` + gecko id ile paket hazır;
@@ -110,6 +121,10 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
   olduğu için Chrome yerine Edge kullanıldı; elle yükleme yolu değişmedi.
 - `webapp/` içinde yt-dlp kurulum düğmesi **var** (0.2.3). Telefondan gerçek kurulum
   denenmedi: arayüz mock API ile, sunucu tarafı gerçek istekle doğrulandı.
+- Torrent dosya listesi gerçek motorla **birim testinde** (yerel `.torrent`, 3 dosya,
+  `apply_selection`, `selected_total`) doğrulandı; **kurulu uygulamada canlı denenmedi**
+  çünkü kullanıcının indirmeleri sürüyordu (uygulama kapatılmadı). Derleme+kurulumdan
+  sonra `POST /torrent/files` bir kez gerçek torrentle denenmeli.
 - Avcı modunda ağ isteği dinleme (`webRequest`) yok; HLS/manifest yakalama v0.3'te.
 
 ## Paketleme (bu oturumda bulunan ve düzeltilen hata)
@@ -124,11 +139,13 @@ yeterli değil.
 
 ## Sıradaki iş
 
-1. Telefondan `http://<LAN-IP>:6790` aç: QR eşleşmesi, indirme ekleme ve **yt-dlp kur**
-   düğmesini gerçek cihazda dene.
-2. Kullanıcı tek dosya hızını "Aynı anda indirme"=1, bağlantı 16 iken ölçsün; hat sınırına
+1. Telefondan `http://<LAN-IP>:6790` aç: QR eşleşmesi, indirme ekleme, **yt-dlp kur** ve
+   torrent dosya seçimini gerçek cihazda dene.
+2. Kurulum paketini 0.2.4 olarak üret ve `POST /torrent/files`'i gerçek torrentle doğrula
+   (liste + kısmi seçim + indirme durmadan seçim değiştirme).
+3. Kullanıcı tek dosya hızını "Aynı anda indirme"=1, bağlantı 16 iken ölçsün; hat sınırına
    ulaşmıyorsa sebep sunucu limiti mi, 64 soketlik bütçe mi ayrıştırılsın.
-3. v0.3: çerez/oturum aktarımı, `Retry-After` + backoff, proxy, yt-dlp'siz HLS/DASH.
+4. v0.3: çerez/oturum aktarımı, `Retry-After` + backoff, proxy, yt-dlp'siz HLS/DASH.
 
 ## Oturum kesilirse ilk komut
 

@@ -238,6 +238,7 @@
       <div class="sheet-body">
         <div class="probe-summary" id="probe-summary"></div>
         <div class="probe-formats" id="probe-formats"></div>
+        <div class="probe-files" id="probe-files" hidden></div>
         <div class="probe-extra" id="probe-extra"></div>
         <label class="field">
           <span>Dosya adı</span>
@@ -251,6 +252,27 @@
       <footer class="sheet-foot">
         <button class="primary" id="probe-download">İndir</button>
         <button class="ghost" id="probe-cancel">Vazgeç</button>
+      </footer>
+    </aside>
+
+    <aside class="sheet" id="files-sheet" hidden aria-label="Torrent dosyaları">
+      <header class="sheet-head">
+        <div class="sheet-title">
+          <h2 id="files-title">Torrent dosyaları</h2>
+          <p id="files-sub"></p>
+        </div>
+        <button class="ghost icon-only" id="files-close" title="Kapat">✕</button>
+      </header>
+      <div class="sheet-body">
+        <p class="hint">
+          İndirmek istemediğin dosyaların işaretini kaldır. Seçim değişince indirme
+          yeniden planlanır; biten dosyalar diskte kalır.
+        </p>
+        <div class="probe-files" id="files-list"></div>
+      </div>
+      <footer class="sheet-foot">
+        <button class="primary" id="files-apply">Uygula</button>
+        <button class="ghost" id="files-cancel">Vazgeç</button>
       </footer>
     </aside>
 

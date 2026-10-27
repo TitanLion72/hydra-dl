@@ -53,6 +53,48 @@ pub struct Swarm {
     pub seeders: usize,
 }
 
+/// Torrent icindeki tek dosya. `included=false` ise indirilmez.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TorrentFile {
+    pub index: usize,
+    /// Torrent kokune gore yol, `/` ayirici ile.
+    pub path: String,
+    pub length: u64,
+    #[serde(default = "default_true")]
+    pub included: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// Secili dosyalarin toplam boyutu. Hicbiri secili degilse `None`.
+pub fn selected_total(files: &[TorrentFile]) -> Option<u64> {
+    let mut any = false;
+    let mut sum = 0u64;
+    for file in files.iter().filter(|f| f.included) {
+        any = true;
+        sum = sum.saturating_add(file.length);
+    }
+    any.then_some(sum)
+}
+
+/// `files` listesine gore `included` bayraklarini gunceller.
+/// Bos liste (hicbir dosya secilmedi) hatadir: torrent bosa inmez.
+pub fn apply_selection(files: &mut [TorrentFile], selected: &[usize]) -> Result<(), String> {
+    if selected.is_empty() {
+        return Err("En az bir dosya seçmelisin".into());
+    }
+    for file in files.iter_mut() {
+        file.included = selected.contains(&file.index);
+    }
+    if !files.iter().any(|f| f.included) {
+        return Err("Seçilen dosya numaraları bu torrent'te yok".into());
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Segment {
     pub index: usize,
@@ -122,6 +164,9 @@ pub struct Download {
     /// Torrent icin bilgi ozeti (magnet) veya kaynak.
     #[serde(default)]
     pub source: Option<String>,
+    /// Torrent dosya listesi ve secim durumu (coklu dosya torrentlerinde).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub torrent_files: Option<Vec<TorrentFile>>,
 }
 
 impl Download {
@@ -358,6 +403,7 @@ mod tests {
             format: None,
             swarm: None,
             source: None,
+            torrent_files: None,
         };
         assert!((d.fraction() - 0.4).abs() < 1e-9);
         assert_eq!(d.eta_secs(), Some(6));

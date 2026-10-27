@@ -13,6 +13,8 @@ import {
   type ProbeResult,
   type Settings,
   type Status,
+  type TorrentFile,
+  type TorrentListing,
 } from "./api";
 
 type Filter = "all" | "active" | "queued" | "done" | "failed";
@@ -108,36 +110,51 @@ const ACTION_ICONS = {
   reveal: '<path d="M3 7h6l2 2h10v10H3z"/>',
   remove: '<path d="M5 5l14 14M19 5 5 19"/>',
   trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+  files: '<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>',
 };
 
+/** Torrent'te secilebilir dosya listesi var mi? */
+function hasFileSelection(item: Download): boolean {
+  return item.kind === "torrent" && (item.torrentFiles?.length ?? 0) > 1;
+}
+
 function actionsFor(item: Download): Action[] {
+  let actions: Action[];
   switch (item.status) {
     case "downloading":
     case "queued":
-      return [
+      actions = [
         { action: "pause", title: "Duraklat", icon: ACTION_ICONS.pause },
         { action: "cancel", title: "İptal et", icon: ACTION_ICONS.cancel, tone: "danger" },
         { action: "remove", title: "Listeden çıkar", icon: ACTION_ICONS.remove },
       ];
+      break;
     case "paused":
     case "cancelled":
-      return [
+      actions = [
         { action: "resume", title: "Devam et", icon: ACTION_ICONS.play, tone: "accent" },
         { action: "remove", title: "Listeden çıkar", icon: ACTION_ICONS.remove },
       ];
+      break;
     case "failed":
-      return [
+      actions = [
         { action: "resume", title: "Yeniden dene", icon: ACTION_ICONS.retry, tone: "accent" },
         { action: "reveal", title: "Klasörü aç", icon: ACTION_ICONS.reveal },
         { action: "remove", title: "Listeden çıkar", icon: ACTION_ICONS.remove },
       ];
+      break;
     case "completed":
-      return [
+      actions = [
         { action: "open", title: "Dosyayı aç", icon: ACTION_ICONS.open, tone: "accent" },
         { action: "reveal", title: "Klasörde göster", icon: ACTION_ICONS.reveal },
         { action: "delete", title: "Dosyayla birlikte sil", icon: ACTION_ICONS.trash, tone: "danger" },
       ];
+      break;
   }
+  if (hasFileSelection(item) && item.status !== "completed") {
+    actions.unshift({ action: "files", title: "Dosyaları seç", icon: ACTION_ICONS.files });
+  }
+  return actions;
 }
 
 function createRow(item: Download): RowRefs {
@@ -225,7 +242,16 @@ function updateRow(refs: RowRefs, item: Download) {
   }
 
   const segCount = item.segments.length;
-  if (item.kind === "torrent" && item.status === "downloading") {
+  if (item.kind === "torrent" && item.torrentFiles?.length) {
+    const files = item.torrentFiles;
+    const picked = files.filter((f) => f.included).length;
+    const peers = item.swarm?.peers ?? 0;
+    refs.segInfo.textContent =
+      picked === files.length
+        ? `· ${files.length} dosya · ${peers} peer`
+        : `· ${picked}/${files.length} dosya · ${peers} peer`;
+    refs.segInfo.hidden = false;
+  } else if (item.kind === "torrent" && item.status === "downloading") {
     const peers = item.swarm?.peers ?? 0;
     refs.segInfo.textContent = `· ${peers} peer`;
     refs.segInfo.hidden = false;
@@ -248,7 +274,7 @@ function updateRow(refs: RowRefs, item: Download) {
   refs.error.textContent = item.error ?? "";
   refs.error.hidden = !item.error;
 
-  const key = `${item.status}:${item.filePath ?? ""}`;
+  const key = `${item.status}:${item.filePath ?? ""}:${item.torrentFiles?.length ?? 0}`;
   if (key !== refs.actionsKey) {
     refs.actionsKey = key;
     refs.actions.innerHTML = actionsFor(item)
@@ -423,11 +449,91 @@ const probeDir = $<HTMLInputElement>("#probe-dir");
 let probeState: ProbeResult | null = null;
 let probeSelected: string | null = null;
 let probing = false;
+/** Probe edilen torrent'in dosya listesi ve secimi. */
+let probeFiles: TorrentFile[] | null = null;
+let probeFilesToken = 0;
+
+const probeFilesBox = $<HTMLElement>("#probe-files");
+const filesSheet = $<HTMLElement>("#files-sheet");
+const filesList = $<HTMLElement>("#files-list");
+const filesSub = $("#files-sub");
+let filesEditId: string | null = null;
+let filesEditSelection: TorrentFile[] = [];
+
+/** Dosya listesini onay kutulariyla cizer; secim degistikce `onChange` cagrilir. */
+function renderFileList(
+  container: HTMLElement,
+  files: TorrentFile[],
+  onChange?: (files: TorrentFile[]) => void,
+): void {
+  /** Basligi secime gore gunceller. */
+  const updateHead = (head: HTMLElement) => {
+    const picked = files.filter((f) => f.included);
+    const total = picked.reduce((sum, f) => sum + f.length, 0);
+    const label = head.querySelector("strong");
+    if (label) label.textContent = `${picked.length}/${files.length} dosya`;
+    const amount = head.querySelector(".files-amount");
+    if (amount) {
+      amount.textContent =
+        picked.length === files.length
+          ? `· ${formatBytes(total)} (tümü)`
+          : `· ${formatBytes(total)} seçili`;
+    }
+  };
+
+  const head = document.createElement("div");
+  head.className = "files-head";
+  head.innerHTML = `<strong></strong><span class="files-amount"></span>
+    <span class="files-actions">
+      <button class="ghost" data-files="all" type="button">Tümü</button>
+      <button class="ghost" data-files="none" type="button">Hiçbiri</button>
+    </span>`;
+  container.replaceChildren(head);
+  updateHead(head);
+
+  for (const file of files) {
+    const row = document.createElement("label");
+    row.className = `file-row${file.included ? " on" : ""}`;
+    row.innerHTML = `
+      <input type="checkbox" ${file.included ? "checked" : ""} />
+      <span class="file-name" title="${escapeAttr(file.path)}">${escapeHtml(file.path)}</span>
+      <span class="file-size">${formatBytes(file.length)}</span>`;
+    const box = row.querySelector("input") as HTMLInputElement;
+    box.addEventListener("change", () => {
+      file.included = box.checked;
+      row.classList.toggle("on", box.checked);
+      updateHead(head);
+      onChange?.(files);
+    });
+    container.append(row);
+  }
+
+  head.querySelector<HTMLButtonElement>('[data-files="all"]')?.addEventListener("click", () => {
+    for (const file of files) file.included = true;
+    renderFileList(container, files, onChange);
+    onChange?.(files);
+  });
+  head.querySelector<HTMLButtonElement>('[data-files="none"]')?.addEventListener("click", () => {
+    for (const file of files) file.included = false;
+    renderFileList(container, files, onChange);
+    onChange?.(files);
+  });
+}
+
+/** Secili dosya indeksleri; hepsi seciliyse `undefined` (motor tumunu indirir). */
+function selectedIndexes(files: TorrentFile[]): number[] | undefined {
+  const picked = files.filter((f) => f.included).map((f) => f.index);
+  if (picked.length === 0 || picked.length === files.length) return undefined;
+  return picked;
+}
+
+let probeCloseTimer: ReturnType<typeof setTimeout> | null = null;
 
 function closeProbe() {
   probeSheet.classList.remove("open");
-  setTimeout(() => {
+  probeCloseTimer = setTimeout(() => {
     probeSheet.hidden = true;
+    probeCloseTimer = null;
   }, 200);
   overlay.hidden = true;
 }
@@ -461,7 +567,11 @@ function openProbe(result: ProbeResult) {
   }
   if (rows.length === 0) {
     rows.push(
-      `<p class="hint">Bu bağlantı için kalite listesi yok; dosya olduğu gibi indirilecek.</p>`,
+      `<p class="hint">${
+        result.kind === "torrent"
+          ? "Torrent tek parça olarak iner; hangi dosyaların ineceğini aşağıdan seçersin."
+          : "Bu bağlantı için kalite listesi yok; dosya olduğu gibi indirilecek."
+      }</p>`,
     );
   }
   probeFormats.innerHTML = rows.join("");
@@ -485,10 +595,56 @@ function openProbe(result: ProbeResult) {
   }
   probeExtra.innerHTML = extra.join("");
 
+  // Torrent: dosya listesi ve secim (arka planda getirilir).
+  probeFiles = null;
+  const token = ++probeFilesToken;
+  if (result.kind === "torrent") {
+    probeFilesBox.hidden = false;
+    probeFilesBox.innerHTML = `<p class="hint">Torrent dosyaları okunuyor… (magnet ise peer beklenir)</p>`;
+    void loadTorrentFiles(result.url, token);
+  } else {
+    probeFilesBox.hidden = true;
+    probeFilesBox.replaceChildren();
+  }
+
   probeSheet.hidden = false;
   overlay.hidden = false;
+  if (probeCloseTimer) {
+    clearTimeout(probeCloseTimer);
+    probeCloseTimer = null;
+  }
   requestAnimationFrame(() => probeSheet.classList.add("open"));
   $("#probe-download").focus();
+}
+
+/** Probe penceresi icin torrent dosya listesini getirir. */
+async function loadTorrentFiles(source: string, token: number) {
+  try {
+    const listing: TorrentListing = await api.listTorrentFiles(source);
+    if (token !== probeFilesToken) return;
+    probeFiles = listing.files;
+    if (listing.files.length === 0) {
+      probeFilesBox.hidden = true;
+      return;
+    }
+    if (probeState?.kind === "torrent") {
+      const newTotal = listing.files.reduce((sum, f) => sum + f.length, 0);
+      const bits: string[] = [];
+      if (newTotal) bits.push(formatBytes(newTotal));
+      bits.push(`${listing.files.length} dosya`);
+      bits.push("torrent");
+      if (probeState.resumable) bits.push("devam ettirilebilir");
+      probeSummary.textContent = bits.join(" · ");
+      probeSummary.hidden = false;
+      if (listing.name) probeTitle.textContent = listing.name;
+      if (!probeFilename.value.trim()) probeFilename.value = listing.name;
+    }
+    renderFileList(probeFilesBox, listing.files);
+  } catch (err) {
+    if (token !== probeFilesToken) return;
+    probeFilesBox.hidden = false;
+    probeFilesBox.innerHTML = `<p class="hint warn">Dosya listesi alınamadı: ${escapeHtml(String(err))}</p>`;
+  }
 }
 
 probeFormats.addEventListener("change", (event) => {
@@ -509,6 +665,11 @@ $("#probe-download").addEventListener("click", async () => {
   button.disabled = true;
   try {
     const format = probeSelected;
+    const files = probeFiles ? selectedIndexes(probeFiles) : undefined;
+    if (probeFiles && probeFiles.every((f) => !f.included)) {
+      toast("En az bir dosya seçmelisin", "error");
+      return;
+    }
     await api.add({
       url: probeState.url,
       filename: probeFilename.value.trim() || undefined,
@@ -516,10 +677,65 @@ $("#probe-download").addEventListener("click", async () => {
         ? true
         : undefined,
       format: format && format !== "direct" ? format : undefined,
+      files,
     });
-    toast("Kuyruğa eklendi", "success");
+    toast(files ? `${files.length} dosya indirilecek` : "Kuyruğa eklendi", "success");
     closeProbe();
     urlInput.value = "";
+  } catch (err) {
+    toast(String(err), "error");
+  } finally {
+    button.disabled = false;
+  }
+});
+
+/* ---------------- Eklenmis torrent'in dosyalarini degistirme ---------------- */
+
+let filesCloseTimer: ReturnType<typeof setTimeout> | null = null;
+
+function openFilesSheet(item: Download) {
+  if (!item.torrentFiles?.length) return;
+  filesEditId = item.id;
+  filesEditSelection = item.torrentFiles.map((f) => ({ ...f }));
+  filesSub.textContent = `${item.filename} · ${hostOf(item.url)}`;
+  renderFileList(filesList, filesEditSelection);
+  filesSheet.hidden = false;
+  overlay.hidden = false;
+  if (filesCloseTimer) {
+    clearTimeout(filesCloseTimer);
+    filesCloseTimer = null;
+  }
+  requestAnimationFrame(() => filesSheet.classList.add("open"));
+  $("#files-apply").focus();
+}
+
+function closeFilesSheet() {
+  filesSheet.classList.remove("open");
+  filesCloseTimer = setTimeout(() => {
+    filesSheet.hidden = true;
+    filesCloseTimer = null;
+  }, 200);
+  overlay.hidden = true;
+  filesEditId = null;
+}
+
+$("#files-close").addEventListener("click", closeFilesSheet);
+$("#files-cancel").addEventListener("click", closeFilesSheet);
+
+$("#files-apply").addEventListener("click", async () => {
+  const id = filesEditId;
+  if (!id) return;
+  const picked = filesEditSelection.filter((f) => f.included).map((f) => f.index);
+  if (picked.length === 0) {
+    toast("En az bir dosya seçmelisin", "error");
+    return;
+  }
+  const button = $<HTMLButtonElement>("#files-apply");
+  button.disabled = true;
+  try {
+    await api.setTorrentFiles(id, picked);
+    toast(`${picked.length} dosya seçildi`, "success");
+    closeFilesSheet();
   } catch (err) {
     toast(String(err), "error");
   } finally {
@@ -636,6 +852,11 @@ list.addEventListener("click", async (event) => {
       case "reveal":
         await api.revealDownload(id);
         break;
+      case "files": {
+        const item = downloads.find((d) => d.id === id);
+        if (item) openFilesSheet(item);
+        break;
+      }
     }
   } catch (err) {
     toast(String(err), "error");

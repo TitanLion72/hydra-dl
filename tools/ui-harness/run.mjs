@@ -20,6 +20,8 @@ const artifactsDir = path.join(here, "artifacts");
 // Vite "localhost" adini ::1'e cozebiliyor; 127.0.0.1 ile denetlersek bos yere duser.
 const BASE = "http://localhost:1420";
 const PROBE_URL = "https://example.com/video.mp4";
+const TORRENT_URL =
+  "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=arsiv-2026";
 const READY_TIMEOUT = 60_000;
 
 let failures = 0;
@@ -191,6 +193,46 @@ async function main() {
     await page.waitForSelector("#probe-sheet", { state: "hidden", timeout: 10_000 });
     ok("indirme sonrasi inceleme paneli kapandi");
 
+    // --- 4b. Torrent: dosya listesi ve secim -------------------------------
+    await page.fill("#url-input", TORRENT_URL);
+    await page.click("#probe-btn");
+    await page.waitForSelector("#probe-sheet:not([hidden])", { timeout: 20_000 });
+    await page.waitForSelector("#probe-files .file-row", { timeout: 20_000 });
+
+    const fileRows = page.locator("#probe-files .file-row");
+    check((await fileRows.count()) === 3, `torrent dosya satiri sayisi 3 (${await fileRows.count()})`);
+    const fileHead = (await page.locator("#probe-files .files-head").textContent()).replace(/\s+/g, " ").trim();
+    check(fileHead.includes("3/3"), `dosya ozeti '3/3' diyor ('${fileHead}')`);
+    check((await page.locator("#probe-files input:checked").count()) === 3, "baslangicta tum dosyalar secili");
+
+    // Ortadaki dosyayi kapat -> ozet 2/3 olmali.
+    await fileRows.nth(1).locator("input").uncheck();
+    const fileHead2 = (await page.locator("#probe-files .files-head").textContent()).replace(/\s+/g, " ").trim();
+    check(fileHead2.includes("2/3"), `kismi secim ozeti 2/3 ('${fileHead2}')`);
+    check((await page.locator("#probe-files .file-row.on").count()) === 2, "secilmeyen satir isaretsiz");
+    await shot("02b-torrent-files.png");
+
+    await page.click("#probe-download");
+    await page.waitForFunction(() => window.__hydraCalls.add.length > 1, null, { timeout: 10_000 });
+    const torrentAdd = await page.evaluate(() => window.__hydraCalls.add[1]);
+    check(
+      JSON.stringify(torrentAdd.files) === JSON.stringify([0, 2]),
+      `api.add secilen dosyalari gonderdi (${JSON.stringify(torrentAdd.files)})`,
+    );
+
+    // "Tumu" dugmesi secimi geri alir.
+    await page.waitForSelector("#probe-sheet", { state: "hidden", timeout: 10_000 });
+    await page.fill("#url-input", TORRENT_URL);
+    await page.click("#probe-btn");
+    await page.waitForSelector("#probe-files .file-row", { timeout: 20_000 });
+    await page.click("#probe-files [data-files='none']");
+    const noneHead = (await page.locator("#probe-files .files-head").textContent()).replace(/\s+/g, " ").trim();
+    check(noneHead.includes("0/3"), `'Hicbiri' tumunu kaldirdi ('${noneHead}')`);
+    await page.click("#probe-files [data-files='all']");
+    check((await page.locator("#probe-files input:checked").count()) === 3, "'Tumu' secimi geri getirdi");
+    await page.keyboard.press("Escape");
+    await page.waitForSelector("#probe-sheet", { state: "hidden", timeout: 10_000 });
+
     // --- 5. Ayarlar --------------------------------------------------------
     await page.click("#settings-btn");
     await page.waitForSelector("#settings-drawer:not([hidden])", { timeout: 20_000 });
@@ -224,8 +266,8 @@ async function main() {
     ok("ayarlar kaydedildikten sonra cekmece kapandi");
 
     // --- 6. Indirme listesi ------------------------------------------------
-    check(await page.evaluate(() => window.__hydraMock.pushList()), "mock 3 indirmeyi olay uzerinden gonderdi");
-    await page.waitForFunction(() => document.querySelectorAll("#list .row").length === 3, null, { timeout: 10_000 });
+    check(await page.evaluate(() => window.__hydraMock.pushList()), "mock 4 indirmeyi olay uzerinden gonderdi");
+    await page.waitForFunction(() => document.querySelectorAll("#list .row").length === 4, null, { timeout: 10_000 });
 
     const rows = await page.evaluate(() =>
       [...document.querySelectorAll("#list .row")].map((row) => ({
@@ -239,7 +281,7 @@ async function main() {
     for (const row of rows) {
       console.log(`..     satir ${row.id}: ${row.status} / ${row.badge} / ${row.name} (${row.kind})`);
     }
-    check(rows.length === 3, `listede 3 indirme satiri var (${rows.length})`);
+    check(rows.length === 4, `listede 4 indirme satiri var (${rows.length})`);
     check(
       ["downloading", "completed", "failed"].every((status) => rows.some((row) => row.status === status)),
       "downloading / completed / failed durumlarinin ucu de listelendi",
@@ -250,9 +292,29 @@ async function main() {
       check(row?.badge === label, `${status} rozeti '${label}'`);
     }
     check(rows.some((row) => row.kind === "torrent"), "torrent kaydinin ikonu dogru");
-    check((await page.locator("#count-all").textContent()).trim() === "3", "sayac 'Tumu' 3 gosteriyor");
+    check((await page.locator("#count-all").textContent()).trim() === "4", "sayac 'Tumu' 4 gosteriyor");
     await page.waitForTimeout(300);
     await shot("04-list.png");
+
+    // --- 6b. Satirdan torrent dosya secimini degistirme --------------------
+    const torrentRow = page.locator('#list .row[data-id="dl-torrent-4"]');
+    const torrentMeta = (await torrentRow.locator(".seg-info").textContent()).trim();
+    check(torrentMeta.includes("2/3"), `satir '2/3 dosya' gosteriyor ('${torrentMeta}')`);
+
+    await torrentRow.locator('button[data-action="files"]').click();
+    await page.waitForSelector("#files-sheet:not([hidden])", { timeout: 10_000 });
+    check((await page.locator("#files-list .file-row").count()) === 3, "dosya secim sayfasi 3 satir cizdi");
+    check((await page.locator("#files-list input:checked").count()) === 2, "mevcut secim (2 dosya) isaretli");
+
+    await page.locator("#files-list .file-row").nth(2).locator("input").check();
+    await page.click("#files-apply");
+    await page.waitForFunction(() => (window.__hydraCalls.setTorrentFiles?.length ?? 0) > 0, null, {
+      timeout: 10_000,
+    });
+    const setCall = await page.evaluate(() => window.__hydraCalls.setTorrentFiles[0]);
+    check(setCall.id === "dl-torrent-4", `setTorrentFiles dogru kayda gitti (${setCall.id})`);
+    check(JSON.stringify(setCall.files) === JSON.stringify([0, 1, 2]), `setTorrentFiles tum dosyalari gonderdi (${JSON.stringify(setCall.files)})`);
+    await page.waitForSelector("#files-sheet", { state: "hidden", timeout: 10_000 });
 
     // --- 7. Konsol ---------------------------------------------------------
     if (consoleErrors.length === 0) {

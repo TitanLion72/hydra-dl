@@ -1,16 +1,56 @@
 //! BitTorrent/P2P motoru (librqbit). Magnet ve .torrent destekler.
 
 use crate::manager::AppState;
-use crate::model::{Status, Swarm};
+use crate::model::{apply_selection, selected_total, Status, Swarm, TorrentFile};
 use librqbit::api::TorrentIdOrHash;
 use librqbit::{AddTorrent, AddTorrentOptions, ManagedTorrent, Session, TorrentStatsState};
-use std::collections::HashMap;
+use serde::Serialize;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 
 type ManagedTorrentHandle = Arc<ManagedTorrent>;
+
+/// Motorun dosya listesini bu kadar sure icinde getirmesi beklenir.
+/// Magnet'te metadata once peer'lerden iner; bu yuzden comert bir sinir.
+const LIST_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Bir torrent isinin (veya listesinin) dosya dokumu.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TorrentListing {
+    pub name: String,
+    pub info_hash: String,
+    pub total_bytes: u64,
+    pub files: Vec<TorrentFile>,
+}
+
+/// Motorun dondurdugu metadata'dan secim listesi uretir.
+fn files_from_info(info: &librqbit::ValidatedTorrentMetaV1Info<librqbit::ByteBufOwned>) -> Vec<TorrentFile> {
+    info.iter_file_details()
+        .enumerate()
+        .map(|(index, detail)| TorrentFile {
+            index,
+            path: detail
+                .filename
+                .to_vec()
+                .join("/")
+                .trim_start_matches('/')
+                .to_string(),
+            length: detail.len,
+            included: true,
+        })
+        .collect()
+}
+
+/// Motorda kayitli torrent'in dosya listesi (secim bayraklariyla).
+fn files_of(handle: &ManagedTorrentHandle) -> Option<Vec<TorrentFile>> {
+    handle
+        .with_metadata(|meta| files_from_info(&meta.info))
+        .ok()
+}
 
 /// Motora verilecek tek bir torrent isi.
 pub struct TorrentJob<'a> {
@@ -20,6 +60,8 @@ pub struct TorrentJob<'a> {
     pub dir: PathBuf,
     pub name: Option<String>,
     pub start_paused: bool,
+    /// Indirilecek dosya indeksleri; `None` = hepsi.
+    pub files: Option<Vec<usize>>,
 }
 
 #[derive(Default)]
@@ -47,11 +89,85 @@ impl TorrentEngine {
             return Ok(session.clone());
         }
         std::fs::create_dir_all(dir).map_err(|e| format!("Torrent klasörü: {e}"))?;
-        let session = Session::new(dir.clone())
-            .await
-            .map_err(|e| format!("Torrent oturumu başlatılamadı: {e}"))?;
+        let session = match Session::new(dir.clone()).await {
+            Ok(session) => session,
+            Err(err) => {
+                // DHT baslatilamazsa (port kapali, disk izni, cevrimdisi makine)
+                // torrent moturu tamamen dusecegine DHT'siz calissin; magnet
+                // disindaki kaynaklar bundan etkilenmez.
+                eprintln!("[hydra] DHT baslatilamadi ({err}), DHT'siz deneniyor");
+                Session::new_with_opts(
+                    dir.clone(),
+                    librqbit::SessionOptions {
+                        dht: None,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .map_err(|e| format!("Torrent oturumu başlatılamadı: {e}"))?
+            }
+        };
         *guard = Some(session.clone());
         Ok(session)
+    }
+
+    /// Torrent'i indirmeden yalnizca dosya listesini getirir.
+    ///
+    /// `.torrent` kaynagi dogrudan cozulur; magnet'te metadata peer'lerden
+    /// geldigi icin `LIST_TIMEOUT` kadar beklenir.
+    pub async fn list(
+        &self,
+        client: &reqwest::Client,
+        source: &str,
+        dir: &PathBuf,
+    ) -> Result<TorrentListing, String> {
+        let session = self.ensure_session(dir).await?;
+        let add = match resolve_add_source(client, source).await? {
+            TorrentSource::Url(url) => AddTorrent::from_url(url),
+            TorrentSource::Bytes(bytes) => AddTorrent::from_bytes(bytes),
+        };
+        let opts = AddTorrentOptions {
+            paused: true,
+            list_only: true,
+            overwrite: true,
+            output_folder: Some(dir.to_string_lossy().to_string()),
+            ..Default::default()
+        };
+        let response = tokio::time::timeout(LIST_TIMEOUT, session.add_torrent(add, Some(opts)))
+            .await
+            .map_err(|_| {
+                "Torrent bilgisi zamanında alınamadı. Magnet ise peer bulunamadı; .torrent dosyası dene.".to_string()
+            })?
+            .map_err(|e| format!("Torrent okunamadı: {e}"))?;
+
+        let listing = match response {
+            librqbit::AddTorrentResponse::ListOnly(listing) => listing,
+            librqbit::AddTorrentResponse::Added(_, handle)
+            | librqbit::AddTorrentResponse::AlreadyManaged(_, handle) => {
+                // Bu torrent zaten motorda: mevcut dosya listesini kullan.
+                let files = files_of(&handle)
+                    .ok_or_else(|| "Torrent dosya listesi okunamadı".to_string())?;
+                return Ok(TorrentListing {
+                    name: handle.name().unwrap_or_else(|| "torrent".into()),
+                    info_hash: handle.info_hash().as_string(),
+                    total_bytes: files.iter().map(|f| f.length).sum(),
+                    files,
+                });
+            }
+        };
+
+        let files = files_from_info(&listing.info);
+        let name = listing
+            .info
+            .name()
+            .map(|n| n.into_owned())
+            .unwrap_or_else(|| "torrent".into());
+        Ok(TorrentListing {
+            name,
+            info_hash: listing.info_hash.as_string(),
+            total_bytes: files.iter().map(|f| f.length).sum(),
+            files,
+        })
     }
 
     pub async fn add(
@@ -66,6 +182,7 @@ impl TorrentEngine {
             dir,
             name,
             start_paused,
+            files,
         } = job;
         let session = self.ensure_session(&dir).await?;
         let add = match resolve_add_source(client, source).await? {
@@ -76,6 +193,7 @@ impl TorrentEngine {
             paused: start_paused,
             overwrite: true,
             output_folder: Some(dir.to_string_lossy().to_string()),
+            only_files: files.clone(),
             ..Default::default()
         };
         let response = session
@@ -106,11 +224,19 @@ impl TorrentEngine {
             .map(|n| crate::util::sanitize_filename(n.as_str()))
             .or(name)
             .unwrap_or_else(|| "torrent".into());
-        let total = if stats.total_bytes > 0 {
-            Some(stats.total_bytes)
-        } else {
-            None
-        };
+        // Secili dosyalarin toplami, metadata'nin tamamina gore daha dogru.
+        let mut selection = files_of(&handle);
+        if let (Some(list), Some(requested)) = (selection.as_mut(), files.as_deref()) {
+            let _ = apply_selection(list, requested);
+        }
+        let selected = selection
+            .as_ref()
+            .and_then(|files| selected_total(files))
+            .or(if stats.total_bytes > 0 {
+                Some(stats.total_bytes)
+            } else {
+                None
+            });
 
         state.update_item(&id, |item| {
             item.status = if start_paused {
@@ -119,13 +245,14 @@ impl TorrentEngine {
                 Status::Downloading
             };
             item.filename = resolved_name;
-            item.total_bytes = total;
+            item.total_bytes = selected;
             item.downloaded_bytes = stats.progress_bytes;
             item.segments.clear();
             item.resumable = true;
             item.mime = Some("torrent".into());
             item.swarm = Some(Swarm::default());
             item.source = Some(source.to_string());
+            item.torrent_files = selection;
         });
 
         self.handles.lock().await.insert(
@@ -136,6 +263,41 @@ impl TorrentEngine {
                 resolved_path: None,
             },
         );
+        state.persist();
+        state.emit_downloads();
+        Ok(())
+    }
+
+    /// Indirilecek dosya secimini degistirir (indirme durmadan).
+    pub async fn set_files(
+        &self,
+        state: &Arc<AppState>,
+        id: &str,
+        selected: Vec<usize>,
+    ) -> Result<(), String> {
+        let session = self
+            .session
+            .lock()
+            .await
+            .clone()
+            .ok_or("Torrent oturumu kapalı")?;
+        let guard = self.handles.lock().await;
+        let entry = guard.get(id).ok_or("Torrent bulunamadı")?;
+        let mut files = files_of(&entry.handle)
+            .ok_or_else(|| "Torrent dosya listesi henüz hazır değil".to_string())?;
+        apply_selection(&mut files, &selected)?;
+        let wanted: HashSet<usize> = files.iter().filter(|f| f.included).map(|f| f.index).collect();
+        session
+            .update_only_files(&entry.handle, &wanted)
+            .await
+            .map_err(|e| format!("Dosya seçimi uygulanamadı: {e}"))?;
+        drop(guard);
+
+        let total = selected_total(&files);
+        state.update_item(id, |item| {
+            item.total_bytes = total;
+            item.torrent_files = Some(files);
+        });
         state.persist();
         state.emit_downloads();
         Ok(())
@@ -628,6 +790,72 @@ mod tests {
         // Speed yalniz istatistik ciktisinda; kendi cevrimimizi dogrulayalim.
         let mbps = 1.5f64;
         assert_eq!((mbps * 1024.0 * 1024.0) as u64, 1_572_864);
+    }
+
+    /// Gercek bir cok dosyali torrent olusturup dosya listesini okur.
+    /// Ag gerekmez: kaynak yerel `.torrent` dosyasi.
+    #[tokio::test]
+    async fn yerel_torrentin_dosyalari_listelenir() {
+        let dir = tempfile::tempdir().unwrap();
+        let files = ["bir.txt", "iki.bin", "uc.dat"];
+        for (i, name) in files.iter().enumerate() {
+            std::fs::write(dir.path().join(name), vec![b'x'; 2048 * (i + 1)]).unwrap();
+        }
+        let made = librqbit::create_torrent(
+            dir.path(),
+            Default::default(),
+            &librqbit::spawn_utils::BlockingSpawner::new(1),
+        )
+        .await
+        .unwrap();
+        let torrent_path = dir.path().join("test.torrent");
+        std::fs::write(&torrent_path, made.as_bytes().unwrap()).unwrap();
+
+        let engine = TorrentEngine::new();
+        let client = crate::engine::http::build_client();
+        let out = tempfile::tempdir().unwrap();
+        let listing = engine
+            .list(&client, torrent_path.to_str().unwrap(), &out.path().to_path_buf())
+            .await
+            .unwrap();
+
+        assert_eq!(listing.files.len(), 3);
+        assert_eq!(listing.total_bytes, 2048 + 4096 + 6144);
+        assert!(listing.files.iter().all(|f| f.included));
+        assert_eq!(listing.files[2].index, 2);
+        assert_eq!(listing.files[2].length, 6144);
+        assert!(!listing.info_hash.is_empty());
+
+        // Secimi daralt: yalniz ikinci dosya.
+        let mut subset = listing.files.clone();
+        apply_selection(&mut subset, &[1]).unwrap();
+        assert_eq!(selected_total(&subset), Some(4096));
+        assert!(!subset[0].included && subset[1].included && !subset[2].included);    }
+
+    #[test]
+    fn secim_kurallari() {
+        let mut files = vec![
+            TorrentFile {
+                index: 0,
+                path: "a".into(),
+                length: 10,
+                included: true,
+            },
+            TorrentFile {
+                index: 1,
+                path: "b".into(),
+                length: 5,
+                included: true,
+            },
+        ];
+        assert_eq!(selected_total(&files), Some(15));
+        // Bos secim reddedilir.
+        assert!(apply_selection(&mut files, &[]).is_err());
+        // Olmayan indeks -> hicbir dosya secili kalmaz.
+        assert!(apply_selection(&mut files, &[7]).is_err());
+        assert_eq!(selected_total(&files), None);
+        apply_selection(&mut files, &[1]).unwrap();
+        assert_eq!(selected_total(&files), Some(5));
     }
 
     #[tokio::test]

@@ -15,6 +15,7 @@ const ENDPOINTS = {
   settings: "./settings",
   ytdlp: "./ytdlp",
   ytdlpInstall: "./ytdlp/install",
+  torrentFiles: "./torrent/files",
 };
 
 /* ---------------- Kısayollar ---------------- */
@@ -90,6 +91,12 @@ const els = {
   formatList: $("#formatList"),
   candidateGroup: $("#candidateGroup"),
   candidateList: $("#candidateList"),
+  fileGroup: $("#fileGroup"),
+  fileSummary: $("#fileSummary"),
+  probeSize: null,
+  fileList: $("#fileList"),
+  filesAll: $("#filesAll"),
+  filesNone: $("#filesNone"),
   probeFilename: $("#probeFilename"),
   sheetAdd: $("#sheetAdd"),
 
@@ -460,9 +467,17 @@ function updateRow(row, download) {
     memo.badgeStatus = download.status;
   }
 
-  if (memo.kind !== download.kind) {
-    setText(refs.kind, kindLabel(download.kind));
-    memo.kind = download.kind;
+  let kindText = kindLabel(download.kind);
+  if (download.kind === "torrent" && Array.isArray(download.torrentFiles)) {
+    const files = download.torrentFiles;
+    if (files.length > 1) {
+      const picked = files.filter((file) => file.included).length;
+      kindText += ` · ${picked}/${files.length} dosya`;
+    }
+  }
+  if (memo.kind !== kindText) {
+    setText(refs.kind, kindText);
+    memo.kind = kindText;
   }
 
   const title = download.filename || download.url || "Adsız indirme";
@@ -990,6 +1005,8 @@ function formatOption({ id, label, size, note, name, checked, onPick }) {
   return wrap;
 }
 
+let probeToken = 0;
+
 function renderProbe(data, originalUrl) {
   els.sheetLoading.hidden = true;
   els.sheetError.hidden = true;
@@ -1000,13 +1017,15 @@ function renderProbe(data, originalUrl) {
   setText(els.probeSub, data.finalUrl || data.url || originalUrl);
 
   els.probeFacts.replaceChildren();
+  const sizeRow = factRow("Boyut", formatBytes(data.size));
   els.probeFacts.append(
     factRow("Tür", kindLabel(data.kind)),
     factRow("Dosya", data.filename || "—"),
-    factRow("Boyut", formatBytes(data.size)),
+    sizeRow,
     factRow("Format", data.mime || "—"),
     factRow("Devam edebilir", data.resumable ? "Evet" : "Hayır"),
   );
+  els.probeSize = sizeRow.querySelector("dd");
 
   els.probeWarnings.replaceChildren();
   const warnings = Array.isArray(data.warnings) ? data.warnings.filter(Boolean) : [];
@@ -1124,6 +1143,89 @@ function renderProbe(data, originalUrl) {
   els.probeFilename.value = data.filename || "";
   els.sheetAdd.disabled = false;
   els.sheetAdd.textContent = "İndir";
+
+  // Torrent: dosya listesi + seçim (arka planda getirilir).
+  probe.files = null;
+  const token = ++probeToken;
+  if (data.kind === "torrent") {
+    els.fileGroup.hidden = false;
+    els.fileSummary.textContent = "Dosya listesi okunuyor… (magnet ise peer beklenir)";
+    els.fileList.replaceChildren();
+    void loadTorrentFiles(data.url || originalUrl, probe, token);
+  } else {
+    els.fileGroup.hidden = true;
+    els.fileList.replaceChildren();
+  }
+}
+
+/** Dosya listesini çizer; seçim değiştikçe özeti tazeler. */
+function renderFiles(files) {
+  els.fileList.replaceChildren();
+  const draw = () => {
+    const picked = files.filter((file) => file.included);
+    const total = picked.reduce((sum, file) => sum + file.length, 0);
+    els.fileSummary.textContent =
+      picked.length === files.length
+        ? `${files.length} dosya · ${formatBytes(total)} (tümü)`
+        : `${picked.length}/${files.length} dosya · ${formatBytes(total)} seçili`;
+    els.fileList.replaceChildren(
+      ...files.map((file) => {
+        const label = document.createElement("label");
+        label.className = `file-opt${file.included ? " is-on" : ""}`;
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.checked = file.included;
+        const name = document.createElement("span");
+        name.className = "file-name";
+        name.textContent = file.path;
+        const size = document.createElement("span");
+        size.className = "file-size";
+        size.textContent = formatBytes(file.length);
+        box.addEventListener("change", () => {
+          file.included = box.checked;
+          label.classList.toggle("is-on", box.checked);
+          draw();
+        });
+        label.append(box, name, size);
+        return label;
+      }),
+    );
+  };
+  draw();
+}
+
+/** Torrent dosya listesini sunucudan alır. */
+async function loadTorrentFiles(source, probe, token) {
+  try {
+    const listing = await api(ENDPOINTS.torrentFiles, {
+      method: "POST",
+      body: { source },
+      timeout: 70_000,
+    });
+    if (token !== probeToken || state.probe !== probe) return;
+    const files = Array.isArray(listing && listing.files) ? listing.files : [];
+    if (files.length === 0) {
+      els.fileGroup.hidden = true;
+      return;
+    }
+    probe.files = files;
+    if (listing.name && !els.probeFilename.value.trim()) els.probeFilename.value = listing.name;
+    if (listing.name) setText(els.probeTitle, listing.name);
+    // Secilebilir toplam boyut (motorun tam boyutu yerine secim toplami).
+    if (els.probeSize && listing.totalBytes) setText(els.probeSize, formatBytes(listing.totalBytes));
+    renderFiles(files);
+  } catch (error) {
+    if (token !== probeToken) return;
+    els.fileSummary.textContent = `Dosya listesi alınamadı: ${error.message || "bilinmeyen hata"}`;
+  }
+}
+
+/** Seçili dosya indeksleri; hepsi seçiliyse `undefined`. */
+function selectedFiles(files) {
+  if (!Array.isArray(files)) return undefined;
+  const picked = files.filter((file) => file.included).map((file) => file.index);
+  if (picked.length === 0 || picked.length === files.length) return undefined;
+  return picked;
 }
 
 async function startProbe(rawUrl, mediaHint) {
@@ -1180,6 +1282,15 @@ async function addFromProbe() {
   const filename = els.probeFilename.value.trim();
   if (filename) body.filename = filename;
 
+  const files = selectedFiles(probe.files);
+  if (Array.isArray(probe.files) && probe.files.every((file) => !file.included)) {
+    showToast("En az bir dosya seçmelisin.", "error");
+    button.disabled = false;
+    button.textContent = previous === "Ekleniyor…" ? "İndir" : previous;
+    return;
+  }
+  if (files) body.files = files;
+
   if (data.kind === "media" || data.needsYtdlp || probe.format) body.media = true;
   else if (data.kind === "file") body.media = false;
 
@@ -1187,7 +1298,7 @@ async function addFromProbe() {
     const result = await api(ENDPOINTS.add, { method: "POST", body });
     if (result && result.ok === false) throw new Error(result.error || "Eklenemedi.");
     const label = result && result.filename ? result.filename : body.url;
-    showToast(`İndirmeye eklendi: ${label}`);
+    showToast(files ? `Eklendi: ${label} (${files.length} dosya)` : `İndirmeye eklendi: ${label}`);
     closeSheet();
     showView("downloads");
     loadDownloads();
@@ -1458,6 +1569,16 @@ function bindSheet() {
     if (event.target === els.sheet) closeSheet();
   });
   els.sheetAdd.addEventListener("click", addFromProbe);
+
+  // Torrent dosya listesinde toplu seçim.
+  const setAll = (value) => {
+    const files = state.probe && state.probe.files;
+    if (!Array.isArray(files)) return;
+    for (const file of files) file.included = value;
+    renderFiles(files);
+  };
+  if (els.filesAll) els.filesAll.addEventListener("click", () => setAll(true));
+  if (els.filesNone) els.filesNone.addEventListener("click", () => setAll(false));
 
   document.addEventListener("keydown", (event) => {
     if (els.sheet.hidden) return;

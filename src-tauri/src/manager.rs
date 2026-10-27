@@ -26,6 +26,8 @@ pub struct AddOptions {
     pub media: Option<bool>,
     /// yt-dlp format kimligi (`-f`).
     pub format: Option<String>,
+    /// Torrent'te indirilecek dosya indeksleri (`None` = hepsi).
+    pub files: Option<Vec<usize>>,
 }
 
 struct Handle {
@@ -590,6 +592,7 @@ pub async fn add(
         format: options.format.clone(),
         swarm: None,
         source: None,
+        torrent_files: None,
     };
 
     {
@@ -647,6 +650,7 @@ async fn add_torrent(
         format: None,
         swarm: Some(crate::model::Swarm::default()),
         source: Some(source.to_string()),
+        torrent_files: None,
     };
     {
         let mut store = state.store.lock().unwrap();
@@ -665,6 +669,7 @@ async fn add_torrent(
                 dir: item.dir.clone(),
                 name: Some(item.filename.clone()),
                 start_paused: false,
+                files: options.files.clone(),
             },
         )
         .await
@@ -916,6 +921,7 @@ pub fn resume_torrents(state: &Arc<AppState>) {
                         dir,
                         name: Some(filename),
                         start_paused: paused,
+                        files: None,
                     },
                 )
                 .await

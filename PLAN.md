@@ -21,6 +21,8 @@ v0.2 = "IDM'den iyi" temeli. Sıra bağımlılığa göre; üstteki bitmeden alt
 - [x] Sağlamlık: `.torrent` indirme sayfası takibi (çerez/UA), bağlantı bütçesi
       (toplam 64 soket), medyada parça eşzamanlılığı + hız limiti
 - [x] Web arayüzünde yt-dlp kurulum düğmesi + `tools/web-ui-check.mjs`
+- [x] **Torrent'te dosya seçimi**: `POST /torrent/files` (liste + seçim), indirme
+      durmadan seçim değiştirme, masaüstü + telefon arayüzü
 
 ## v0.3 — bir sonraki dilim
 

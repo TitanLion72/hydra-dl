@@ -241,6 +241,7 @@ mod tests {
             format: None,
             swarm: None,
             source: None,
+            torrent_files: None,
         }
     }
 

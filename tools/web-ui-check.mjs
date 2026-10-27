@@ -22,6 +22,8 @@ const { chromium } = requireHarness("playwright");
 const PORT = Number(process.env.HYDRA_WEBUI_PORT || 6791);
 const BASE = `http://127.0.0.1:${PORT}`;
 const SHOTS = process.env.TEMP || process.env.TMP || ".";
+const TORRENT_URL =
+  "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=arsiv-2026";
 
 const TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -85,6 +87,10 @@ async function mockApi(
   { available, version = "2099.01.01", installError = null, statusDelay = 0 },
 ) {
   let installed = available;
+  const torrentSources = [];
+  const setTorrentFilesCalls = [];
+  const addCalls = [];
+  page.__calls = { torrentSources, setTorrentFilesCalls, addCalls };
   await page.route("**/events", (route) =>
     route.fulfill({ status: 200, contentType: "text/event-stream", body: ": mock\n\n" }),
   );
@@ -100,6 +106,54 @@ async function mockApi(
     }),
   );
   await page.route("**/downloads", (route) => route.fulfill({ ...JSON_OK, body: "[]" }));
+  await page.route("**/probe", (route) =>
+    route.fulfill({
+      ...JSON_OK,
+      body: JSON.stringify({
+        ok: true,
+        url: "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=arsiv-2026",
+        finalUrl: "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=arsiv-2026",
+        kind: "torrent",
+        title: "arsiv-2026",
+        filename: "arsiv-2026",
+        resumable: true,
+        needsYtdlp: false,
+        formats: [],
+        candidates: [],
+        warnings: [],
+      }),
+    }),
+  );
+  await page.route("**/add", async (route) => {
+    addCalls.push(JSON.parse(route.request().postData() || "{}"));
+    await route.fulfill({
+      ...JSON_OK,
+      body: JSON.stringify({ ok: true, id: "dl-yeni", filename: "arsiv-2026" }),
+    });
+  });  await page.route("**/torrent/files", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 250)); // metadata taklidi
+    const body = JSON.parse(route.request().postData() || "{}");
+    if (body.files) {
+      const updated = body.files;
+      setTorrentFilesCalls.push({ id: body.id, files: updated });
+      await route.fulfill({ ...JSON_OK, body: JSON.stringify({ ok: true }) });
+      return;
+    }
+    torrentSources.push(body.source);
+    await route.fulfill({
+      ...JSON_OK,
+      body: JSON.stringify({
+        name: "arsiv-2026",
+        infoHash: "0123456789abcdef0123456789abcdef01234567",
+        totalBytes: 3145728000,
+        files: [
+          { index: 0, path: "bolum-01.mkv", length: 1572864000, included: true },
+          { index: 1, path: "bolum-02.mkv", length: 1572864000, included: true },
+          { index: 2, path: "afis.jpg", length: 524288, included: true },
+        ],
+      }),
+    });
+  });
   await page.route("**/settings", (route) =>
     route.fulfill({
       ...JSON_OK,
@@ -224,6 +278,60 @@ try {
     check(await page.locator("#installYtdlp").isEnabled(), "hatadan sonra düğme etkin");
     const label = (await page.textContent("#installYtdlp")).trim();
     check(/kur/i.test(label) && !/Kuruluyor/.test(label), `düğme metni geri döndü: ${label}`);
+    await page.close();
+  }
+
+  // 4) Torrent: probe → dosya listesi → kısmi seçim → POST /add files ile.
+  {
+    const page = await browser.newPage();
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(String(error)));
+    await mockApi(page, { available: true });
+    await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+    await page.fill("#pasteUrl", TORRENT_URL);
+    await page.press("#pasteUrl", "Enter");
+    await page.waitForSelector("#sheet:not([hidden])");
+    await page.waitForSelector("#fileGroup:not([hidden])", { timeout: 20000 });
+    await page.waitForSelector("#fileList .file-opt", { timeout: 20000 });
+
+    const rowCount = await page.locator("#fileList .file-opt").count();
+    check(rowCount === 3, `telefonda 3 dosya satırı (${rowCount})`);
+    const summary = (await page.textContent("#fileSummary")).trim();
+    check(summary.includes("3 dosya") && summary.includes("tümü"), `özet: ${summary}`);
+
+    // Ortadaki dosyayı kapat → 2/3.
+    await page.locator("#fileList .file-opt").nth(1).locator("input").uncheck();
+    const summary2 = (await page.textContent("#fileSummary")).trim();
+    check(summary2.includes("2/3"), `kısmi seçim özeti: ${summary2}`);
+    await page.screenshot({ path: path.join(SHOTS, "hydra-webui-torrent-dosyalar.png") });
+
+    await page.click("#sheetAdd");
+    let addCall = null;
+    for (let i = 0; i < 40 && !addCall; i += 1) {
+      await page.waitForTimeout(100);
+      const calls = page.__calls?.addCalls ?? [];
+      addCall = calls[0] ?? null;
+    }
+    check(!!addCall, "POST /add çağrısı gitti");
+    check(
+      JSON.stringify(addCall?.files) === JSON.stringify([0, 2]),
+      `seçilen dosyalar gönderildi (${JSON.stringify(addCall?.files)})`,
+    );
+    check((page.__calls?.torrentSources ?? []).length === 1, "GET dosya listesi bir kez istendi");
+
+    // "Hiçbiri" → uyarı, istek gitmez.
+    await page.fill("#pasteUrl", TORRENT_URL);
+    await page.press("#pasteUrl", "Enter");
+    await page.waitForSelector("#fileList .file-opt", { timeout: 20000 });
+    await page.click("#filesNone");
+    const noneSummary = (await page.textContent("#fileSummary")).trim();
+    check(noneSummary.includes("0/3"), `'Hiçbiri' seçimi kaldırdı: ${noneSummary}`);
+    await page.click("#sheetAdd");
+    await page.waitForTimeout(600);
+    check((page.__calls?.addCalls ?? []).length === 1, "boş seçimde /add çağrısı gitmedi");
+    const toast = (await page.textContent("#toast")).trim();
+    check(/En az bir dosya/.test(toast), `uyarı gösterildi: ${toast}`);
+    check(errors.length === 0, `konsol hatası yok (${errors.join(" | ")})`);
     await page.close();
   }
 

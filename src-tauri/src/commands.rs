@@ -32,6 +32,7 @@ pub fn list_downloads(state: St<'_>) -> Vec<Download> {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri komut yuzeyi: her alan ayri arguman.
 pub async fn add_download(
     state: St<'_>,
     url: String,
@@ -40,6 +41,7 @@ pub async fn add_download(
     media: Option<bool>,
     referer: Option<String>,
     format: Option<String>,
+    files: Option<Vec<usize>>,
 ) -> Result<Download, String> {
     let options = AddOptions {
         dir: dir.filter(|d| !d.trim().is_empty()).map(PathBuf::from),
@@ -47,8 +49,35 @@ pub async fn add_download(
         referer,
         media,
         format: format.filter(|f| !f.trim().is_empty()),
+        files,
     };
     manager::add(state.inner(), &url, options).await
+}
+
+/// Torrent dosya listesini getirir (indirme baslatmaz).
+#[tauri::command]
+pub async fn list_torrent_files(
+    state: St<'_>,
+    source: String,
+) -> Result<crate::torrent::TorrentListing, String> {
+    let settings = state.settings();
+    if !settings.torrent_enabled {
+        return Err("Torrent motoru kapalı. Ayarlardan açabilirsiniz.".into());
+    }
+    state
+        .torrent
+        .list(state.http(), &source, &settings.download_dir)
+        .await
+}
+
+/// Eklenmis torrent'in indirilecek dosyalarini degistirir.
+#[tauri::command]
+pub async fn set_torrent_files(
+    state: St<'_>,
+    id: String,
+    files: Vec<usize>,
+) -> Result<(), String> {
+    state.torrent.set_files(state.inner(), &id, files).await
 }
 
 #[tauri::command]

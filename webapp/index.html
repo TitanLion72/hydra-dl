@@ -397,6 +397,16 @@
               <div id="candidateList" class="candidate-list" role="radiogroup" aria-labelledby="candidateLabel"></div>
             </div>
 
+            <div id="fileGroup" class="sheet-block" hidden>
+              <p class="field-label" id="fileLabel">Dosyalar</p>
+              <p id="fileSummary" class="file-summary"></p>
+              <div class="file-actions">
+                <button id="filesAll" class="btn ghost small" type="button">Tümü</button>
+                <button id="filesNone" class="btn ghost small" type="button">Hiçbiri</button>
+              </div>
+              <div id="fileList" class="file-list"></div>
+            </div>
+
             <label class="field">
               <span class="field-label" for="probeFilename">Dosya adı</span>
               <input id="probeFilename" class="input" type="text" autocapitalize="off" spellcheck="false" />

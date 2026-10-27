@@ -80,6 +80,9 @@ pub struct AddBody {
     pub format: Option<String>,
     #[serde(default)]
     pub media: Option<bool>,
+    /// Torrent'te indirilecek dosya indeksleri.
+    #[serde(default)]
+    pub files: Option<Vec<usize>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -102,6 +105,19 @@ pub struct TorrentBody {
     pub source: String,
     #[serde(default)]
     pub dir: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TorrentFilesBody {
+    /// Dosya listesini isteyecegimiz torrent kaynagi.
+    #[serde(default)]
+    pub source: Option<String>,
+    /// Indirme kimligi (eklenmis bir torrent'in secimini degistirmek icin).
+    #[serde(default)]
+    pub id: Option<String>,
+    /// Yeni secim; `source` verildiginde yok sayilir.
+    #[serde(default)]
+    pub files: Option<Vec<usize>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -192,6 +208,7 @@ async fn add(State(state): State<Arc<AppState>>, Json(body): Json<AddBody>) -> R
             referer: body.referer,
             format: body.format,
             media: body.media,
+            files: body.files,
         },
     )
     .await
@@ -207,6 +224,7 @@ async fn add_get(State(state): State<Arc<AppState>>, Query(query): Query<AddQuer
             referer: query.referer,
             format: query.format,
             media: query.media,
+            files: None,
         },
     )
     .await
@@ -222,6 +240,7 @@ async fn add_impl(state: Arc<AppState>, body: AddBody) -> Response {
         referer: body.referer,
         media: body.media,
         format: body.format.filter(|f| !f.trim().is_empty()),
+        files: body.files,
     };
     match manager::add(&state, &body.url, options).await {
         Ok(item) => (
@@ -348,6 +367,36 @@ async fn add_torrent(
         )
             .into_response(),
         Err(err) => error_response(StatusCode::BAD_REQUEST, err),
+    }
+}
+
+/// `POST /torrent/files`
+/// - `{ "source": "magnet:..." }` → torrent dosya listesi (indirme baslamaz).
+/// - `{ "id": "...", "files": [0,2] }` → eklenmis torrent'in secimini degistirir.
+async fn torrent_files(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<TorrentFilesBody>,
+) -> Response {
+    if let Some(source) = body.source.filter(|s| !s.trim().is_empty()) {
+        let settings = state.settings();
+        if !settings.torrent_enabled {
+            return error_response(StatusCode::BAD_REQUEST, "Torrent motoru kapalı. Ayarlardan açabilirsiniz.");
+        }
+        let dir = settings.download_dir.clone();
+        match state.torrent.list(state.http(), &source, &dir).await {
+            Ok(listing) => (StatusCode::OK, Json(listing)).into_response(),
+            Err(err) => error_response(StatusCode::UNPROCESSABLE_ENTITY, err),
+        }
+    } else if let Some(id) = body.id {
+        match body.files {
+            Some(files) => match state.torrent.set_files(&state, &id, files).await {
+                Ok(()) => (StatusCode::OK, Json(serde_json::json!({ "ok": true }))).into_response(),
+                Err(err) => error_response(StatusCode::BAD_REQUEST, err),
+            },
+            None => error_response(StatusCode::BAD_REQUEST, "files gerekli"),
+        }
+    } else {
+        error_response(StatusCode::BAD_REQUEST, "source veya id gerekli")
     }
 }
 
@@ -487,6 +536,7 @@ pub fn api_router(state: Arc<AppState>) -> Router {
         .route("/downloads/{id}", delete(remove))
         .route("/settings", get(get_settings).put(put_settings))
         .route("/torrents", post(add_torrent).get(list_torrents))
+    .route("/torrent/files", post(torrent_files))
         .route("/ytdlp", get(ytdlp_status))
         .route("/ytdlp/install", post(install_ytdlp))
         .route("/assets/{*path}", get(static_file))

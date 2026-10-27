@@ -89,6 +89,23 @@ Gövde: `{ "url": "...", "media": true|false|null }`
 |---|---|---|
 | POST | `/torrents` | `{ "source": "magnet:..." \| "base64 .torrent", "dir": "...", "name": "..." }` |
 | GET | `/torrents` | `{ "ok": true, "torrents": [{ "id", "filename", "status", "downloadedBytes", "totalBytes", "speedBps", "peers", "error", "filePath" }] }` |
+| POST | `/torrent/files` | `{ "source": "magnet:..." }` → dosya listesi (indirme **başlamaz**) |
+| POST | `/torrent/files` | `{ "id": "uuid", "files": [0, 2] }` → eklenmiş torrent'in seçimini değiştirir |
+
+```json
+{ "name": "arsiv", "infoHash": "0123...", "totalBytes": 3145728000,
+  "files": [{ "index": 0, "path": "bolum-01.mkv", "length": 1572864000, "included": true }] }
+```
+
+Dosya seçimi:
+
+- `POST /add` gövdesine `"files": [0, 2]` eklersen yalnız o dosyalar iner; alan yoksa hepsi.
+- `POST /torrent/files` listesi `.torrent` kaynağında hemen, magnet'te metadata peer'lerden
+  gelene kadar (en fazla 60 sn) sürer; süre aşılırsa `422`.
+- Seçim değişince indirme durmaz: motor kalan parçaları yeniden planlar, bitmiş dosyalar
+  diskte kalır. `totalBytes` seçili dosyaların toplamıdır; `/downloads` kaydında
+  `torrentFiles` alanı seçim durumunu taşır (tek dosyalı torrentte boş olabilir).
+- Boş seçim reddedilir (`400`, "En az bir dosya seçmelisin").
 
 Torrent'ler `/downloads` listesinde `kind: "torrent"` olarak da görünür.
 `filePath` tek dosyalı torrentte dosyanın kendisi, çok dosyalıda **indirme klasörüdür**.

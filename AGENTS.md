@@ -31,7 +31,7 @@ Ağ/indirme davranışına dokunduysan `tools/e2e.mjs` de koşar. Üçünden bir
 | `src-tauri/src/engine/http.rs` | probe, Range indirme, parça birleştirme |
 | `src-tauri/src/extract.rs` | **akıllı kaynak bulucu**: HTML/JSON-LD/meta/video tarama, HLS varyantları, yt-dlp format listesi |
 | `src-tauri/src/ytdlp.rs` | yt-dlp bulma, `-J` format listesi, süreç + ilerleme |
-| `src-tauri/src/torrent.rs` | librqbit motoru: magnet/.torrent, pause/resume, swarm |
+| `src-tauri/src/torrent.rs` | librqbit motoru: magnet/.torrent, pause/resume, swarm, **dosya listesi/seçimi** |
 | `src-tauri/src/manager.rs` | kuyruk/eşzamanlılık/ticker, HTTP+medya+torrent yönlendirme, olaylar |
 | `src-tauri/src/web.rs` | **tek API yönlendiricisi** + statik `webapp/` servisi + token/CORS |
 | `src-tauri/src/capture.rs` | aynı yönlendiriciyi `127.0.0.1:6712`'de açar (eklenti) |
@@ -56,7 +56,8 @@ Ağ/indirme davranışına dokunduysan `tools/e2e.mjs` de koşar. Üçünden bir
 6. **Durum şeması**: `downloads.json` alanları `#[serde(default)]` ile geriye uyumlu;
    alan sil/yeniden adlandır → `STATE_VERSION` + migrasyon.
 7. **API sözleşmesi** (`docs/API.md`): `/probe`, `/add`, `/downloads/{id}/...`,
-   `/events`, `/settings`, `/torrents`. Masaüstü, web ve eklenti aynı sözleşmeyi kullanır.
+   `/events`, `/settings`, `/torrents`, `/torrent/files`. Masaüstü, web ve eklenti aynı
+   sözleşmeyi kullanır.
 8. **Tauri argümanları** JS'ten camelCase (`deleteFile`, `format`, `media`).
 9. **Torrent kuyruğu ayrı**: torrent'ler `take_queued`'ya girmez, kendi motorunda sürer.
 10. **Web sunucusu LAN'a açılır**: `0.0.0.0` + token opsiyonu. Token boşsa uyarı metni

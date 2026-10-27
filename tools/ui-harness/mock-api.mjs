@@ -134,6 +134,35 @@ const DOWNLOADS = [
     swarm: null,
     source: null,
   },
+  {
+    id: "dl-torrent-4",
+    url: "magnet:?xt=urn:btih:fedcba9876543210fedcba9876543210fedcba98&dn=koleksiyon",
+    filename: "koleksiyon",
+    dir: DOWNLOAD_DIR,
+    kind: "torrent",
+    status: "downloading",
+    totalBytes: 3145728000,
+    downloadedBytes: 943718400,
+    segments: [],
+    resumable: true,
+    speedBps: 3145728,
+    progress: 0.3,
+    error: null,
+    createdAt: NOW - 120000,
+    finishedAt: null,
+    connections: 0,
+    referer: null,
+    mime: null,
+    filePath: null,
+    format: null,
+    swarm: { peers: 12, seeders: 12 },
+    source: "magnet",
+    torrentFiles: [
+      { index: 0, path: "bolum-01.mkv", length: 1572864000, included: true },
+      { index: 1, path: "bolum-02.mkv", length: 1572864000, included: true },
+      { index: 2, path: "afis.jpg", length: 524288, included: false },
+    ],
+  },
 ];
 
 const PROBE_RESULT = {
@@ -192,6 +221,31 @@ const PROBE_RESULT = {
   warnings: ["Bu sayfada 2 reklam bağlantısı atlandı."],
 };
 
+const TORRENT_PROBE_RESULT = {
+  ok: true,
+  url: "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=arsiv-2026",
+  finalUrl: "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=arsiv-2026",
+  kind: "torrent",
+  title: "arsiv-2026",
+  filename: "arsiv-2026",
+  resumable: true,
+  needsYtdlp: false,
+  formats: [],
+  candidates: [],
+  warnings: [],
+};
+
+const TORRENT_LISTING = {
+  name: "arsiv-2026",
+  infoHash: "0123456789abcdef0123456789abcdef01234567",
+  totalBytes: 3145728000,
+  files: [
+    { index: 0, path: "bolum-01.mkv", length: 1572864000, included: true },
+    { index: 1, path: "bolum-02.mkv", length: 1572864000, included: true },
+    { index: 2, path: "afis.jpg", length: 524288, included: true },
+  ],
+};
+
 const calls = {
   list: 0,
   add: [],
@@ -225,9 +279,27 @@ export const api = {
     await wait();
     return { ...DOWNLOADS[0], id: `dl-added-${calls.add.length}`, url: args.url };
   },
+  listTorrentFiles: async (source) => {
+    calls.listTorrentFiles = (calls.listTorrentFiles ?? 0) + 1;
+    calls.torrentSources = calls.torrentSources ?? [];
+    calls.torrentSources.push(source);
+    await wait();
+    return {
+      ...TORRENT_LISTING,
+      files: TORRENT_LISTING.files.map((file) => ({ ...file })),
+    };
+  },
+  setTorrentFiles: async (id, files) => {
+    calls.setTorrentFiles = calls.setTorrentFiles ?? [];
+    calls.setTorrentFiles.push({ id, files });
+    await wait();
+  },
   probe: async (url, media) => {
     calls.probe.push({ url, media });
     await wait();
+    if (/^magnet:|\.torrent($|\?)/i.test(url)) {
+      return { ...TORRENT_PROBE_RESULT, url, finalUrl: url };
+    }
     return { ...PROBE_RESULT, url, finalUrl: PROBE_RESULT.finalUrl };
   },
   pause: async (id) => {

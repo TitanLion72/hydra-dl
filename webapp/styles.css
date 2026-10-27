@@ -1180,6 +1180,67 @@ a {
   overscroll-behavior: contain;
 }
 
+/* Torrent dosya secimi (telefon) */
+.file-summary {
+  margin: 2px 0 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.file-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 38dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.file-opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: rgba(12, 21, 36, 0.72);
+  cursor: pointer;
+}
+
+.file-opt.is-on {
+  border-color: rgba(34, 211, 238, 0.42);
+  background: rgba(34, 211, 238, 0.08);
+}
+
+.file-opt input {
+  accent-color: var(--accent, #22d3ee);
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  flex: none;
+}
+
+.file-opt .file-name {
+  font-size: 12.5px;
+  word-break: break-all;
+  line-height: 1.35;
+}
+
+.file-opt .file-size {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  padding-left: 8px;
+}
+
 .opt {
   position: relative;
   display: flex;

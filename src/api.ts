@@ -23,6 +23,21 @@ export interface Swarm {
   seeders: number;
 }
 
+/** Torrent icindeki tek dosya. */
+export interface TorrentFile {
+  index: number;
+  path: string;
+  length: number;
+  included: boolean;
+}
+
+export interface TorrentListing {
+  name: string;
+  infoHash: string;
+  totalBytes: number;
+  files: TorrentFile[];
+}
+
 export interface Download {
   id: string;
   url: string;
@@ -46,6 +61,7 @@ export interface Download {
   format: string | null;
   swarm: Swarm | null;
   source: string | null;
+  torrentFiles?: TorrentFile[] | null;
 }
 
 export interface Settings {
@@ -147,6 +163,8 @@ export interface AddArgs {
   media?: boolean;
   referer?: string;
   format?: string;
+  /** Torrent'te indirilecek dosya indeksleri. */
+  files?: number[];
 }
 
 export const api = {
@@ -154,6 +172,10 @@ export const api = {
   add: (args: AddArgs) => invoke<Download>("add_download", { ...args }),
   probe: (url: string, media?: boolean) =>
     invoke<ProbeResult>("probe_url", { url, media }),
+  listTorrentFiles: (source: string) =>
+    invoke<TorrentListing>("list_torrent_files", { source }),
+  setTorrentFiles: (id: string, files: number[]) =>
+    invoke<void>("set_torrent_files", { id, files }),
   pause: (id: string) => invoke<void>("pause_download", { id }),
   resume: (id: string) => invoke<void>("resume_download", { id }),
   cancel: (id: string) => invoke<void>("cancel_download", { id }),
