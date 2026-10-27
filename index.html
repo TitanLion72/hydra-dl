@@ -113,7 +113,7 @@
               <input id="set-connections" type="number" min="1" max="16" />
             </label>
           </div>
-          <p class="hint">İnternet hattı tek: aynı anda N indirme varsa hız N'e bölünür. Tek dosya tam hızda insin istiyorsan "Aynı anda indirme"yi <strong>1</strong> yap. Bağlantı sayısı toplamda 32'yi geçmez, açık indirmelere paylaştırılır.</p>
+          <p class="hint">Hız, uygulama tarafından indirmelere bölünmez: hat doymadıkça her indirme kendi hızıyla iner, hat doyunca toplam hız hattın sınırında paylaşılır (10 indirmenin her biri 7 Mbps ise ~70 Mbps hat gerekir). Tek dosya, hattın izin verdiğinden yavaş kalıyorsa sebep genelde sunucunun bağlantı başına koyduğu limittir; "Dosya başına bağlantı"yı artır. Açık indirmeler toplam 32 bağlantıyı paylaşır (10 indirme → dosya başına 3); "Hız limiti" 0'dan büyükse tüm indirmeler o tek bütçeyi paylaşır.</p>
           <label class="field">
             <span>Hız limiti (KB/s, 0 = sınırsız)</span>
             <input id="set-speed" type="number" min="0" step="64" />

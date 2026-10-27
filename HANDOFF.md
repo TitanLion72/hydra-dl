@@ -84,8 +84,11 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
 16. **Medya indirmeleri paralel parça çekmiyordu** (yt-dlp varsayılanı tek parça = yavaş)
     → `--concurrent-fragments 4`. Ayrıca **hız limiti medyada uygulanmıyordu** →
     `--limit-rate <bayt/sn>` (limit 0 ise eklenmez).
-17. Ayarlarda "eşzamanlı indirme" açıklaması: hat tektir, N indirme = hız/N; tek dosya tam
-    hız için 1 yap (`index.html`, `webapp/index.html`). webapp'te bağlantı sınırı 64→16.
+17. Ayarlarda "eşzamanlı indirme" açıklaması **yanlıştı** ("N indirme = hız/N"). Uygulama
+    hızı indirmelere bölmüyor; sınır hattın toplam kapasitesi ve sunucunun bağlantı başına
+    limiti. Metin düzeltildi (`index.html`, `webapp/index.html`). Hız yalnızca "Hız limiti" > 0
+    iken uygulama tarafında bölünür (tek global bütçe); ayrıca 32 soketlik toplam bağlantı
+    bütçesi açık indirmelere paylaştırılır. webapp'te bağlantı sınırı 64→16.
 18. **Telefon arayüzünde yt-dlp kurulum düğmesi yoktu** (API vardı, arayüz bağlanmamıştı).
     Ayarlar → Sunucu bölümünde durum + "yt-dlp kur" düğmesi: yoksa görünür, tıklayınca
     `POST /ytdlp/install` (120 sn zaman aşımı), kurulunca sürüm tazelenir ve düğme gizlenir;
@@ -123,7 +126,8 @@ yeterli değil.
 
 1. Telefondan `http://<LAN-IP>:6790` aç: QR eşleşmesi, indirme ekleme ve **yt-dlp kur**
    düğmesini gerçek cihazda dene.
-2. Kullanıcı hız bölünmesini "Aynı anda indirme"=1 ile ölçsin; tek dosya hızı raporlansın.
+2. Kullanıcı tek dosya hızını "Aynı anda indirme"=1, bağlantı 16 iken ölçsün; hat sınırına
+   ulaşmıyorsa sebep sunucu limiti mi, 32 soketlik bütçe mi ayrıştırılsın.
 3. v0.3: çerez/oturum aktarımı, `Retry-After` + backoff, proxy, yt-dlp'siz HLS/DASH.
 
 ## Oturum kesilirse ilk komut
