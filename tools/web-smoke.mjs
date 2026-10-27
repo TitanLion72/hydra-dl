@@ -167,6 +167,16 @@ async function main() {
     if (!settings.ok) throw new Error(`settings GET ${settings.status}`);
     console.log(`[web] settings OK: concurrent=${settings.body.maxConcurrent}`);
 
+    // Telefon arayüzü yt-dlp durumunu bu uçtan okuyor (kurulum düğmesi buna bakar).
+    const ytdlp = await call("/ytdlp");
+    if (!ytdlp.ok) throw new Error(`ytdlp GET ${ytdlp.status}`);
+    if (typeof ytdlp.body.available !== "boolean") {
+      throw new Error(`ytdlp yanıtı beklenmedik: ${JSON.stringify(ytdlp.body)}`);
+    }
+    console.log(
+      `[web] ytdlp OK: available=${ytdlp.body.available}${ytdlp.body.version ? ` v${ytdlp.body.version}` : ""}`,
+    );
+
     const removed = await call(`/downloads/${added.body.id}?deleteFile=true`, { method: "DELETE" });
     if (!removed.ok) throw new Error(`delete ${removed.status}`);
     console.log("[web] temizlik OK");

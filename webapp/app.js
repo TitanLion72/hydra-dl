@@ -13,6 +13,8 @@ const ENDPOINTS = {
   probe: "./probe",
   add: "./add",
   settings: "./settings",
+  ytdlp: "./ytdlp",
+  ytdlpInstall: "./ytdlp/install",
 };
 
 /* ---------------- Kısayollar ---------------- */
@@ -65,6 +67,9 @@ const els = {
   setVersion: $("#setVersion"),
   setUptime: $("#setUptime"),
   setYtdlp: $("#setYtdlp"),
+  installYtdlp: $("#installYtdlp"),
+  ytdlpStatus: $("#ytdlpStatus"),
+  ytdlpHelp: $("#ytdlpHelp"),
   setToken: $("#setToken"),
   settingsStatus: $("#settingsStatus"),
   settingsSave: $("#settingsSave"),
@@ -160,9 +165,9 @@ function apiError(message, status) {
   return error;
 }
 
-async function api(path, { method = "GET", body } = {}) {
+async function api(path, { method = "GET", body, timeout = REQUEST_TIMEOUT } = {}) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+  const timer = setTimeout(() => controller.abort(), timeout);
   const headers = { Accept: "application/json" };
   if (state.token) headers["X-Hydra-Token"] = state.token;
   if (body !== undefined) headers["Content-Type"] = "application/json";
@@ -200,7 +205,8 @@ async function api(path, { method = "GET", body } = {}) {
     return data;
   } catch (error) {
     if (error && error.name === "AbortError") {
-      throw apiError("Sunucu 8 saniyede yanıt vermedi.");
+      const seconds = Math.round(timeout / 1000);
+      throw apiError(`Sunucu ${seconds} saniyede yanıt vermedi.`);
     }
     if (error instanceof TypeError) {
       throw apiError("Sunucuya ulaşılamadı.");
@@ -1212,16 +1218,14 @@ function applySettings(settings) {
   els.setCapture.checked = Boolean(data.captureEnabled);
   els.setAutoResume.checked = Boolean(data.autoResume);
   setText(els.setCapturePort, data.capturePort ? String(data.capturePort) : "—");
-  setText(
-    els.setYtdlp,
-    data.ytdlpPath ? String(data.ytdlpPath) : "PATH'ten otomatik bulunur",
-  );
   els.setToken.value = state.token;
 }
 
 async function loadSettings(force = false) {
   if (state.settingsLoaded && !force) {
     applySettings(state.rawSettings);
+    // yt-dlp başka bir cihazdan kurulmuş olabilir; her açılışta tazelenir.
+    await refreshYtdlp();
     return;
   }
   els.settingsLoading.hidden = false;
@@ -1237,6 +1241,7 @@ async function loadSettings(force = false) {
     els.settingsForm.hidden = false;
     els.settingsLoading.hidden = true;
     if (!state.health) loadHealth();
+    await refreshYtdlp();
   } catch (error) {
     els.settingsLoading.hidden = true;
     els.settingsError.hidden = false;
@@ -1249,6 +1254,68 @@ function setSettingsStatus(message, kind = "") {
   node.textContent = message;
   node.classList.toggle("is-error", kind === "error");
   node.classList.toggle("is-ok", kind === "ok");
+}
+
+/* ---------------- yt-dlp durumu ve kurulum ---------------- */
+
+function setYtdlpStatus(message, kind = "") {
+  const node = els.ytdlpStatus;
+  if (!node) return;
+  node.textContent = message;
+  node.classList.toggle("is-error", kind === "error");
+  node.classList.toggle("is-ok", kind === "ok");
+}
+
+function applyYtdlpStatus(status) {
+  const available = Boolean(status && status.available);
+  setText(
+    els.setYtdlp,
+    available
+      ? `${status.version ? `v${status.version}` : "bulundu"} · ${status.path || ""}`.trim()
+      : "bulunamadı",
+  );
+  if (els.installYtdlp) {
+    els.installYtdlp.hidden = available;
+    els.installYtdlp.disabled = false;
+  }
+  if (els.ytdlpHelp) els.ytdlpHelp.hidden = available;
+}
+
+async function refreshYtdlp() {
+  try {
+    const status = await api(ENDPOINTS.ytdlp);
+    applyYtdlpStatus(status);
+    setYtdlpStatus("");
+  } catch (error) {
+    setText(els.setYtdlp, "bilinmiyor");
+    setYtdlpStatus(error.message || "yt-dlp durumu okunamadı.", "error");
+  }
+}
+
+async function installYtdlp() {
+  const button = els.installYtdlp;
+  if (!button || button.disabled) return;
+  button.disabled = true;
+  const previous = button.textContent;
+  button.textContent = "Kuruluyor…";
+  setYtdlpStatus("İndiriliyor, bu 10-20 saniye sürebilir. Sayfayı kapatma.");
+  try {
+    // Sunucu dosyayı indirip doğruluyor; varsayılan 8 sn yetmez.
+    const result = await api(ENDPOINTS.ytdlpInstall, { method: "POST", timeout: 120_000 });
+    // Önce durum/ayarlar tazelenir (bu sırada mesaj temizlenir), sonra sonuç yazılır.
+    await refreshYtdlp();
+    state.settingsLoaded = false;
+    await loadSettings(true);
+    setYtdlpStatus(
+      result && result.path ? `Kuruldu: ${result.path}` : "yt-dlp kuruldu.",
+      "ok",
+    );
+    showToast("yt-dlp kuruldu.");
+  } catch (error) {
+    setYtdlpStatus(error.message || "yt-dlp kurulamadı.", "error");
+    button.textContent = previous;
+    button.disabled = false;
+  }
 }
 
 function clampInt(value, min, max, fallback) {
@@ -1375,6 +1442,9 @@ function bindSettings() {
     loadHealth();
     setSettingsStatus("");
   });
+  if (els.installYtdlp) {
+    els.installYtdlp.addEventListener("click", installYtdlp);
+  }
 }
 
 function bindSheet() {

@@ -20,6 +20,7 @@ v0.2 = "IDM'den iyi" temeli. Sıra bağımlılığa göre; üstteki bitmeden alt
 - [x] Görsel/UI koşum takımı: `tools/ui-harness` (mock API + Playwright)
 - [x] Sağlamlık: `.torrent` indirme sayfası takibi (çerez/UA), bağlantı bütçesi
       (toplam 32 soket), medyada parça eşzamanlılığı + hız limiti
+- [x] Web arayüzünde yt-dlp kurulum düğmesi + `tools/web-ui-check.mjs`
 
 ## v0.3 — bir sonraki dilim
 

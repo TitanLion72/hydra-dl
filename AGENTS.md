@@ -14,6 +14,7 @@ cargo clippy --manifest-path src-tauri\Cargo.toml --all-targets -- -D warnings
 cargo test  --manifest-path src-tauri\Cargo.toml
 node tools/e2e.mjs --capture-port 6712 --dir "$env:TEMP\hydra-e2e"   # uygulama açıkken
 node tools/web-smoke.mjs --port 6790                                 # web API'si (opsiyonel)
+node tools/web-ui-check.mjs                                          # web (telefon) arayüzü (mock API)
 node tools/build-extension.mjs                                       # eklenti paketleri
 node tools/ui-harness/run.mjs                                        # masaüstü UI (mock API)
 ```
@@ -39,7 +40,7 @@ Ağ/indirme davranışına dokunduysan `tools/e2e.mjs` de koşar. Üçünden bir
 | `webapp/` | telefonda çalışan statik arayüz (derleme yok, SSE) |
 | `extension/` | Chrome/Edge MV3: panel, avcı modu, sağ tık. **Tek kaynak**; `node tools/build-extension.mjs` ile `build/extensions/{chrome,firefox}` üretilir |
 | `tools/build-extension.mjs` | Chrome (service_worker) ve Firefox (background.scripts + gecko id) manifestlerini üretir ve dosya bütünlüğünü doğrular |
-| `tools/` | ikon üretici, e2e, web smoke |
+| `tools/` | ikon üretici, e2e, web smoke, web UI kontrolü |
 | `docs/API.md` | **API sözleşmesi — kırıcı değişiklik önce buraya** |
 
 ## Değişmezler (bozulursa indirmeler bozulur)

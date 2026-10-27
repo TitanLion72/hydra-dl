@@ -1,7 +1,7 @@
 {
   "name": "hydra-dl",
   "private": true,
-  "version": "0.2.2",
+  "version": "0.2.3",
   "type": "module",
   "license": "AGPL-3.0-or-later",
   "scripts": {
@@ -13,7 +13,8 @@
     "e2e": "node tools/e2e.mjs",
     "build:ext": "node tools/build-extension.mjs",
     "test:ext": "node tools/build-extension.mjs && node tools/test-extension.mjs",
-    "test:ui": "node tools/ui-harness/run.mjs"
+    "test:ui": "node tools/ui-harness/run.mjs",
+    "test:webui": "node tools/web-ui-check.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

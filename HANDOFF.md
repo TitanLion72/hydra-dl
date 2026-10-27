@@ -2,7 +2,7 @@
 
 > Yeni oturum: **önce bu dosyayı oku**, sonra `git status`. Bitirdiğin dilimi en alta 10 satır yaz.
 
-**Son güncelleme:** 2026-10-27 · v0.2.2 · AGPL-3.0-or-later
+**Son güncelleme:** 2026-10-27 (2) · v0.2.3 · AGPL-3.0-or-later
 
 ---
 
@@ -14,9 +14,9 @@ telefon için web arayüzü, tarayıcı eklentisi (panel + avcı modu).
 
 **Repo public:** <https://github.com/TitanLion72/hydra-dl> (AGPL-3.0, ilk commit `9495fd4`).
 
-**Kurulu sürüm:** v0.2.2, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
-girdisi temizlendi, kullanıcının 4 indirmesi korundu). Kurulum paketi:
-`src-tauri\target\release\bundle\nsis\Hydra DL_0.2.2_x64-setup.exe`.
+**Kurulu sürüm:** v0.2.3, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
+girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
+`src-tauri\target\release\bundle\nsis\Hydra DL_0.2.3_x64-setup.exe`.
 
 ## Doğrulanmış (bu oturum, kanıt var)
 
@@ -86,6 +86,13 @@ girdisi temizlendi, kullanıcının 4 indirmesi korundu). Kurulum paketi:
     `--limit-rate <bayt/sn>` (limit 0 ise eklenmez).
 17. Ayarlarda "eşzamanlı indirme" açıklaması: hat tektir, N indirme = hız/N; tek dosya tam
     hız için 1 yap (`index.html`, `webapp/index.html`). webapp'te bağlantı sınırı 64→16.
+18. **Telefon arayüzünde yt-dlp kurulum düğmesi yoktu** (API vardı, arayüz bağlanmamıştı).
+    Ayarlar → Sunucu bölümünde durum + "yt-dlp kur" düğmesi: yoksa görünür, tıklayınca
+    `POST /ytdlp/install` (120 sn zaman aşımı), kurulunca sürüm tazelenir ve düğme gizlenir;
+    hata olursa kırmızı mesaj + yeniden denenebilir. `api()` artık istek başına zaman aşımı
+    alıyor. Ayarlar ekranı ikinci kez açıldığında da yt-dlp durumu tazeleniyor (eski durum
+    önbellekte kalmıyor). Yeni QA: `node tools/web-ui-check.mjs` (statik sunucu + mock API,
+    17 kontrol).
 
 ## Bilinen açık uçlar
 
@@ -97,7 +104,8 @@ girdisi temizlendi, kullanıcının 4 indirmesi korundu). Kurulum paketi:
 - **Eklenti Chrome/Edge'de gerçek tarayıcıda doğrulandı** (Edge 156 + Playwright, 17 madde;
   `tools/ext-check/REPORT.md`). Google Chrome markalı derlemede `--load-extension` kapalı
   olduğu için Chrome yerine Edge kullanıldı; elle yükleme yolu değişmedi.
-- `webapp/` içinde yt-dlp kurulum düğmesi **yok** (API var, arayüz bağlanmadı).
+- `webapp/` içinde yt-dlp kurulum düğmesi **var** (0.2.3). Telefondan gerçek kurulum
+  denenmedi: arayüz mock API ile, sunucu tarafı gerçek istekle doğrulandı.
 - Avcı modunda ağ isteği dinleme (`webRequest`) yok; HLS/manifest yakalama v0.3'te.
 
 ## Paketleme (bu oturumda bulunan ve düzeltilen hata)
@@ -112,11 +120,10 @@ yeterli değil.
 
 ## Sıradaki iş
 
-1. Kullanıcı 0.2.2'yi kurup bildirdiği `.torrent` linkini tekrar denesin; hız bölünmesi için
-   "Aynı anda indirme"yi 1 yapıp tek dosya hızını ölçsün.
-2. Telefondan `http://<LAN-IP>:6790` aç, QR eşleşmesini gör.
-3. `webapp/`'e yt-dlp kurulum düğmesi ekle (`POST /ytdlp/install`).
-4. v0.3: çerez/oturum aktarımı, `Retry-After` + backoff, proxy, yt-dlp'siz HLS/DASH.
+1. Telefondan `http://<LAN-IP>:6790` aç: QR eşleşmesi, indirme ekleme ve **yt-dlp kur**
+   düğmesini gerçek cihazda dene.
+2. Kullanıcı hız bölünmesini "Aynı anda indirme"=1 ile ölçsin; tek dosya hızı raporlansın.
+3. v0.3: çerez/oturum aktarımı, `Retry-After` + backoff, proxy, yt-dlp'siz HLS/DASH.
 
 ## Oturum kesilirse ilk komut
 
