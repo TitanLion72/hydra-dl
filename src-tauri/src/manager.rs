@@ -259,8 +259,8 @@ async fn run_http(state: Arc<AppState>, id: String, cancel: Arc<CancelToken>) {
     let _ = tokio::fs::create_dir_all(&parts_dir).await;
 
     if local.segments.is_empty() {
-        // Baglanti butcesi tum acik indirmelere paylastirilir: 4 indirme × 16
-        // baglanti = 64 soket acmak yerine 32'yi gecmeyiz.
+        // Baglanti butcesi tum acik indirmelere paylastirilir: 10 indirme × 16
+        // baglanti = 160 soket acmak yerine 64'u gecmeyiz.
         let active = state.active_http_downloads();
         let connections = fair_connections(local.connections, active);
         local.segments = plan_segments(local.total_bytes, local.resumable, connections);

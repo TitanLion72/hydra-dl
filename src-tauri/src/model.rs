@@ -153,11 +153,13 @@ impl Download {
 /// ust sinirdir; ayni anda N indirme varsa butce paylasilir. Aksi halde
 /// "10 indirme × 16 baglanti = 160 soket" olusup tek tek akislarin hizi da
 /// toplam hiz da dusuyordu (kullanici bildirimi: "eszamanli indirmelerde hiz bolunuyor").
-pub const MAX_TOTAL_CONNECTIONS: usize = 32;
+/// 64: 45 Mbps hatta 10 eszamanli indirme dosya basina 6 baglanti alir; sunucu
+/// baglanti basina limit koydugunda tek dosya 3 baglantiya mahkum kalmasin.
+pub const MAX_TOTAL_CONNECTIONS: usize = 64;
 
 /// Ayni anda calisan indirmelere baglanti butcesini paylastirir.
 ///
-/// Ornek: 1 indirme → 16, 2 → 16, 3 → 10, 4 → 8, 10 → 3.
+/// Ornek: 1 indirme → 16, 4 → 16, 10 → 6.
 pub fn fair_connections(connections: usize, active: usize) -> usize {
     let connections = connections.clamp(1, MAX_CONNECTIONS);
     let active = active.max(1);
@@ -282,11 +284,12 @@ mod tests {
         // Toplam soket sayisi MAX_TOTAL_CONNECTIONS'i asmamali.
         assert_eq!(fair_connections(16, 1), 16);
         assert_eq!(fair_connections(16, 2), 16);
-        assert_eq!(fair_connections(16, 3), 10);
-        assert_eq!(fair_connections(16, 4), 8);
-        assert_eq!(fair_connections(16, 10), 3);
+        assert_eq!(fair_connections(16, 3), 16);
+        assert_eq!(fair_connections(16, 4), 16);
+        assert_eq!(fair_connections(16, 5), 12);
+        assert_eq!(fair_connections(16, 10), 6);
         // Asiri istek de butceye uyar, ayar 1 ise tek baglanti kalir.
-        assert_eq!(fair_connections(99, 4), 8);
+        assert_eq!(fair_connections(99, 4), 16);
         assert_eq!(fair_connections(1, 4), 1);
         assert_eq!(fair_connections(0, 0), 1);
         for active in 1..=10usize {
