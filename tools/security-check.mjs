@@ -59,6 +59,10 @@ const allowed = new Set([
   // Test/doküman örnekleri bilinçli olarak kişisel yol içerebilir; burada tutulur.
   "HANDOFF.md",
   "AGENTS.md",
+  // Tarayıcının kendisi ve politikası: desen metinleri örnek yol içerir.
+  "SECURITY.md",
+  "tools/security-check.mjs",
+  "README.md",
 ]);
 
 for (const file of files) {
@@ -119,6 +123,9 @@ for (const file of files) {
   for (const [pattern, label] of risky) {
     if (pattern.test(text)) bad(`${file}: ${label}`);
   }
+
+  // Tarayıcının kendisi desen/rapor metni içerir; kendi üstünde çalışmaz.
+  if (file === "tools/security-check.mjs") continue;
 
   // innerHTML: şablondaki her ${...} ya kaçış fonksiyonundan geçmeli ya da
   // sayı/sabit olmalı. Kaba ama etkili bir kontrol.
