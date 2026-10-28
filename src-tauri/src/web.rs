@@ -23,7 +23,7 @@ use futures_util::Stream;
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use std::net::{IpAddr, SocketAddr};
-use std::path::PathBuf;
+use std::path::{Component, Path as FsPath, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::Manager;
@@ -487,18 +487,45 @@ fn content_type_for(path: &str) -> &'static str {
     }
 }
 
-fn serve_static(state: &AppState, requested: &str) -> Response {
+/// İstenen yolu kök klasöre göre çözer. Kök dışına çıkabilecek isteklerde `None`.
+///
+/// `Path::join` Windows'ta mutlak yolu **ezer**: `root.join("C:/Windows/win.ini")`
+/// kökü atlayıp o dosyayı verir. Bu yüzden '..' / '\' reddedilir **ve** her
+/// bileşenin `Normal`/`CurDir` olduğu doğrulanır (sürücü öneki, UNC, kök dizin
+/// bileşeni kabul edilmez).
+fn resolve_static_path(root: &FsPath, requested: &str) -> Option<PathBuf> {
     let trimmed = requested.trim_start_matches('/');
-    let root = webapp_dir(state);
-    // Dizin disina cikma girisimlerini engelle.
     if trimmed.contains("..") || trimmed.contains('\\') {
-        return error_response(StatusCode::BAD_REQUEST, "geçersiz yol");
+        return None;
     }
-    let mut candidate = root.join(if trimmed.is_empty() {
-        "index.html"
+    for component in FsPath::new(trimmed).components() {
+        if !matches!(component, Component::Normal(_) | Component::CurDir) {
+            return None;
+        }
+    }
+    let candidate = if trimmed.is_empty() {
+        root.join("index.html")
     } else {
-        trimmed
-    });
+        root.join(trimmed)
+    };
+    // Son savunma: gerçek yol (symlink'ler çözülmüş) kökün altında olmalı.
+    if let (Ok(real_root), Ok(real)) = (
+        std::fs::canonicalize(root),
+        std::fs::canonicalize(&candidate),
+    ) {
+        if !real.starts_with(&real_root) {
+            return None;
+        }
+    }
+    Some(candidate)
+}
+
+fn serve_static(state: &AppState, requested: &str) -> Response {
+    let root = webapp_dir(state);
+    let Some(mut candidate) = resolve_static_path(&root, requested) else {
+        return error_response(StatusCode::BAD_REQUEST, "geçersiz yol");
+    };
+    let trimmed = requested.trim_start_matches('/');
     if !candidate.is_file() {
         if trimmed.contains('.') {
             return error_response(StatusCode::NOT_FOUND, "bulunamadı");
@@ -559,8 +586,87 @@ pub fn api_router(state: Arc<AppState>) -> Router {
 // Sunucu yasam dongusu
 // ---------------------------------------------------------------------------
 
+/// Yol token istiyor mu? **Varsayılan: evet.**
+///
+/// Yalnızca sağlık kontrolü ve gerçekten var olan statik dosyalar serbesttir.
+/// Böylece yeni eklenen her API yolu otomatik olarak korunur; "prefix listesine
+/// eklemeyi unuttum" sınıfı hatalar (ör. `/torrent/files`) oluşamaz.
+fn needs_token(path: &str, webapp_root: &FsPath) -> bool {
+    if path == "/health" {
+        return false;
+    }
+    match resolve_static_path(webapp_root, path) {
+        Some(file) => !file.is_file(),
+        None => true,
+    }
+}
+
+/// `Origin` başlığı bu sunucu için kabul edilebilir mi?
+///
+/// Tarayıcı `Origin`'i sayfa tarafından değiştirilemez; bu yüzden rastgele bir
+/// web sitesinin `fetch("http://127.0.0.1:6712/add", ...)` çağrısı (localhost
+/// CSRF) burada durur. Eklenti (`chrome-extension://`, `moz-extension://`) ve
+/// tarayıcı dışı istemciler (Origin yok) serbesttir.
+pub fn origin_allowed(origin: Option<&str>, host: Option<&str>) -> bool {
+    let Some(origin) = origin.map(str::trim).filter(|o| !o.is_empty()) else {
+        // Origin yok: curl, eklenti arka planı, Tauri arayüzü.
+        return true;
+    };
+    let lower = origin.to_ascii_lowercase();
+    if lower == "null" {
+        // Sandbox iframe / data: URL — kaynağı belli değil, güvenme.
+        return false;
+    }
+    for scheme in [
+        "chrome-extension://",
+        "moz-extension://",
+        "safari-web-extension://",
+        "safari-extension://",
+    ] {
+        if lower.starts_with(scheme) {
+            return true;
+        }
+    }
+    // http(s): yalnız aynı köken (Host ile aynı authority) kabul edilir.
+    let Some(rest) = lower
+        .strip_prefix("http://")
+        .or_else(|| lower.strip_prefix("https://"))
+    else {
+        return false;
+    };
+    let origin_authority = rest.split('/').next().unwrap_or("");
+    let Some(host) = host.map(str::trim).filter(|h| !h.is_empty()) else {
+        return false;
+    };
+    origin_authority.eq_ignore_ascii_case(host)
+}
+
+fn origin_guard(
+    req: Request<Body>,
+    next: Next,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Response> + Send>> {
+    Box::pin(async move {
+        let origin = req
+            .headers()
+            .get(header::ORIGIN)
+            .and_then(|v| v.to_str().ok());
+        let host = req
+            .headers()
+            .get(header::HOST)
+            .and_then(|v| v.to_str().ok());
+        if !origin_allowed(origin, host) {
+            return error_response(
+                StatusCode::FORBIDDEN,
+                "bu kaynaktan gelen istek kabul edilmiyor",
+            );
+        }
+        next.run(req).await
+    })
+}
+
 fn auth_middleware(
     token: String,
+    webapp_root: PathBuf,
 ) -> impl Fn(
     Request<Body>,
     Next,
@@ -568,20 +674,14 @@ fn auth_middleware(
        + Clone {
     move |request: Request<Body>, next: Next| {
         let token = token.clone();
+        let root = webapp_root.clone();
         Box::pin(async move {
-            // Statik dosyalar ve saglik kontrolu serbest; API token ister.
-            let path = request.uri().path().to_string();
-            let check = path.starts_with("/downloads")
-                || path.starts_with("/settings")
-                || path.starts_with("/probe")
-                || path.starts_with("/add")
-                || path.starts_with("/torrents")
-                || path.starts_with("/ytdlp")
-                || path.starts_with("/events");
-            if !check {
+            if token.is_empty() {
+                // Token yok: kurulum kolaylığı için açık, ama arayüz uyarı gösterir.
                 return next.run(request).await;
             }
-            if token.is_empty() {
+            let path = request.uri().path().to_string();
+            if !needs_token(&path, &root) {
                 return next.run(request).await;
             }
             let header_ok = request
@@ -658,10 +758,15 @@ async fn serve(
         .map_err(|e| format!("Adres okunamadı: {e}"))?
         .port();
 
-    let mut router = api_router(state).layer(middleware::from_fn(cors));
-    if let Some(token) = token.filter(|t| !t.is_empty()) {
-        router = router.layer(middleware::from_fn(auth_middleware(token)));
-    }
+    // Statik kok: token korumasinin "hangi yol serbest" karari icin gerekli.
+    let webapp_root = webapp_dir(&state);
+    // Katman sirasi (dis -> ic): origin_guard, cors, auth, router.
+    let mut router = api_router(state).layer(middleware::from_fn(auth_middleware(
+        token.clone().unwrap_or_default(),
+        webapp_root,
+    )));
+    router = router.layer(middleware::from_fn(cors));
+    router = router.layer(middleware::from_fn(origin_guard));
 
     let (tx, rx) = oneshot::channel::<()>();
     let task = tokio::spawn(async move {
@@ -789,9 +894,171 @@ mod tests {
         assert_eq!(pick_webapp_dir(&[bos, dolu.clone()]), Some(dolu));
     }
 
+    /// Guvenlik: token korumasi **varsayilan olarak her yolu** kapsar.
+    /// Yalniz `/health` ve gercekten var olan statik dosyalar serbesttir.
+    /// Eski "prefix listesi" yaklasiminda `/torrent/files` ve `/notify/test`
+    /// korumasiz kaliyordu (gercek acik, kapatildi).
+    #[test]
+    fn token_varsayilan_olarak_her_yolu_korur() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("webapp");
+        std::fs::create_dir_all(root.join("assets")).unwrap();
+        std::fs::write(root.join("index.html"), b"<html></html>").unwrap();
+        std::fs::write(root.join("app.js"), b"x").unwrap();
+        std::fs::write(root.join("styles.css"), b"x").unwrap();
+        std::fs::write(root.join("assets/i.js"), b"x").unwrap();
+
+        // Serbest: saglik + gercek statik dosyalar.
+        for serbest in [
+            "/health",
+            "/",
+            "/index.html",
+            "/app.js",
+            "/assets/i.js",
+            "/styles.css",
+        ] {
+            assert!(!needs_token(serbest, &root), "serbest olmali: {serbest}");
+        }
+
+        // Korumali: tum API yollari (eskiden korumasiz kalanlar dahil).
+        for korumali in [
+            "/downloads",
+            "/settings",
+            "/probe",
+            "/add",
+            "/torrents",
+            "/torrent/files",
+            "/notify/test",
+            "/ytdlp",
+            "/ytdlp/install",
+            "/events",
+            "/yeni/gelecek/uc",
+            "/olmayan-dosya.txt",
+        ] {
+            assert!(needs_token(korumali, &root), "token istemeli: {korumali}");
+        }
+    }
+
+    #[test]
+    fn origin_kontrolu_web_sayfasini_engeller() {
+        // Tarayici disi istemciler ve eklentiler serbest.
+        assert!(origin_allowed(None, Some("127.0.0.1:6712")));
+        assert!(origin_allowed(
+            Some("chrome-extension://abcdefghijklmnop"),
+            Some("127.0.0.1:6712")
+        ));
+        assert!(origin_allowed(
+            Some("moz-extension://1111-2222"),
+            Some("127.0.0.1:6712")
+        ));
+        // Ayni kokun (web arayuzu kendisi).
+        assert!(origin_allowed(
+            Some("http://192.168.1.10:6790"),
+            Some("192.168.1.10:6790")
+        ));
+        // Rastgele web sitesi -> localhost CSRF denemesi engellenir.
+        for kotu in [
+            "https://evil.example",
+            "http://localhost:3000",
+            "http://127.0.0.1:6790", // farkli port = farkli kokun
+            "http://192.168.1.10:6791",
+            "null",
+            "file://",
+            "data:text/html,x",
+        ] {
+            assert!(
+                !origin_allowed(Some(kotu), Some("127.0.0.1:6712")),
+                "engellenmeli: {kotu}"
+            );
+        }
+        // Kendi kokunu (Host ile ayni) kabul edilir: web arayuzu kendi API'sini cagirir.
+        assert!(origin_allowed(
+            Some("http://127.0.0.1:6712"),
+            Some("127.0.0.1:6712")
+        ));
+        // Host yoksa http(s) kaynagi guvenilmez.
+        assert!(!origin_allowed(Some("http://127.0.0.1:6712"), None));
+    }
+
     #[test]
     fn lan_adresi_bos_olmaz() {
         // Ag yoksa bos olabilir; sadece paniklemedigini dogrula.
         let _ = lan_addresses();
+    }
+
+    /// Guvenlik: web sunucusu LAN'a acik; kok klasor disina cikan her istek
+    /// reddedilmeli. `Path::join` Windows'ta "C:/..." ile koku eziyordu ve
+    /// `GET /C:/Windows/win.ini` 200 donuyordu (gercek acik, kapatildi).
+    #[test]
+    fn statik_yol_kok_disina_cikamaz() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("webapp");
+        std::fs::create_dir_all(root.join("assets")).unwrap();
+        std::fs::write(root.join("index.html"), b"<html></html>").unwrap();
+        std::fs::write(root.join("assets/app.js"), b"x").unwrap();
+        // Kok disinda bir dosya: sizarsa test yakalar.
+        std::fs::write(temp.path().join("gizli.txt"), b"gizli").unwrap();
+
+        assert_eq!(
+            resolve_static_path(&root, "index.html"),
+            Some(root.join("index.html"))
+        );
+        assert_eq!(
+            resolve_static_path(&root, ""),
+            Some(root.join("index.html"))
+        );
+        assert_eq!(
+            resolve_static_path(&root, "/assets/app.js"),
+            Some(root.join("assets/app.js"))
+        );
+        assert_eq!(
+            resolve_static_path(&root, "assets/./app.js"),
+            Some(root.join("assets/app.js"))
+        );
+
+        for saldiri in [
+            "C:/Windows/win.ini",
+            "c:/windows/win.ini",
+            "C:\\Windows\\win.ini",
+            "\\\\sunucu\\paylasim\\x.txt",
+            "../gizli.txt",
+            "assets/../../gizli.txt",
+            "..%2fgizli.txt",
+            "/../gizli.txt",
+        ] {
+            assert_eq!(
+                resolve_static_path(&root, saldiri),
+                None,
+                "saldiri engellenmeli: {saldiri}"
+            );
+        }
+
+        // Bas yegane slash'ler kirpilir; sonuc kokun ALTINDA kalir (kacis yok).
+        let mutlak_gorunum = resolve_static_path(&root, "//etc/passwd").unwrap();
+        assert!(
+            mutlak_gorunum.starts_with(&root),
+            "kok altinda kalmali: {}",
+            mutlak_gorunum.display()
+        );
+        assert!(!mutlak_gorunum.exists());
+    }
+
+    /// Symlink kokun disini gosteriyorsa da reddedilmeli (canonicalize kontrolu).
+    #[cfg(windows)]
+    #[test]
+    fn statik_yol_symlink_ile_de_kacilamaz() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("webapp");
+        let disari = temp.path().join("disari");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&disari).unwrap();
+        std::fs::write(disari.join("gizli.txt"), b"gizli").unwrap();
+        // Windows'ta symlink olusturmak icin ayricalik gerekebilir; olmazsa atla.
+        if std::os::windows::fs::symlink_file(disari.join("gizli.txt"), root.join("link.txt"))
+            .is_err()
+        {
+            return;
+        }
+        assert_eq!(resolve_static_path(&root, "link.txt"), None);
     }
 }

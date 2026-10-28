@@ -15,12 +15,14 @@ cargo test  --manifest-path src-tauri\Cargo.toml
 node tools/e2e.mjs --capture-port 6712 --dir "$env:TEMP\hydra-e2e"   # uygulama açıkken
 node tools/web-smoke.mjs --port 6790                                 # web API'si (opsiyonel)
 node tools/web-ui-check.mjs                                          # web (telefon) arayüzü (mock API)
+node tools/security-check.mjs                                        # sır/yol/XSS taraması
 node tools/build-extension.mjs                                       # eklenti paketleri
 node tools/ui-harness/run.mjs                                        # masaüstü UI (mock API)
 ```
 
-**Bitiş tanımı:** `cargo test` + `cargo clippy -D warnings` + `npm run build` yeşil.
-Ağ/indirme davranışına dokunduysan `tools/e2e.mjs` de koşar. Üçünden biri kırmızıysa iş bitmedi.
+**Bitiş tanımı:** `cargo test` + `cargo clippy -D warnings` + `cargo fmt --check` +
+`npm run build` + `npm run test:security` yeşil. Ağ/indirme davranışına dokunduysan
+`tools/e2e.mjs` de koşar. Bunlardan biri kırmızıysa iş bitmedi.
 
 ## Mimari (tek cümlede her dosya)
 
@@ -64,6 +66,31 @@ Ağ/indirme davranışına dokunduysan `tools/e2e.mjs` de koşar. Üçünden bir
     arayüzde kalmalı; varsayılan **kapalı**.
 11. **Avcı modu varsayılan kapalı**: içerik betiği yalnız ayar açıkken etkinleşir
     (kullanıcı rahatsız olmasın diye). Bu varsayılanı değiştirme.
+
+## Güvenlik değişmezleri (ihlal = merge yok)
+
+Açık kaynak ve **LAN'a açılan HTTP sunucusu** olan bir proje: aşağıdakiler pazarlık konusu
+değil. Ayrıntı ve tehdit modeli: `SECURITY.md`. Kontrol: `node tools/security-check.mjs`.
+
+1. **Varsayılan reddet.** Yeni HTTP yolu eklemek onu **otomatik** token korumasına sokar
+   (`needs_token`). Serbest bırakma yalnız `/health` + gerçek statik dosya için, açıkça.
+   "İzinli prefix listesi" **yasak** — bir kez `/torrent/files` ve `/notify/test` bu yüzden
+   korumasız kaldı. Yeni yol eklerken `token_varsayilan_olarak_her_yolu_korur` testine ekle.
+2. **Kullanıcı girdisinden dosya yolu kurma.** `Path::join` tek başına yetmez (Windows'ta
+   `C:/…` kökü ezer). Her yerde `resolve_static_path` deseni: `..`, `\`, sürücü öneki, UNC
+   reddedilir + `canonicalize` ile kök altı doğrulanır. Testsiz kabul edilmez.
+3. **Origin kontrolü kaldırılmaz** (`origin_guard`): tarayıcıdan gelen isteklerde aynı köken
+   veya eklenti şeması; `null`/`data:`/`file:` reddedilir.
+4. **HTML'e dış veri yazma:** `innerHTML` yalnız sabit şablon; dış veri `textContent`
+   veya `escapeHtml`/`escapeAttr`. `security-check` bunu denetler.
+5. **Kabuk yok:** `Command::new("cmd"/"powershell"/"sh")` yasak; dış süreçler `arg` listesiyle.
+6. **Sır/kişisel yol commit etme.** `tools/security-check.mjs` izlenen dosyalarda token,
+   anahtar ve `C:\Users\…` arar. Test mock'larında örnek yol kullan (`C:\Users\ornek\…`).
+7. **CI yeşil olmadan merge yok:** test + clippy + fmt + `security-check` + `npm audit` +
+   `cargo audit` + CodeQL. `cargo audit` muafiyeti yalnız `src-tauri/.cargo/audit.toml`
+   içinde **gerekçesiyle**; upstream düzelince kaldır.
+8. **Yıkıcı işlemler varsayılan kapalı:** `deleteFile`, dosya silme, toplu temizlik →
+   parametre verilmedikçe yapılmaz.
 
 ## Kurallar (kullanıcı talebi)
 

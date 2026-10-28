@@ -14,7 +14,8 @@
     "build:ext": "node tools/build-extension.mjs",
     "test:ext": "node tools/build-extension.mjs && node tools/test-extension.mjs",
     "test:ui": "node tools/ui-harness/run.mjs",
-    "test:webui": "node tools/web-ui-check.mjs"
+    "test:webui": "node tools/web-ui-check.mjs",
+    "test:security": "node tools/security-check.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

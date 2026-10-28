@@ -58,3 +58,17 @@ jobs:
 
       - name: Testler
         run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Güvenlik taraması (sır, kişisel yol, yol koruması)
+        run: node tools/security-check.mjs
+
+      - name: npm güvenlik denetimi
+        run: npm audit --audit-level=high
+
+      - name: cargo-audit kurulumu
+        run: cargo install cargo-audit --locked
+
+      - name: Rust bağımlılık denetimi (RUSTSEC)
+        working-directory: src-tauri
+        run: cargo audit
+

@@ -1,0 +1,22 @@
+# cargo-audit yapılandırması
+#
+# Kural: yeni bir zaafiyet (vulnerability) muaf tutulacaksa buraya **gerekçesiyle**
+# yazılır ve her sürümde gözden geçirilir. "Unmaintained"/"unsound" uyarıları
+# güvenlik açığı değildir; yalnız uyarır, CI'yı kırmaz.
+
+[advisories]
+# Zaafiyet bulunursa CI kırılır (varsayılan). yanked crate'ler de kırar.
+ignore = [
+    # ringbuf 0.4.8 double-free (RUSTSEC-2026-0293).
+    # Kaynak: librqbit-utp 0.7.0 -> ringbuf ^0.4.7 (düzeltme yalnız 0.5.2+).
+    # Upstream 0.7.0 hâlâ 0.4.x'e sabit; 2026-10-28 itibarıyla yeni sürüm yok.
+    # Etki: `Consumer::skip/clear` çağrısı sırasında elementin `Drop`'u paniklerse
+    # double free. Hydra bu API'yi doğrudan çağırmıyor; risk librqbit-utp içinde
+    # kalan, panik gerektiren bir uç durum. librqbit-utp 0.4.9+/0.5.2+ yayınlanınca
+    # bu muafiyet KALDIRILMALI (takip: HANDOFF.md).
+    "RUSTSEC-2026-0293",
+]
+
+[output]
+format = "terminal"
+quiet = false

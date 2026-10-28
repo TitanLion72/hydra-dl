@@ -8,7 +8,7 @@
 
 const NOW = Date.now();
 
-const DOWNLOAD_DIR = "C:\\Users\\titan\\Downloads\\Hydra";
+const DOWNLOAD_DIR = "C:\\Users\\ornek\\Downloads\\Hydra";
 
 const SETTINGS = {
   downloadDir: DOWNLOAD_DIR,
@@ -32,7 +32,7 @@ const SETTINGS = {
 const APP_INFO = {
   version: "0.2.0",
   downloadDir: DOWNLOAD_DIR,
-  statePath: "C:\\Users\\titan\\AppData\\Roaming\\hydra-dl\\downloads.json",
+  statePath: "C:\\Users\\ornek\\AppData\\Roaming\\hydra-dl\\downloads.json",
   capture: {
     enabled: true,
     running: true,

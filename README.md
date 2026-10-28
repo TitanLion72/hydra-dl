@@ -224,6 +224,22 @@ Sıradaki işler ve tamamlananlar [`PLAN.md`](PLAN.md) dosyasında. Kısa vadede
 aktarımı, `Retry-After` desteği, proxy ayarları, indirme geçmişinde arama, bildirimler ve
 imzalı kurulum.
 
+## Güvenlik
+
+Yerel makinede çalışır ama **LAN'a açılan** bir HTTP sunucusu çalıştırdığı için güvenlik
+kuralları pazarlık konusu değildir. Tehdit modeli ve bağlayıcı kurallar:
+[`SECURITY.md`](SECURITY.md).
+
+- Web API'si **varsayılan olarak her yolu** token ile korur; yalnız `/health` ve gerçek statik
+  dosyalar serbesttir. Yeni eklenen uç otomatik olarak korunur.
+- Kullanıcı girdisinden dosya yolu kurulmaz: `..`, `\`, sürücü öneki ve UNC reddedilir;
+  çözümlenen yol kök klasörün altında olmalı (`Path::join` tek başına yetmez).
+- Tarayıcı isteklerinde `Origin` denetlenir (rastgele bir web sayfası API'yi çağıramaz).
+- CI: test, clippy, fmt, `cargo audit`, `npm audit`, CodeQL ve
+  `node tools/security-check.mjs` (sır/kişisel yol/XSS taraması) yeşil olmadan merge yok.
+
+Hassas açıkları herkese açık issue olarak **açmayın**; GitHub özel güvenlik bildirimini kullanın.
+
 ## Katkı
 
 Katkılar memnuniyetle karşılanır. Başlamadan önce:

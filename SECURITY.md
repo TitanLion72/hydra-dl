@@ -1,92 +1,87 @@
-# Güvenlik Politikası
+# Güvenlik Politikası — Hydra DL
+
+Hydra DL bir **indirme yöneticisidir**: yerel makinede çalışır, kullanıcının dosya
+sistemine yazar ve **LAN'a açılan** bir HTTP sunucusu çalıştırır. Bu yüzden tehdit modeli
+sıradan bir masaüstü uygulamasından daha geniştir: aynı ağdaki herkes ve ziyaret ettiğin
+her web sayfası potansiyel saldırgandır.
 
 ## Desteklenen sürümler
 
-Hydra DL erken geliştirme aşamasındadır. Güvenlik düzeltmeleri yalnızca en son sürüm
-daline (`main`) ve yayımlanmış en yeni sürüme uygulanır.
+Yalnız **en son sürüm** güvenlik düzeltmesi alır (`main` dalı + son NSIS paketi).
 
-| Sürüm | Destek |
+## Açık bildirimi
+
+- **Hassas açıklar için herkese açık issue açma.** GitHub'ın
+  [özel güvenlik bildirimi](https://github.com/TitanLion72/hydra-dl/security/advisories/new)
+  akışını kullan (Security → Report a vulnerability).
+- 72 saat içinde ilk yanıt hedeflenir.
+- Hangi sürüm, hangi işletim sistemi, tekrar üretme adımları ve mümkünse en küçük
+  yeniden üretim (komut/URL) ekle. Kullanıcı verisi/`.env`/token gönderme.
+
+## Tehdit modeli (kısa)
+
+| Varlık | Korunacak şey |
 |---|---|
-| `main` (en son sürüm) | ✅ |
-| Eski sürümler | ❌ |
+| Yerel dosya sistemi | Web sunucusu üzerinden kök klasör dışına **hiçbir** okuma olmamalı |
+| İndirme hedefleri | Yol/`.part` yazımı kök klasör dışına çıkmamalı, `..` kabul edilmemeli |
+| Ağ (LAN) | Web API'si varsayılan olarak token ister; token yoksa arayüz uyarır |
+| Tarayıcı | Rastgele bir web sayfası `localhost` API'sini çağıramaz (Origin kontrolü) |
+| Torrent | Kullanıcı onayı olmadan dışa açık dosya paylaşımı yok, DHT ayarları belgelenmiş |
+| Güncelleme | Kurulum paketleri yalnız depodaki imzalı/derlenmiş çıktılardan |
 
-## Güvenlik açığı bildirme
+**Kapsam dışı:** DRM kırma, ödeme duvarı/reklam atlatma. Bunlar ürünün "yapılmayacaklar"
+listesindedir ve güvenlik açığı olarak kabul edilmez.
 
-**Lütfen güvenlik açıklarını herkese açık issue, PR veya tartışma olarak paylaşmayın.**
+## Değişmez güvenlik kuralları (kod)
 
-Bunun yerine GitHub'ın özel güvenlik bildirimi kanalını kullanın:
+Bu kurallar `AGENTS.md`'de bağlayıcıdır; ihlal eden PR birleştirilmez.
 
-👉 <https://github.com/TitanLion72/hydra-dl/security/advisories/new>
+1. **Varsayılan reddet.** Yeni bir HTTP yolu eklendiğinde **otomatik olarak token
+   korumasına girer**. Serbest bırakma yalnız `needs_token()` içinde açıkça yapılır
+   (`/health` + gerçek statik dosyalar). "İzinli prefix listesi" yaklaşımı yasak — bir kez
+   `/torrent/files` ve `/notify/test` bu yüzden korumasız kaldı.
+2. **Kullanıcı girdisiyle dosya yolu kurmak yasak.** Her yerde `resolve_static_path`
+   benzeri bir doğrulama kullanılmalı: `..`, `\`, sürücü öneki (`C:`), UNC (`\\host`),
+   kök bileşeni reddedilir; `canonicalize` sonrası sonuç kökün altında olmalı.
+   `Path::join` tek başına **yetmez** (Windows'ta mutlak yolu ezer).
+3. **Origin kontrolü.** Tarayıcıdan gelen isteklerde `Origin` beyaz listeye göre
+   denetlenir: aynı köken + tarayıcı eklentisi şemaları. `null`/`data:`/`file:` reddedilir.
+4. **Token karşılaştırması sabit zamanlı olmalı** (ileride: `subtle::ConstantTimeEq`).
+   Token yalnız `[A-Za-z0-9]`, en fazla 64 karakter; URL'de taşınabilir (QR) ama
+   loglanmaz.
+5. **Sırlar repoya girmez.** `.env`, token, kişisel yol, ekran görüntüsü, `downloads.json`
+   commit edilmez (`.gitignore` + CI kontrolü).
+6. **Dış komut çağrıları argüman listesiyle** (`Command::arg`), kabuk yorumlamasıyla
+   değil. Kullanıcı URL'i/başlığı asla kabuğa verilmez. Dosya adları
+   `sanitize_filename` + `unique_path` ile normalize edilir.
+7. **HTML'e kullanıcı verisi yazarken kaçış zorunlu.** `innerHTML` yalnız sabit şablonla;
+   dış veri `textContent` veya `escapeHtml`/`escapeAttr` ile.
+8. **Ayrıştırıcılar (bencode/HTML/JSON) sınırlı.** Boyut, özyineleme ve derinlik sınırı;
+   panik yok, hata döner. Ağdan gelen her şey güvenilmezdir.
+9. **Tauri komut yüzeyi dar.** Yeni komut eklerken argümanları doğrula; `deleteFile` gibi
+   yıkıcı bayraklar varsayılan `false`.
+10. **Bağımlılık hijyeni.** Yeni crate/npm paketi eklendiğinde gerekçe PR'da yazılır;
+    `cargo audit` ve `npm audit` kırmızıysa düzeltme aynı PR'da gelir.
 
-Bildirime şunları ekleyin:
+## Otomatik kontroller (CI)
 
-- Etkilenen sürüm veya commit
-- Sorunun türü (ör. yol aşımı, komut enjeksiyonu, yetkisiz erişim, XSS)
-- Yeniden üretme adımları veya kavram kanıtı (PoC)
-- Olası etki ve sizin değerlendirdiğiniz önem derecesi
-- Varsa önerdiğiniz düzeltme
-- Bize nasıl atıf yapılmasını istediğiniz (isteğe bağlı)
-
-Hassas veri (token, kişisel dosya yolu, çerez) paylaşmayın; gerekliyse örnekleri
-anonimleştirin.
-
-## Yanıt süreci
-
-| Aşama | Hedef |
+| Kontrol | Ne yapar |
 |---|---|
-| Alındı bildirimi | 72 saat içinde |
-| İlk değerlendirme | 7 gün içinde |
-| Düzeltme / azaltma planı | 30 gün içinde (önem derecesine göre) |
-| Kamuya açıklama | Düzeltme yayımlandıktan sonra, koordineli |
+| `cargo test` | Yol çözümü, token kapsamı, Origin, ayrıştırıcı, segment planı testleri |
+| `cargo clippy -- -D warnings` | Panik/unwrap riskleri, şüpheli dönüşümler |
+| `cargo fmt --check` | Biçim (gözden kaçan karmaşayı azaltır) |
+| `npm run build` (tsc) | Tip güvenliği |
+| **CodeQL** (`.github/workflows/codeql.yml`) | `security-and-quality` sorguları, Rust + JS/TS |
+| `cargo audit` | Bilinen CVE/RUSTSEC uyarıları |
+| `npm audit --audit-level=high` | npm güvenlik açıkları |
+| `node tools/security-check.mjs` | Repoda sır/kişisel yol taraması + yol koruma regresyonu |
 
-Süreç boyunca sizinle iletişimde kalır, sorularınızı yanıtlar ve düzeltmeyi test etmenizi
-isteriz. Düzeltme hazır olmadan ayrıntıları kamuya açıklamamanızı rica ederiz. Bildiriminiz
-kabul edilirse, izninizle sürüm notlarında size teşekkür ederiz.
+Kırmızı kontrol **birleştirmeyi engeller**. "Sonra düzeltirim" yok.
 
-Bu proje bir bug bounty programı sunmaz.
+## Bilinen sınırlar (kabul edilmiş risk)
 
-## Tehdit modeli
-
-Hydra DL masaüstünde çalışır ve iki yerel HTTP yüzeyi açar. Güvenlik değerlendirmesinde
-özellikle şu alanlar önemlidir:
-
-### Yakalama sunucusu (`127.0.0.1:6712`)
-
-- Varsayılan olarak yalnız geri döngü arayüzünü dinler.
-- Kimlik doğrulaması yoktur ve CORS `*` olarak açıktır; tarayıcı eklentisinin
-  çalışabilmesi için bu böyledir. Sonuç: **yerel makinede açık olan herhangi bir web
-  sayfası** `/add` çağrısıyla indirme başlatabilir.
-- Ayarlardan kapatılabilir (`Settings.captureEnabled`). Güvenilmeyen makinelerde veya
-  güvenilmeyen sayfalar açarken kapatılması önerilir.
-- Bu sunucuya internetten erişilemez; yönlendirme/port açma yapılmamalıdır.
-
-### Yerel ağ web sunucusu (`<lan-ip>:6790`)
-
-- Telefon/tablet arayüzü için LAN'a açılır.
-- `Settings.webToken` boş değilse `?token=` parametresi veya `X-Hydra-Token` başlığı
-  zorunludur. Token boş bırakılırsa aynı ağdaki herkes arayüze erişebilir.
-- Varsayılan olarak kapalı tutulması önerilir; yalnız güvenilen ağlarda açın.
-
-### İndirme girdileri
-
-- URL şeması yalnız `http`/`https` (ve torrent için `magnet`) kabul edilir.
-- Dosya adları Windows yasak karakterlerinden arındırılır ve hedef klasör dışına çıkacak
-  yollar reddedilir; yine de hatalı bir yol birleştirmesi güvenlik açığı sayılır.
-- yt-dlp ve torrent motoru dış süreç/kütüphane olarak çalışır; araç argümanları
-  kullanıcı girdisinden **kabuk üzerinden** geçirilmemelidir.
-
-### Kapsam dışı
-
-- Kullanıcının kendi makinesinde yönetici yetkisiyle yaptığı değişiklikler
-- Üçüncü taraf sitelerin (YouTube vb.) kendi güvenlik sorunları
-- Kullanıcının indirdiği dosyaların içeriği ve güvenilirliği
-- Desteklenmeyen platformlarda (Linux/macOS deneysel) görülen kararsızlıklar
-
-## Güvenli kullanım önerileri
-
-- Uygulamayı yalnızca güvendiğiniz kaynaklardan derleyin veya indirin; resmî bir ikili
-  dağıtım kanalı henüz yoktur.
-- Yakalama sunucusunu kullanmadığınızda kapatın.
-- Yerel ağ sunucusunu token olmadan açık bırakmayın.
-- `yt-dlp`'yi resmî kaynağından güncel tutun.
-- Şüpheli bir davranış gördüğünüzde uygulamayı kapatın ve yukarıdaki kanaldan bildirin.
+- Web sunucusu LAN'a açılabilir; **token boşsa ağdaki herkes erişir**. Bu bilinçli bir
+  kolaylık tercihidir, arayüz uyarı gösterir ve varsayılan olarak web sunucusu **kapalıdır**.
+- Token URL sorgusunda taşınabilir (QR ile eşleştirme); aynı ağdaki biri HTTP trafiğini
+  izleyebiliyorsa token'ı görebilir. HTTPS yok (yerel ağ); ileride TLS değerlendirilecek.
+- Torrent motoru DHT'ye katılır (P2P doğası gereği). Kullanıcı ayarlardan kapatabilir.
