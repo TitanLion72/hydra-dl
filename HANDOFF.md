@@ -22,7 +22,7 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
 
 | Ne | Kanıt |
 |---|---|
-| Rust testleri | `cargo test` → **81 passed** (1 ağ testi `#[ignore]`) |
+| Rust testleri | `cargo test` → **85 passed** (1 ağ testi `#[ignore]`) |
 | Clippy | `cargo clippy --all-targets -- -D warnings` → 0 uyarı |
 | Arayüz derlemesi | `npm run build` → 21.84 kB JS |
 | Segmentli indirme | `node tools/e2e.mjs` → 16 MB, sha256 eşleşti |
@@ -39,100 +39,23 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
 | Telefon arayüzü | `node tools/web-ui-check.mjs` → PASS (yt-dlp + torrent dosya seçimi + retry) |
 | **Yeniden deneme** | Yerel axum: 503×2→başarı (2 tekrar), `Retry-After: 1` → 1 sn bekleme, 404 → tekrar yok, 5. denemede vazgeçme |
 | Retry (canlı, kurulu 0.2.4) | probe 2×503 → `add` 2,0 sn sonra başarılı; segment 2×503 → `/downloads` `retry {attempt:2,max:5,waitMs:2000}`, sha256 doğru |
+| **Yol okuma açığı (kapandı)** | Canlı: `GET /C:/Windows/win.ini` → 400, `GET /C:/Users/.../web.rs` → 400, `/..%2f..%2fAGENTS.md` → 400, `GET /app.js` → 200 |
+| **Güvenlik taraması** | `node tools/security-check.mjs` → PASS (koruma regresyonu + sır/yol) |
+| **cargo audit** | `cd src-tauri && cargo audit` → exit 0 (1 gerekçeli istisna: ringbuf/librqbit-utp) |
 | e2e 503 senaryosu | `tools/e2e.mjs` → 16 MB + 503'lü 2 MB kaynak, iki hash de doğru |
 
 ## Bu oturumda düzeltilen gerçek hatalar
 
-0. **YouTube indirmesi `OSError: [Errno 22] Invalid argument` (kullanıcı bildirdi).**
-   Video başlığında `:` vardı; Windows dosya adında yasak, `--windows-filenames` bile
-   temizlemiyor, NTFS'te alternate data stream oluşup 0 baytta patlıyordu. Artık yt-dlp
-   yalnız `%(id)s.%(ext)s` ile indiriyor, görünen adı `util::sanitize_filename` kuruyor
-   (`rename_to_display_name`, testli). 1080p 401 MB gerçek indirmeyle doğrulandı.
-1. **Video-only format sessiz iniyordu.** `yt-dlp` listesindeki video-only akışlar
-   (`vcodec≠none, acodec=none`) seçilince ses gelmiyordu. Artık format kimliği
-   `137+bestaudio/137` biçiminde üretiliyor (`extract.rs`, testli).
-2. **Eklenti: `/probe` 4 sn zaman aşımına takılıyordu** (yt-dlp'li sayfalarda panel hata
-   veriyordu) → `/probe` için 30 sn bütçe (`shared.js`).
-3. **Eklenti: başarısız `POST /add` her 4xx'te `GET /add`'e düşüyordu** → çift ekleme riski;
-   artık yalnız 404/405'te yedek yol (`shared.js`).
-4. **Eklenti: sahte format kimliği** (`?? 0`) gönderiliyordu → gerçek kimlik yoksa alan hiç
-   konmuyor (`panel.js`).
-5. **Eklenti: `[hidden]` CSS'i eziliyordu** → `[hidden]{display:none!important}` (`panel.css`).
-6. **Avcı modu: `blob:` adresi gönderilince sunucu 400 veriyordu.** Artık blob seçilirse
-   **sayfa adresi** gönderilir, Hydra sayfayı tarayıp gerçek kaynağı bulur (`hunter.js`).
-7. **Avcı modu: iframe'lerde üst çubuk çok kez çiziliyordu** → yalnız üst frame.
-8. **Eklenti izinleri**: kullanılmayan `activeTab`/`scripting` kaldırıldı.
-9. **Açılışta çökme (en kritik).** `setup()` ana thread'de çalışıyor, `spawn_worker`
-   ise `tokio::spawn` çağırıyordu → yarım kalan indirme varken her açılışta
-   `there is no reactor running` paniği ve 0xc0000409 (sessiz kapanma). Artık
-   `tauri::async_runtime::spawn`. 4 yarım indirmeyle açılış test edildi.
-10. **Çok dosyalı torrent'te `filePath` boş kalıyordu** (dosya/klasör aç çalışmıyordu).
-    Yol artık torrentin dosya listesinden çözülüyor: tek dosya → dosya, çok dosya →
-    indirme klasörü (`pick_completed_path`, testli).
-11. **`GET /torrents` dokümanda vardı, kodda yoktu** (405). Uç nokta eklendi.
-12. **`.torrent`/magnet listesinde ad "watch" görünüyordu**: medya sayfasında başlık elde
-    olduğu halde URL'den ad üretiliyordu → `media_filename_from_title` (testli).
-13. **Eklenti paneli indirmeye basınca 1.1 sn sonra kendini kapatıyordu** ("sayfa gidiyor").
-    Artık açık kalır, sonucu gösterir; düğme "Eklendi" olur, ikinci tıklama çift eklemez.
-14. **`.torrent` indirme sayfası torrent sanılıyordu** (kullanıcı bildirdi: "bu linkten indirme
-    yapmıyor"). Bazı siteler `.torrent` adresinde ilk istekte HTML döndürüp gerçek dosyayı
-    yalnızca çerez + tarayıcı UA ile veriyor. Artık `resolve_add_source`: magnet/info-hash →
-    doğrudan, yerel dosya → okunur, `http(s)` → bencode mu? değilse çerezle tekrar, olmazsa
-    sayfadaki gerçek `.torrent`/`magnet:` bağlantısı izlenir (`looks_like_torrent`,
-    `find_torrent_link`, testli; yerel axum sunucusuyla iki uçtan uca test).
-    Gerçek dosyadrive.vip linki: **79878 bayt geçerli .torrent** (yalnız metadata çekildi,
-    içerik indirilmedi). Yasal Ubuntu `.torrent` ile `/add` → ad + 3,3 GB boyut doğrulandı.
-15. **Eşzamanlı indirmelerde bağlantı patlaması.** "10 indirme × 16 bağlantı = 160 soket"
-    olabiliyordu; her akış yavaşlıyor, toplam hız düşüyordu. Artık toplam 64 bağlantı bütçesi
-    açık indirmelere paylaştırılıyor (`fair_connections`, testli: 1→16, 4→8, 10→3).
-16. **Medya indirmeleri paralel parça çekmiyordu** (yt-dlp varsayılanı tek parça = yavaş)
-    → `--concurrent-fragments 4`. Ayrıca **hız limiti medyada uygulanmıyordu** →
-    `--limit-rate <bayt/sn>` (limit 0 ise eklenmez).
-17. Ayarlarda "eşzamanlı indirme" açıklaması **yanlıştı** ("N indirme = hız/N"). Uygulama
-    hızı indirmelere bölmüyor; sınır hattın toplam kapasitesi ve sunucunun bağlantı başına
-    limiti. Metin düzeltildi (`index.html`, `webapp/index.html`). Hız yalnızca "Hız limiti" > 0
-    iken uygulama tarafında bölünür (tek global bütçe); ayrıca 64 soketlik toplam bağlantı
-    bütçesi açık indirmelere paylaştırılır. webapp'te bağlantı sınırı 64→16.
-18. **Telefon arayüzünde yt-dlp kurulum düğmesi yoktu** (API vardı, arayüz bağlanmamıştı).
-    Ayarlar → Sunucu bölümünde durum + "yt-dlp kur" düğmesi: yoksa görünür, tıklayınca
-    `POST /ytdlp/install` (120 sn zaman aşımı), kurulunca sürüm tazelenir ve düğme gizlenir;
-    hata olursa kırmızı mesaj + yeniden denenebilir. `api()` artık istek başına zaman aşımı
-    alıyor. Ayarlar ekranı ikinci kez açıldığında da yt-dlp durumu tazeleniyor (eski durum
-    önbellekte kalmıyor); yanıt gelene kadar satır "kontrol ediliyor…" der ve kur düğmesi
-    kilitli (sunucu `yt-dlp --version` çalıştırdığı için ilk yanıt ~1 sn gecikebiliyor).
-    Yeni QA: `node tools/web-ui-check.mjs` (statik sunucu + mock API, 20 kontrol).
+Tam liste ve kök nedenler: [`docs/HISTORY.md`](docs/HISTORY.md) (23 madde).
+Bu oturumun öne çıkanları:
 
-19. **Torrent'te dosya seçimi yoktu** (kullanıcı bildirdi: "hangi dosyalar inecek seçebileyim").
-    `POST /torrent/files` (kaynak → liste, `id`+`files` → seçim), `AddOptions.files` /
-    `TorrentJob.files` → `AddTorrentOptions.only_files`, `update_only_files` ile indirme
-    durmadan seçim değişir. `Download.torrentFiles` seçim durumunu taşır. Masaüstünde
-    indirme seçenekleri panelinde dosya listesi + Tümü/Hiçbiri; satır eyleminde
-    "Dosyaları seç" sayfası. Telefonda aynı akış. `MAX_TOTAL_CONNECTIONS` 32→64
-    (10 indirme → dosya başına 6 bağlantı). QA: ui-harness 4 dosyalı senaryo,
-    `tools/web-ui-check.mjs` torrent senaryosu. Ayrıca DHT başlatılamazsa motor DHT'siz
-    devam ediyor (test ortamında torrent açılabilsin diye).
+- **Güvenlik**: web sunucusu kök dışını servis ediyordu (`/C:/Windows/win.ini` → 200);
+  token koruması prefix listesi yüzünden 2 ucu atlıyordu; localhost CSRF açıktı. Üçü de
+  kapatıldı + `SECURITY.md` / AGENTS kuralları + CodeQL/audit/security-check CI'da.
+- Geçici sunucu hatalarında yeniden deneme (429/503 + `Retry-After`).
+- Torrent'te dosya seçimi, bağlantı bütçesi 64, DHT'siz devam.
+- Bitiş/hata bildirimi (notify-rust) — toast görünürlüğü kullanıcı teyidi bekliyor.
 
-20. **Geçici sunucu hataları ölümcüldü** (429/503'te indirme anında `failed`, `Retry-After`
-    yok sayılıyordu). `engine::http` artık hem `probe` (HEAD + Range keşfi) hem segment
-    indirmesinde en fazla 5 deneme yapıyor: `408/425/429/5xx` (501 hariç) + ağ hatası,
-    üstel geri çekilme (0,5→1→2→4 sn, ±jitter), `Retry-After` (saniye veya HTTP tarihi,
-    30 sn tavan) öncelikli; 4xx hızlı başarısız. `Download.retry` alanı arayüze taşınıyor →
-    masaüstünde satırda sarı "Yeniden deneniyor 3/5 · 4 sn", telefonda kartta aynısı.
-    Kalıcı hatada mesaja deneme sayısı ekleniyor (`... (5 deneme sonrası vazgeçildi)`).
-    Testler: yerel axum sunucusuyla 503→başarı (probe + segment), `Retry-After: 1` beklemesi,
-    404'te tekrar yok, 5 denemede durma, tarih/saniye çözümü. `tools/e2e.mjs` artık
-    503'lü kaynağı da indiriyor.
-
-21. **İndirme bitince/hata olunca hiçbir bildirim yoktu** (ekran kilitliyken fark edilmiyordu).
-    `notify-rust` ile doğrudan gönderim (Tauri eklentisi hatayı yutuyordu), `notify_on_finish`
-    ayarı (varsayılan açık) ile HTTP/medya bitişi, torrent bitişi ve tüm başarısızlık yolları
-    bildirim gönderiyor. **Windows'ta paketsiz Win32 uygulaması toast gösterebilmek için AUMID
-    kaydı ister**; `ensure_app_id_registered` ilk gönderimde
-    `HKCU\Software\Classes\AppUserModelId\com.hydradl.app` anahtarını (DisplayName + IconUri)
-    yazıyor — bu olmadan Windows bildirimi sessizce düşürüyordu. Metin `manager::notify_body`
-    ile üretiliyor (80/140 karakter kırpma, testli). Torrent hatasında aynı hata her ticker
-    turunda bildirilmiyor (yalnız geçişte). Ayar hem masaüstü hem telefon ayarlarında;
-    masaüstünde **Test bildirimi** düğmesi (`POST /notify/test`).
 
 ## Bilinen açık uçlar
 
@@ -152,13 +75,14 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
   `a.bin:false, b.bin:true, c.bin:false`. Kayıt silindi, artık bırakılmadı.
 - **Windows bildirimi bu makinede görünmüyor (açık uç).** Kod tarafı tamam: `notify-rust`
   ile gönderim, AUMID kaydı (`HKCU\Software\Classes\AppUserModelId\com.hydradl.app`,
-  DisplayName + IconUri yazıldı), `show()` hata döndürürse arayüzde gösteriliyor. Windows
-  toast servisi çalışıyor (`WpnService`, `WpnUserService_*`) ama
-  `ToastNotificationManager.History.GetHistory()` **boş** ve `wpndatabase.db` hiç
-  değişmiyor → toast Windows tarafından düşürülüyor. Sonraki adım: kısayola
-  `System.AppUserModel.ID` özelliğini yazmak (IPropertyStore) veya kullanıcıda
-  Ayarlar → Sistem → Bildirimler altında Hydra DL'in kapalı olup olmadığını kontrol etmek.
-  Ayar/istek/arayüz tarafı çalışıyor; bildirim görünmese de indirme akışı bozulmuyor.
+  DisplayName + IconUri yazıldı), `show()` hata döndürürse arayüzde gösteriliyor.
+  **Teşhis (2026-10-28)**: PowerShell'in kendi toast'u da doğrulanamıyor —
+  `ToastNotificationManager.History.GetHistory()` her AUMID için `0x80070490`
+  (ERROR_NOT_FOUND) döndürüyor. Yani bu makinede bildirim **geçmişi** API'si çalışmıyor;
+  programatik doğrulama mümkün değil, **görsel teyit gerekiyor**. Kullanıcıya sorulacak:
+  biten bir indirmede toast görünüyor mu? Görünmüyorsa sıradaki adım kısayola
+  `System.AppUserModel.ID` yazmak (IPropertyStore) veya Windows Ayarlar → Bildirimler'de
+  Hydra DL'in kapalı olup olmadığına bakmak. Bildirim görünmese de indirme akışı bozulmuyor.
 - Avcı modunda ağ isteği dinleme (`webRequest`) yok; HLS/manifest yakalama v0.3'te.
 - Yeniden deneme HTTP indirmesinde **ve** `probe` (HEAD/Range keşfi) aşamasında geçerli.
   `.torrent` çözümleme tek deneme yapar (kullanıcı yeniden basar); medya (yt-dlp) kendi
@@ -176,12 +100,20 @@ yeterli değil.
 
 ## Sıradaki iş
 
-1. Telefondan `http://<LAN-IP>:6790` aç: QR eşleşmesi, indirme ekleme, **yt-dlp kur** ve
-   torrent dosya seçimini gerçek cihazda dene.
-2. Telefondan torrent dosya seçimini gerçek cihazda dene (sunucu tarafı canlı doğrulandı).
-3. Kullanıcı tek dosya hızını "Aynı anda indirme"=1, bağlantı 16 iken ölçsün; hat sınırına
-   ulaşmıyorsa sebep sunucu limiti mi, 64 soketlik bütçe mi ayrıştırılsın.
-4. v0.3: çerez/oturum aktarımı, `Retry-After` + backoff, proxy, yt-dlp'siz HLS/DASH.
+1. **Kullanıcı teyidi:** biten indirmede Windows toast görünüyor mu? (Kod + AUMID hazır;
+   bu makinede bildirim geçmişi API'si çalışmadığı için programatik doğrulanamadı.)
+   Görünmüyorsa: kısayola `System.AppUserModel.ID` yaz (IPropertyStore).
+2. **Telefondan** `http://<LAN-IP>:6790`: torrent dosya seçimi + yt-dlp kur düğmesi
+   gerçek cihazda.
+3. **Dış PR'lar (`smart-screen`, bizim repo değil):** #3 yol enjeksiyonu düzeltmesi
+   **doğru** (ham soketle 10/10 test geçti); #1 (tokio/vite güvenlik) `main`'deki
+   `audit` kırmızısını gideriyor; #2 (#1 ile çakışıyor, lockfile'da alakasız sürüm
+   değişikliği var) kapatılmalı. Kullanıcı onayı bekliyor.
+4. **v0.3 devam:** çerez/oturum aktarımı (eklenti → uygulama), proxy (HTTP/SOCKS5),
+   HLS/DASH'i yt-dlp olmadan indirme.
+5. **CodeQL ilk analizi** bitince açık uyarı var mı diye bak (`gh api .../code-scanning/alerts`).
+6. `ringbuf` muafiyeti: `librqbit-utp` 0.4.9+/0.5.2+ çıkınca `src-tauri/.cargo/audit.toml`
+   istisnasını kaldır.
 
 ## Oturum kesilirse ilk komut
 

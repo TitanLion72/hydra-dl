@@ -33,12 +33,26 @@ v0.2 = "IDM'den iyi" temeli. Sıra bağımlılığa göre; üstteki bitmeden alt
 - [ ] Proxy (sistem + elle HTTP/SOCKS5); torrent için de geçerli
 - [ ] HLS/DASH'i yt-dlp olmadan indirme (segment birleştirme)
 - [ ] Avcı modunda ağ isteği dinleme (`webRequest`) ile blob/manifest yakalama
-- [x] Bildirimler (tamamlandı/hata) — `tauri-plugin-notification`, `notifyOnFinish`
+- [x] Bildirimler (tamamlandı/hata) — `notify-rust` + AUMID, `notifyOnFinish`
 - [ ] Tray simgesi, arka planda küçültme
-- [ ] Web arayüzünde torrent ekleme, tohum oranı ve **yt-dlp kurulum düğmesi**
+- [ ] Web arayüzünde torrent ekleme ve tohum oranı
 - [ ] Toplu içe aktarma: bağlantı listesi, panodan otomatik yakalama (opt-in)
 - [ ] İndirme geçmişinde arama, sıralama, toplu seçim, sanal liste (>200 kayıt)
 - [ ] yt-dlp otomatik güncelleme (sürüm kontrolü + tek tık)
+
+## Güvenlik — tamamlanan (2026-10-28)
+
+- [x] **Yol okuma açığı kapatıldı** (`resolve_static_path`: bileşen doğrulama +
+      `canonicalize`; symlink dahil)
+- [x] **Token koruması varsayılan reddet** (`needs_token`) — yeni uç otomatik korunur
+- [x] **Origin kontrolü** (`origin_guard`) — localhost CSRF kapalı
+- [x] `SECURITY.md` tehdit modeli + 10 bağlayıcı kural; AGENTS'te "Güvenlik değişmezleri"
+- [x] CI: **CodeQL** (Rust + JS/TS), `cargo audit`, `npm audit`,
+      `node tools/security-check.mjs`
+- [ ] CodeQL ilk analiz sonuçlarını gözden geçir
+- [ ] Rate limit (dakikada N istek) — token kaba kuvvetine karşı
+- [ ] Token karşılaştırmasını sabit zamanlı yap (`subtle::ConstantTimeEq`)
+- [ ] İsteğe bağlı HTTPS (yerel ağda self-signed) — token düz metin gitmesin
 
 ## v1.0 — dağıtım
 
