@@ -44,7 +44,7 @@ pub async fn start(state: Arc<AppState>, port: u16) -> Result<CaptureHandle, Str
         .map_err(|e| format!("Adres okunamadı: {e}"))?
         .port();
 
-    let router = web::api_router(state);
+    let router = web::with_origin_guard(web::api_router(state));
     let (tx, rx) = oneshot::channel::<()>();
     let task = tokio::spawn(async move {
         let server = axum::serve(listener, router).with_graceful_shutdown(async {

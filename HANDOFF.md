@@ -2,7 +2,7 @@
 
 > Yeni oturum: **önce bu dosyayı oku**, sonra `git status`. Bitirdiğin dilimi en alta 10 satır yaz.
 
-**Son güncelleme:** 2026-10-28 · v0.2.5 · AGPL-3.0-or-later
+**Son güncelleme:** 2026-10-28 · v0.2.6 · AGPL-3.0-or-later
 
 ---
 
@@ -14,9 +14,9 @@ telefon için web arayüzü, tarayıcı eklentisi (panel + avcı modu).
 
 **Repo public:** <https://github.com/TitanLion72/hydra-dl> (AGPL-3.0, ilk commit `9495fd4`).
 
-**Kurulu sürüm:** v0.2.5, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
+**Kurulu sürüm:** v0.2.6, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
 girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
-`src-tauri\target\release\bundle\nsis\Hydra DL_0.2.5_x64-setup.exe`.
+`src-tauri\target\release\bundle\nsis\Hydra DL_0.2.6_x64-setup.exe`.
 
 ## Doğrulanmış (bu oturum, kanıt var)
 

@@ -1,6 +1,6 @@
 [package]
 name = "hydra-dl"
-version = "0.2.5"
+version = "0.2.6"
 description = "Cok baglantili, devam ettirilebilir indirme yoneticisi"
 authors = ["TitanLion72"]
 license = "AGPL-3.0-or-later"

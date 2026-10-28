@@ -46,6 +46,8 @@ Bu kurallar `AGENTS.md`'de bağlayıcıdır; ihlal eden PR birleştirilmez.
    `Path::join` tek başına **yetmez** (Windows'ta mutlak yolu ezer).
 3. **Origin kontrolü.** Tarayıcıdan gelen isteklerde `Origin` beyaz listeye göre
    denetlenir: aynı köken + tarayıcı eklentisi şemaları. `null`/`data:`/`file:` reddedilir.
+   **İki sunucu da** (`127.0.0.1:6712` yakalama + `0.0.0.0:6790` web) `with_origin_guard`
+   kullanır — yakalama sunucusu token'sız olduğu için asıl CSRF riski oradaydı.
 4. **Token karşılaştırması sabit zamanlı olmalı** (ileride: `subtle::ConstantTimeEq`).
    Token yalnız `[A-Za-z0-9]`, en fazla 64 karakter; URL'de taşınabilir (QR) ama
    loglanmaz.

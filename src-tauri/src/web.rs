@@ -664,6 +664,16 @@ fn origin_guard(
     })
 }
 
+/// Yonlendiriciye Origin korumasini uygular (yakalama + web sunucusu ortak).
+///
+/// Yakalama sunucusu `127.0.0.1`'de ve **token'siz** calisir; korunmazsa
+/// kullanicinin ziyaret ettigi herhangi bir web sayfasi `fetch` ile indirme
+/// ekleyebilir/ayarlari degistirebilir (localhost CSRF). Bu yuzden iki sunucu da
+/// ayni korumayi kullanir.
+pub fn with_origin_guard(router: Router) -> Router {
+    router.layer(middleware::from_fn(origin_guard))
+}
+
 fn auth_middleware(
     token: String,
     webapp_root: PathBuf,
@@ -766,7 +776,7 @@ async fn serve(
         webapp_root,
     )));
     router = router.layer(middleware::from_fn(cors));
-    router = router.layer(middleware::from_fn(origin_guard));
+    router = with_origin_guard(router);
 
     let (tx, rx) = oneshot::channel::<()>();
     let task = tokio::spawn(async move {
@@ -978,6 +988,18 @@ mod tests {
         ));
         // Host yoksa http(s) kaynagi guvenilmez.
         assert!(!origin_allowed(Some("http://127.0.0.1:6712"), None));
+    }
+
+    #[test]
+    fn yakalama_sunucusu_da_origin_korumali() {
+        // Yakalama sunucusu 127.0.0.1'de ve token'siz; korunmazsa ziyaret edilen
+        // herhangi bir sayfa fetch ile indirme ekleyebilirdi. capture.rs
+        // `with_origin_guard` kullanmali.
+        let src = include_str!("capture.rs");
+        assert!(
+            src.contains("with_origin_guard"),
+            "capture.rs Origin korumasini uygulamali"
+        );
     }
 
     #[test]
