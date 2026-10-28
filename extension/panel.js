@@ -72,6 +72,32 @@ function isOffline(err) {
   return Boolean(err) && (err.code === "network" || err.code === "timeout");
 }
 
+/**
+ * Önizleme için güvenli medya adresi.
+ *
+ * `probe` verisi sayfadan gelir (güvenilmez): şema doğrulanmadan `video.src`'ye
+ * verilirse CodeQL haklı olarak XSS/redirect işaretler. Yalnız http(s), blob ve
+ * `data:video/…` kabul edilir; geri kalanı boş döner (önizleme çizilmez).
+ */
+function safeMediaUrl(raw) {
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  let parsed;
+  try {
+    parsed = new URL(value, location.href);
+  } catch {
+    return "";
+  }
+  const scheme = parsed.protocol.toLowerCase();
+  if (scheme === "http:" || scheme === "https:" || scheme === "blob:") {
+    return parsed.href;
+  }
+  if (scheme === "data:" && /^data:video\//i.test(value)) {
+    return value;
+  }
+  return "";
+}
+
 function looksVideo(probe) {
   const mime = String((probe && probe.mime) || "").toLowerCase();
   if (mime.startsWith("video/")) return true;
@@ -132,15 +158,15 @@ function renderPreview(probe) {
   const fileCandidate = candidates.find(
     (c) => c && c.url && PLAYABLE_KINDS.has(String(c.kind || "file").toLowerCase()),
   );
-  const videoSource = looksVideo(probe)
-    ? fileCandidate?.url || (probe && probe.finalUrl) || state.url || ""
+  const safeVideoSource = looksVideo(probe)
+    ? safeMediaUrl(fileCandidate?.url || (probe && probe.finalUrl) || state.url || "")
     : "";
 
-  if (videoSource) {
+  if (safeVideoSource) {
     const video = document.createElement("video");
     video.controls = true;
     video.preload = "metadata";
-    video.src = videoSource;
+    video.src = safeVideoSource;
     if (state.referer) video.setAttribute("data-referer", state.referer);
 
     const hint = document.createElement("div");

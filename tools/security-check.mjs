@@ -112,6 +112,23 @@ const risky = [
   [/Command::new\(\s*"(cmd|powershell|sh|bash)"/, "kabuk çağrısı (Command::new)"],
 ];
 
+// Eklenti panelinde dış veri doğrudan `src`/`href`'e verilmemeli (XSS/redirect).
+for (const file of files) {
+  if (!/^extension\/.*\.js$/.test(file)) continue;
+  const text = await readFile(file, "utf8");
+  const lines = text.split(/\r?\n/);
+  lines.forEach((line, index) => {
+    if (!/(\.src|\.href)\s*=\s*[a-zA-Z_$]/.test(line)) return;
+    if (/safe[A-Z]/.test(line)) return;
+    bad(`${file}:${index + 1}: .src/.href doğrulanmamış değişkenle atanıyor`);
+  });
+}
+if (files.some((f) => f === "extension/panel.js")) {
+  const panel = await readFile("extension/panel.js", "utf8");
+  if (panel.includes("safeMediaUrl")) ok("eklenti panelinde URL şema doğrulaması var");
+  else bad("eklenti panelinde safeMediaUrl yok (XSS/redirect riski)");
+}
+
 for (const file of files) {
   if (!/\.(rs|ts|js|mjs)$/.test(file)) continue;
   let text;
