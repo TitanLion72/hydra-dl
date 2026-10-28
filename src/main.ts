@@ -269,8 +269,14 @@ function updateRow(refs: RowRefs, item: Download) {
   const indeterminate = !total && item.status === "downloading" && item.downloadedBytes > 0;
   refs.root.classList.toggle("indeterminate", indeterminate);
   if (indeterminate) refs.fill.style.width = "100%";
-  refs.speed.textContent =
-    item.status === "downloading" && item.speedBps > 0 ? `${formatBytes(item.speedBps)}/s` : "";
+  if (item.status === "downloading" && item.retry) {
+    const wait = Math.max(1, Math.round(item.retry.waitMs / 1000));
+    refs.speed.textContent = `Yeniden deneniyor ${item.retry.attempt}/${item.retry.max} · ${wait} sn`;
+  } else {
+    refs.speed.textContent =
+      item.status === "downloading" && item.speedBps > 0 ? `${formatBytes(item.speedBps)}/s` : "";
+  }
+  refs.speed.classList.toggle("is-retry", Boolean(item.retry));
   refs.error.textContent = item.error ?? "";
   refs.error.hidden = !item.error;
 

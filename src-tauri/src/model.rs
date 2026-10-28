@@ -53,6 +53,17 @@ pub struct Swarm {
     pub seeders: usize,
 }
 
+/// Gecici hatadan sonra yapilan tekrar deneme durumu.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Retry {
+    /// Kacinci deneme calisiyor (1 = ilk tekrar).
+    pub attempt: u32,
+    pub max: u32,
+    /// Bu denemeden once beklenen sure (ms).
+    pub wait_ms: u64,
+}
+
 /// Torrent icindeki tek dosya. `included=false` ise indirilmez.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -167,6 +178,9 @@ pub struct Download {
     /// Torrent dosya listesi ve secim durumu (coklu dosya torrentlerinde).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub torrent_files: Option<Vec<TorrentFile>>,
+    /// Gecici hatadan sonra yeniden deneniyorsa dolu.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry: Option<Retry>,
 }
 
 impl Download {
@@ -404,6 +418,7 @@ mod tests {
             swarm: None,
             source: None,
             torrent_files: None,
+            retry: None,
         };
         assert!((d.fraction() - 0.4).abs() < 1e-9);
         assert_eq!(d.eta_secs(), Some(6));

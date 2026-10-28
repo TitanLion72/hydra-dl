@@ -266,8 +266,8 @@ async function main() {
     ok("ayarlar kaydedildikten sonra cekmece kapandi");
 
     // --- 6. Indirme listesi ------------------------------------------------
-    check(await page.evaluate(() => window.__hydraMock.pushList()), "mock 4 indirmeyi olay uzerinden gonderdi");
-    await page.waitForFunction(() => document.querySelectorAll("#list .row").length === 4, null, { timeout: 10_000 });
+    check(await page.evaluate(() => window.__hydraMock.pushList()), "mock 5 indirmeyi olay uzerinden gonderdi");
+    await page.waitForFunction(() => document.querySelectorAll("#list .row").length === 5, null, { timeout: 10_000 });
 
     const rows = await page.evaluate(() =>
       [...document.querySelectorAll("#list .row")].map((row) => ({
@@ -281,7 +281,7 @@ async function main() {
     for (const row of rows) {
       console.log(`..     satir ${row.id}: ${row.status} / ${row.badge} / ${row.name} (${row.kind})`);
     }
-    check(rows.length === 4, `listede 4 indirme satiri var (${rows.length})`);
+    check(rows.length === 5, `listede 5 indirme satiri var (${rows.length})`);
     check(
       ["downloading", "completed", "failed"].every((status) => rows.some((row) => row.status === status)),
       "downloading / completed / failed durumlarinin ucu de listelendi",
@@ -292,10 +292,21 @@ async function main() {
       check(row?.badge === label, `${status} rozeti '${label}'`);
     }
     check(rows.some((row) => row.kind === "torrent"), "torrent kaydinin ikonu dogru");
-    check((await page.locator("#count-all").textContent()).trim() === "4", "sayac 'Tumu' 4 gosteriyor");
+    check((await page.locator("#count-all").textContent()).trim() === "5", "sayac 'Tumu' 5 gosteriyor");
     await page.waitForTimeout(300);
     await shot("04-list.png");
 
+    // --- 6a. Yeniden deneme gostergesi ------------------------------------
+    const retryRow = page.locator('#list .row[data-id="dl-retry-5"]');
+    const retryText = (await retryRow.locator(".speed").textContent()).trim();
+    check(
+      /Yeniden deneniyor 3\/5/.test(retryText) && /4 sn/.test(retryText),
+      `yeniden deneme metni: ${retryText}`,
+    );
+    check(
+      (await retryRow.locator(".speed").getAttribute("class")).includes("is-retry"),
+      "yeniden deneme satiri vurgulu",
+    );
     // --- 6b. Satirdan torrent dosya secimini degistirme --------------------
     const torrentRow = page.locator('#list .row[data-id="dl-torrent-4"]');
     const torrentMeta = (await torrentRow.locator(".seg-info").textContent()).trim();

@@ -664,6 +664,12 @@ a {
   color: var(--text-faint);
 }
 
+/* Gecici hata sonrasi yeniden deneme. */
+.card-meta [data-ref="speed"].is-retry {
+  color: #fbbf24;
+  font-weight: 600;
+}
+
 .card-error {
   font-size: 0.76rem;
   color: #ffb4b4;

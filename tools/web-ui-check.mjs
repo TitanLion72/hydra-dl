@@ -105,7 +105,38 @@ async function mockApi(
       }),
     }),
   );
-  await page.route("**/downloads", (route) => route.fulfill({ ...JSON_OK, body: "[]" }));
+  await page.route("**/downloads", (route) =>
+    route.fulfill({
+      ...JSON_OK,
+      body: JSON.stringify([
+        {
+          id: "dl-retry-1",
+          url: "https://yavas.example.com/arsiv.iso",
+          filename: "arsiv.iso",
+          dir: "C:\\Users\\test\\Downloads",
+          kind: "http",
+          status: "downloading",
+          totalBytes: 1073741824,
+          downloadedBytes: 268435456,
+          segments: [{ index: 0, start: 0, end: 1073741823, done: 268435456 }],
+          resumable: true,
+          speedBps: 0,
+          progress: 0.25,
+          error: null,
+          createdAt: Date.now() - 60000,
+          finishedAt: null,
+          connections: 4,
+          referer: null,
+          mime: "application/octet-stream",
+          filePath: null,
+          format: null,
+          swarm: null,
+          source: null,
+          retry: { attempt: 2, max: 5, waitMs: 2000 },
+        },
+      ]),
+    }),
+  );
   await page.route("**/probe", (route) =>
     route.fulfill({
       ...JSON_OK,
@@ -351,6 +382,25 @@ try {
       { timeout: 15000 },
     );
     check(await page.locator("#installYtdlp").isHidden(), "yanıt gelince düğme gizli");
+    await page.close();
+  }
+  // 5) Telefon listesinde yeniden deneme göstergesi.
+  {
+    const page = await browser.newPage();
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(String(error)));
+    await mockApi(page, { available: true });
+    await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector("#list .card", { timeout: 15000 });
+    const speed = (await page.textContent('#list .card [data-ref="speed"]')).trim();
+    check(
+      /Yeniden deneniyor 2\/5/.test(speed) && /2 sn/.test(speed),
+      `telefonda yeniden deneme metni: ${speed}`,
+    );
+    const cls = await page.getAttribute('#list .card [data-ref="speed"]', "class");
+    check((cls || "").includes("is-retry"), "telefonda retry vurgusu");
+    check(errors.length === 0, `konsol hatası yok (${errors.join(" | ")})`);
+    await page.screenshot({ path: path.join(SHOTS, "hydra-webui-retry.png") });
     await page.close();
   }
 } finally {

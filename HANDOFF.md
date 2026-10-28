@@ -2,8 +2,7 @@
 
 > Yeni oturum: **önce bu dosyayı oku**, sonra `git status`. Bitirdiğin dilimi en alta 10 satır yaz.
 
-**Son güncelleme:** 2026-10-28 · v0.2.3 (0.2.4 hazırlanıyor) · AGPL-3.0-or-later
-
+**Son güncelleme:** 2026-10-28 · v0.2.4 · AGPL-3.0-or-later
 ---
 
 ## Nerede kaldık
@@ -14,15 +13,15 @@ telefon için web arayüzü, tarayıcı eklentisi (panel + avcı modu).
 
 **Repo public:** <https://github.com/TitanLion72/hydra-dl> (AGPL-3.0, ilk commit `9495fd4`).
 
-**Kurulu sürüm:** v0.2.3, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
+**Kurulu sürüm:** v0.2.4, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
 girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
-`src-tauri\target\release\bundle\nsis\Hydra DL_0.2.3_x64-setup.exe`.
+`src-tauri\target\release\bundle\nsis\Hydra DL_0.2.4_x64-setup.exe`.
 
 ## Doğrulanmış (bu oturum, kanıt var)
 
 | Ne | Kanıt |
 |---|---|
-| Rust testleri | `cargo test` → **69 passed** (1 ağ testi `#[ignore]`) |
+| Rust testleri | `cargo test` → **76 passed** (1 ağ testi `#[ignore]`) |
 | Clippy | `cargo clippy --all-targets -- -D warnings` → 0 uyarı |
 | Arayüz derlemesi | `npm run build` → 21.84 kB JS |
 | Segmentli indirme | `node tools/e2e.mjs` → 16 MB, sha256 eşleşti |
@@ -36,7 +35,10 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
 | LAN erişimi | `http://192.168.1.106:6790/health` → 200 |
 | Masaüstü UI | `tools/ui-harness` → torrent dosya seçimi dahil, konsol hatası yok |
 | Eklenti (statik) | `node tools/test-extension.mjs` → 19 OK |
-| Telefon arayüzü | `node tools/web-ui-check.mjs` → PASS (yt-dlp + torrent dosya seçimi) |
+| Telefon arayüzü | `node tools/web-ui-check.mjs` → PASS (yt-dlp + torrent dosya seçimi + retry) |
+| **Yeniden deneme** | Yerel axum: 503×2→başarı (2 tekrar), `Retry-After: 1` → 1 sn bekleme, 404 → tekrar yok, 5. denemede vazgeçme |
+| Retry (canlı, kurulu 0.2.4) | probe 2×503 → `add` 2,0 sn sonra başarılı; segment 2×503 → `/downloads` `retry {attempt:2,max:5,waitMs:2000}`, sha256 doğru |
+| e2e 503 senaryosu | `tools/e2e.mjs` → 16 MB + 503'lü 2 MB kaynak, iki hash de doğru |
 
 ## Bu oturumda düzeltilen gerçek hatalar
 
@@ -109,6 +111,17 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
     `tools/web-ui-check.mjs` torrent senaryosu. Ayrıca DHT başlatılamazsa motor DHT'siz
     devam ediyor (test ortamında torrent açılabilsin diye).
 
+20. **Geçici sunucu hataları ölümcüldü** (429/503'te indirme anında `failed`, `Retry-After`
+    yok sayılıyordu). `engine::http` artık hem `probe` (HEAD + Range keşfi) hem segment
+    indirmesinde en fazla 5 deneme yapıyor: `408/425/429/5xx` (501 hariç) + ağ hatası,
+    üstel geri çekilme (0,5→1→2→4 sn, ±jitter), `Retry-After` (saniye veya HTTP tarihi,
+    30 sn tavan) öncelikli; 4xx hızlı başarısız. `Download.retry` alanı arayüze taşınıyor →
+    masaüstünde satırda sarı "Yeniden deneniyor 3/5 · 4 sn", telefonda kartta aynısı.
+    Kalıcı hatada mesaja deneme sayısı ekleniyor (`... (5 deneme sonrası vazgeçildi)`).
+    Testler: yerel axum sunucusuyla 503→başarı (probe + segment), `Retry-After: 1` beklemesi,
+    404'te tekrar yok, 5 denemede durma, tarih/saniye çözümü. `tools/e2e.mjs` artık
+    503'lü kaynağı da indiriyor.
+
 ## Bilinen açık uçlar
 
 - **Firefox/Zen**: `compat.js` + `HX.api` + `background.scripts` + gecko id ile paket hazır;
@@ -126,6 +139,9 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
   `totalBytes=400000`; `POST /torrent/files {id,files:[1]}` → `totalBytes=200000`,
   `a.bin:false, b.bin:true, c.bin:false`. Kayıt silindi, artık bırakılmadı.
 - Avcı modunda ağ isteği dinleme (`webRequest`) yok; HLS/manifest yakalama v0.3'te.
+- Yeniden deneme HTTP indirmesinde **ve** `probe` (HEAD/Range keşfi) aşamasında geçerli.
+  `.torrent` çözümleme tek deneme yapar (kullanıcı yeniden basar); medya (yt-dlp) kendi
+  retry'ini yapar.
 
 ## Paketleme (bu oturumda bulunan ve düzeltilen hata)
 

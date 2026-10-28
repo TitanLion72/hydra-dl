@@ -79,6 +79,25 @@ Gövde: `{ "url": "...", "media": true|false|null }`
 | POST | `/downloads/{id}/cancel` | |
 | DELETE | `/downloads/{id}?deleteFile=true` | |
 
+### Geçici hatalar ve yeniden deneme
+
+Segment indirmesi `408`, `425`, `429` ve `5xx` (`501` hariç) durumlarında ya da ağ hatasında
+otomatik yeniden denenir:
+
+- En fazla **5 deneme** (ilk deneme dahil), denemeler arası üstel geri çekilme
+  (0,5 → 1 → 2 → 4 sn, ±jitter), üst sınır 30 sn.
+- Sunucu `Retry-After` gönderdiyse (saniye veya HTTP tarihi) ona uyulur; 30 sn ile kırpılır.
+- `4xx` (401/403/404/410/416…) tekrar denenmez; hata `failed` olarak raporlanır.
+- Deneme sürerken `Download.retry` dolar:
+
+```json
+{ "retry": { "attempt": 3, "max": 5, "waitMs": 4000 } }
+```
+
+`attempt` çalışmakta olan denemedir (2 = ikinci deneme), `waitMs` o denemeden önce beklenen
+süre. Bitişte/başarıda `retry` alanı düşer. Segment bazlı denemeler tükendiyse tüm dosya için
+bir kez daha baştan denenir (parçalar diskte kalır).
+
 ## Ayarlar
 
 `GET /settings`, `PUT /settings` — `Settings` modeli (`src/api.ts`). `PUT` tüm nesneyi ister.

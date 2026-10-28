@@ -23,6 +23,13 @@ export interface Swarm {
   seeders: number;
 }
 
+/** Geçici hatadan sonra yeniden deneme durumu. */
+export interface RetryInfo {
+  attempt: number;
+  max: number;
+  waitMs: number;
+}
+
 /** Torrent icindeki tek dosya. */
 export interface TorrentFile {
   index: number;
@@ -62,6 +69,7 @@ export interface Download {
   swarm: Swarm | null;
   source: string | null;
   torrentFiles?: TorrentFile[] | null;
+  retry?: RetryInfo | null;
 }
 
 export interface Settings {

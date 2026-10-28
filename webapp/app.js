@@ -522,7 +522,10 @@ function updateRow(row, download) {
   }
 
   let speedText = "";
-  if (download.status === "downloading") {
+  if (download.status === "downloading" && download.retry) {
+    const wait = Math.max(1, Math.round(download.retry.waitMs / 1000));
+    speedText = `Yeniden deneniyor ${download.retry.attempt}/${download.retry.max} · ${wait} sn`;
+  } else if (download.status === "downloading") {
     const speed = formatSpeed(download.speedBps);
     const eta = etaSeconds(download);
     if (speed) speedText = eta === null ? speed : `${speed} · kalan ${formatDuration(eta)}`;
@@ -541,6 +544,7 @@ function updateRow(row, download) {
     setText(refs.speed, speedText);
     memo.speedText = speedText;
   }
+  if (refs.speed) refs.speed.classList.toggle("is-retry", Boolean(download.retry));
 
   const errorText = download.error ? String(download.error) : "";
   if (memo.errorText !== errorText) {
@@ -1250,7 +1254,8 @@ async function startProbe(rawUrl, mediaHint) {
   if (mediaHint === "file") body.media = false;
 
   try {
-    const data = await api(ENDPOINTS.probe, { method: "POST", body });
+    // Sunucu 429/503 dondururse uygulama bekleyip yeniden dener; 8 sn yetmez.
+    const data = await api(ENDPOINTS.probe, { method: "POST", body, timeout: 45_000 });
     if (!data || typeof data !== "object") throw new Error("Sunucu boş yanıt verdi.");
     if (data.ok === false) throw new Error(data.error || "Bağlantı incelenemedi.");
     renderProbe(data, url);

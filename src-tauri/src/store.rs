@@ -242,6 +242,7 @@ mod tests {
             swarm: None,
             source: None,
             torrent_files: None,
+            retry: None,
         }
     }
 

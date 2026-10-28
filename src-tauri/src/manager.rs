@@ -297,6 +297,22 @@ async fn run_http(state: Arc<AppState>, id: String, cancel: Arc<CancelToken>) {
     let mut attempt = 0u32;
     loop {
         attempt += 1;
+        // Gecici hata tekrarini arayuze tasi: "3/5 deneme, 2 sn sonra".
+        let on_retry = {
+            let state = state.clone();
+            let id = id.clone();
+            move |attempt: u32, max: u32, wait: Duration| {
+                state.update_item(&id, |item| {
+                    item.retry = Some(crate::model::Retry {
+                        attempt,
+                        max,
+                        wait_ms: wait.as_millis().min(u64::MAX as u128) as u64,
+                    });
+                    item.speed_bps = 0;
+                });
+                state.emit_downloads();
+            }
+        };
         let result = http::download_segments(http::DownloadRequest {
             client: state.http(),
             url: &local.url,
@@ -306,12 +322,14 @@ async fn run_http(state: Arc<AppState>, id: String, cancel: Arc<CancelToken>) {
             cancel: &cancel,
             progress: progress.as_slice(),
             limiter: state.limiter(),
+            on_retry: Some(&on_retry),
         })
         .await;
         state.sync_progress(&id, &progress);
 
         match result {
             Ok(()) => {
+                state.update_item(&id, |item| item.retry = None);
                 finish_completed(&state, &id, &parts_dir, &local.segments, false).await;
                 return;
             }
@@ -322,6 +340,7 @@ async fn run_http(state: Arc<AppState>, id: String, cancel: Arc<CancelToken>) {
                         item.status = Status::Paused;
                     }
                     item.speed_bps = 0;
+                    item.retry = None;
                 }
                 let _ = store.save();
                 drop(store);
@@ -345,18 +364,20 @@ async fn run_http(state: Arc<AppState>, id: String, cancel: Arc<CancelToken>) {
                     item.resumable = false;
                     item.connections = 1;
                     item.segments = local.segments.clone();
+                    item.retry = None;
                 });
                 state.persist();
                 continue;
             }
             Err(err) => {
-                let retryable = matches!(err, HttpError::Network(_) | HttpError::Incomplete(_));
-                if retryable && attempt < 3 && !cancel.is_cancelled() {
-                    tokio::time::sleep(Duration::from_secs(attempt as u64)).await;
+                // Segment bazli tekrar deneme `engine::http` icinde biter; burada
+                // yalniz bir kez "tum dosya" turu denenir (parcalar diskte kalir).
+                let retryable = err.retry_after().is_some();
+                if retryable && attempt < 2 && !cancel.is_cancelled() {
+                    tokio::time::sleep(Duration::from_secs(2)).await;
                     if let Some(item) = state.item(&id) {
                         local.segments = item.segments;
                     }
-                    state.update_item(&id, |item| item.speed_bps = 0);
                     continue;
                 }
                 if cancel.is_cancelled() {
@@ -367,6 +388,7 @@ async fn run_http(state: Arc<AppState>, id: String, cancel: Arc<CancelToken>) {
                     item.speed_bps = 0;
                     item.error = Some(err.to_string());
                     item.finished_at = Some(now_ts());
+                    item.retry = None;
                 });
                 state.persist();
                 state.emit_downloads();
@@ -593,6 +615,7 @@ pub async fn add(
         swarm: None,
         source: None,
         torrent_files: None,
+        retry: None,
     };
 
     {
@@ -651,6 +674,7 @@ async fn add_torrent(
         swarm: Some(crate::model::Swarm::default()),
         source: Some(source.to_string()),
         torrent_files: None,
+        retry: None,
     };
     {
         let mut store = state.store.lock().unwrap();

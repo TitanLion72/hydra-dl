@@ -707,6 +707,15 @@ svg {
   min-height: 16px;
 }
 
+/* Gecici hata sonrasi yeniden deneme: sakin ama fark edilir. */
+.speed.is-retry {
+  color: #fbbf24;
+  font-size: 11px;
+  max-width: 220px;
+  text-align: right;
+  line-height: 1.25;
+}
+
 .actions {
   display: flex;
   gap: 2px;

@@ -19,8 +19,29 @@ for (let i = 0; i < size; i += 1) payload[i] = i % 251;
 const expectedHash = createHash("sha256").update(payload).digest("hex");
 
 function startServer() {
+  // Gecici hata senaryosu: /flaky ilk iki istekte 503 + Retry-After doner.
+  let flakyHits = 0;
+  const flaky = Buffer.alloc(2 * 1024 * 1024);
+  for (let i = 0; i < flaky.length; i += 1) flaky[i] = i % 97;
+  const flakyHash = createHash("sha256").update(flaky).digest("hex");
+
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
+    if (url.pathname === "/flaky-meta") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ size: flaky.length, sha256: flakyHash }));
+      return;
+    }
+    if (url.pathname === "/flaky") {
+      flakyHits += 1;
+      if (flakyHits <= 2) {
+        res.writeHead(503, { "retry-after": "1", "content-type": "text/plain" });
+        res.end("gecici");
+        return;
+      }
+      serveBytes(req, res, flaky, "flaky-test.bin");
+      return;
+    }
     if (url.pathname === "/meta") {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ size, sha256: expectedHash }));
@@ -30,39 +51,45 @@ function startServer() {
       res.writeHead(404).end();
       return;
     }
-    const range = req.headers.range;
-    if (range) {
-      const match = /bytes=(\d+)-(\d*)/.exec(range);
-      if (match) {
-        const start = Number(match[1]);
-        const end = match[2] ? Math.min(Number(match[2]), size - 1) : size - 1;
-        if (start > end) {
-          res.writeHead(416).end();
-          return;
-        }
-        const chunk = payload.subarray(start, end + 1);
-        res.writeHead(206, {
-          "content-type": "application/octet-stream",
-          "content-length": String(chunk.length),
-          "content-range": `bytes ${start}-${end}/${size}`,
-          "accept-ranges": "bytes",
-          "content-disposition": 'attachment; filename="e2e-test.bin"',
-        });
-        res.end(chunk);
-        return;
-      }
-    }
-    res.writeHead(200, {
-      "content-type": "application/octet-stream",
-      "content-length": String(size),
-      "accept-ranges": "bytes",
-      "content-disposition": 'attachment; filename="e2e-test.bin"',
-    });
-    res.end(payload);
+    serveBytes(req, res, payload, "e2e-test.bin");
   });
   return new Promise((resolve) => {
     server.listen(0, "127.0.0.1", () => resolve({ server, port: server.address().port }));
   });
+}
+
+/** Range destekli bayt servisi. */
+function serveBytes(req, res, bytes, filename) {
+  const total = bytes.length;
+  const range = req.headers.range;
+  if (range) {
+    const match = /bytes=(\d+)-(\d*)/.exec(range);
+    if (match) {
+      const start = Number(match[1]);
+      const end = match[2] ? Math.min(Number(match[2]), total - 1) : total - 1;
+      if (start > end) {
+        res.writeHead(416).end();
+        return;
+      }
+      const chunk = bytes.subarray(start, end + 1);
+      res.writeHead(206, {
+        "content-type": "application/octet-stream",
+        "content-length": String(chunk.length),
+        "content-range": `bytes ${start}-${end}/${total}`,
+        "accept-ranges": "bytes",
+        "content-disposition": `attachment; filename="${filename}"`,
+      });
+      res.end(chunk);
+      return;
+    }
+  }
+  res.writeHead(200, {
+    "content-type": "application/octet-stream",
+    "content-length": String(total),
+    "accept-ranges": "bytes",
+    "content-disposition": `attachment; filename="${filename}"`,
+  });
+  res.end(bytes);
 }
 
 async function waitFor(description, timeoutMs, fn) {
@@ -136,6 +163,33 @@ async function run(port) {
   console.log(`[e2e] BASARILI: ${target} (${downloaded.length} bayt, sha256 ${hash.slice(0, 16)}…)`);
 
   await rm(target, { force: true });
+
+  // --- Gecici hata (503 + Retry-After) sonrasi devam ---------------------
+  const meta = await (await fetch(`http://127.0.0.1:${port}/flaky-meta`)).json();
+  const flakyAdd =
+    `http://127.0.0.1:${capturePort}/add?url=` +
+    encodeURIComponent(`http://127.0.0.1:${port}/flaky`) +
+    `&dir=${encodeURIComponent(targetDir)}`;
+  const flakyAdded = await (await fetch(flakyAdd)).json();
+  if (!flakyAdded.ok) throw new Error(`503'lu ekleme basarisiz: ${JSON.stringify(flakyAdded)}`);
+  console.log(`[e2e] 503'lu kaynak eklendi: ${flakyAdded.filename}`);
+
+  const flakyTarget = path.join(targetDir, flakyAdded.filename);
+  await waitFor("gecici hatali indirmenin tamamlanmasi", 120_000, async () => {
+    try {
+      const info = await stat(flakyTarget);
+      return info.size === meta.size;
+    } catch {
+      return false;
+    }
+  });
+  const flakyBytes = await readFile(flakyTarget);
+  const flakyActual = createHash("sha256").update(flakyBytes).digest("hex");
+  if (flakyActual !== meta.sha256) {
+    throw new Error(`503 sonrasi hash uyusmuyor: ${flakyActual}`);
+  }
+  console.log(`[e2e] GECICI HATA SONRASI BASARILI (${flakyBytes.length} bayt, sha256 ${flakyActual.slice(0, 16)}…)`);
+  await rm(flakyTarget, { force: true });
 }
 
 main()
