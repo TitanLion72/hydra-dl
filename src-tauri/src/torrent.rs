@@ -28,7 +28,9 @@ pub struct TorrentListing {
 }
 
 /// Motorun dondurdugu metadata'dan secim listesi uretir.
-fn files_from_info(info: &librqbit::ValidatedTorrentMetaV1Info<librqbit::ByteBufOwned>) -> Vec<TorrentFile> {
+fn files_from_info(
+    info: &librqbit::ValidatedTorrentMetaV1Info<librqbit::ByteBufOwned>,
+) -> Vec<TorrentFile> {
     info.iter_file_details()
         .enumerate()
         .map(|(index, detail)| TorrentFile {
@@ -286,7 +288,11 @@ impl TorrentEngine {
         let mut files = files_of(&entry.handle)
             .ok_or_else(|| "Torrent dosya listesi henüz hazır değil".to_string())?;
         apply_selection(&mut files, &selected)?;
-        let wanted: HashSet<usize> = files.iter().filter(|f| f.included).map(|f| f.index).collect();
+        let wanted: HashSet<usize> = files
+            .iter()
+            .filter(|f| f.included)
+            .map(|f| f.index)
+            .collect();
         session
             .update_only_files(&entry.handle, &wanted)
             .await
@@ -830,7 +836,11 @@ mod tests {
         let client = crate::engine::http::build_client();
         let out = tempfile::tempdir().unwrap();
         let listing = engine
-            .list(&client, torrent_path.to_str().unwrap(), &out.path().to_path_buf())
+            .list(
+                &client,
+                torrent_path.to_str().unwrap(),
+                &out.path().to_path_buf(),
+            )
             .await
             .unwrap();
 
@@ -845,7 +855,8 @@ mod tests {
         let mut subset = listing.files.clone();
         apply_selection(&mut subset, &[1]).unwrap();
         assert_eq!(selected_total(&subset), Some(4096));
-        assert!(!subset[0].included && subset[1].included && !subset[2].included);    }
+        assert!(!subset[0].included && subset[1].included && !subset[2].included);
+    }
 
     #[test]
     fn secim_kurallari() {

@@ -388,7 +388,10 @@ async fn torrent_files(
     if let Some(source) = body.source.filter(|s| !s.trim().is_empty()) {
         let settings = state.settings();
         if !settings.torrent_enabled {
-            return error_response(StatusCode::BAD_REQUEST, "Torrent motoru kapalı. Ayarlardan açabilirsiniz.");
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                "Torrent motoru kapalı. Ayarlardan açabilirsiniz.",
+            );
         }
         let dir = settings.download_dir.clone();
         match state.torrent.list(state.http(), &source, &dir).await {
@@ -544,8 +547,8 @@ pub fn api_router(state: Arc<AppState>) -> Router {
         .route("/downloads/{id}", delete(remove))
         .route("/settings", get(get_settings).put(put_settings))
         .route("/torrents", post(add_torrent).get(list_torrents))
-    .route("/torrent/files", post(torrent_files))
-    .route("/notify/test", post(notify_test))
+        .route("/torrent/files", post(torrent_files))
+        .route("/notify/test", post(notify_test))
         .route("/ytdlp", get(ytdlp_status))
         .route("/ytdlp/install", post(install_ytdlp))
         .route("/assets/{*path}", get(static_file))

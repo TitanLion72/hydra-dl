@@ -70,7 +70,6 @@ fn jitter_for(seg_index: usize, attempt: u32) -> u64 {
 /// Tekrar deneme bilgisini arayuze tasiyan geri cagri: (deneme, toplam, bekleme).
 pub type RetryHook<'a> = &'a (dyn Fn(u32, u32, Duration) + Send + Sync);
 
-
 #[derive(Debug, Clone, Default)]
 pub struct Probe {
     pub total: Option<u64>,
@@ -658,7 +657,10 @@ mod tests {
                 return Response::builder()
                     .status(206)
                     .header(header::CONTENT_LENGTH, slice.len().to_string())
-                    .header(header::CONTENT_RANGE, format!("bytes {start}-{end}/{total}"))
+                    .header(
+                        header::CONTENT_RANGE,
+                        format!("bytes {start}-{end}/{total}"),
+                    )
                     .header(header::ACCEPT_RANGES, "bytes")
                     .body(Body::from(slice))
                     .unwrap();
@@ -674,13 +676,15 @@ mod tests {
         let hits = Arc::new(AtomicU64::new(0));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        let app = Router::new().route("/file", get(handler)).with_state(FlakyState {
-            data: Arc::new(data),
-            fail_times,
-            status,
-            retry_after,
-            hits: hits.clone(),
-        });
+        let app = Router::new()
+            .route("/file", get(handler))
+            .with_state(FlakyState {
+                data: Arc::new(data),
+                fail_times,
+                status,
+                retry_after,
+                hits: hits.clone(),
+            });
         tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();
         });
@@ -771,7 +775,10 @@ mod tests {
             done: 0,
         }];
         let (result, retries, _) = try_single(&url, &segments).await;
-        assert!(matches!(result, Err(HttpError::Status(404, _))), "sonuc: {result:?}");
+        assert!(
+            matches!(result, Err(HttpError::Status(404, _))),
+            "sonuc: {result:?}"
+        );
         assert_eq!(retries, 0, "404 tekrar denenmemeli");
     }
 
@@ -786,7 +793,10 @@ mod tests {
             done: 0,
         }];
         let (result, retries, _) = try_single(&url, &segments).await;
-        assert!(matches!(result, Err(HttpError::Network(_))), "sonuc: {result:?}");
+        assert!(
+            matches!(result, Err(HttpError::Network(_))),
+            "sonuc: {result:?}"
+        );
         assert_eq!(retries, MAX_ATTEMPTS - 1, "deneme siniri");
         assert_eq!(hits.load(Ordering::SeqCst), MAX_ATTEMPTS as u64);
     }
@@ -800,7 +810,11 @@ mod tests {
         assert_eq!(probe.total, Some(data.len() as u64));
         assert!(probe.resumable);
         // HEAD + GET 0-0 denemeleri: iki 503'ten sonra basarili.
-        assert!(hits.load(Ordering::SeqCst) >= 3, "istek sayisi: {}", hits.load(Ordering::SeqCst));
+        assert!(
+            hits.load(Ordering::SeqCst) >= 3,
+            "istek sayisi: {}",
+            hits.load(Ordering::SeqCst)
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -811,7 +825,11 @@ mod tests {
         let err = probe(&client, &url).await.unwrap_err();
         assert!(err.contains("404"), "hata: {err}");
         // HEAD bir kez + GET 0-0 bir kez (retry yok).
-        assert!(hits.load(Ordering::SeqCst) <= 2, "istek: {}", hits.load(Ordering::SeqCst));
+        assert!(
+            hits.load(Ordering::SeqCst) <= 2,
+            "istek: {}",
+            hits.load(Ordering::SeqCst)
+        );
     }
 
     #[test]
@@ -819,7 +837,10 @@ mod tests {
         let now = DateTime::parse_from_rfc2822("Sun, 06 Nov 1994 08:49:37 GMT")
             .unwrap()
             .with_timezone(&Utc);
-        assert_eq!(parse_retry_after("120", now), Some(Duration::from_secs(120)));
+        assert_eq!(
+            parse_retry_after("120", now),
+            Some(Duration::from_secs(120))
+        );
         // Gecmis tarih -> 0 (hemen dene).
         assert_eq!(
             parse_retry_after("Sun, 06 Nov 1994 08:00:00 GMT", now),
@@ -875,7 +896,6 @@ mod tests {
         }
         assert!(!is_retryable_status(StatusCode::OK));
     }
-
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn parsele_indirme_ve_birlestirme() {

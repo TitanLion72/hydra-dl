@@ -72,11 +72,7 @@ pub async fn list_torrent_files(
 
 /// Eklenmis torrent'in indirilecek dosyalarini degistirir.
 #[tauri::command]
-pub async fn set_torrent_files(
-    state: St<'_>,
-    id: String,
-    files: Vec<usize>,
-) -> Result<(), String> {
+pub async fn set_torrent_files(state: St<'_>, id: String, files: Vec<usize>) -> Result<(), String> {
     state.torrent.set_files(state.inner(), &id, files).await
 }
 
