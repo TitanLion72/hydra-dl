@@ -941,6 +941,7 @@ const setConcurrent = $<HTMLInputElement>("#set-concurrent");
 const setConnections = $<HTMLInputElement>("#set-connections");
 const setSpeed = $<HTMLInputElement>("#set-speed");
 const setAutoResume = $<HTMLInputElement>("#set-autoresume");
+const setNotify = $<HTMLInputElement>("#set-notify");
 const setCapture = $<HTMLInputElement>("#set-capture");
 const setCapturePort = $<HTMLInputElement>("#set-capture-port");
 const captureUrl = $<HTMLInputElement>("#capture-url");
@@ -957,6 +958,7 @@ const webQr = $<HTMLImageElement>("#web-qr");
 const ytdlpStatus = $("#ytdlp-status");
 const ytdlpInstallStatus = $("#ytdlp-install-status");
 const installYtdlpBtn = $<HTMLButtonElement>("#install-ytdlp");
+const notifyTestBtn = $<HTMLButtonElement>("#notify-test");
 const aboutInfo = $("#about-info");
 const stateInfo = $("#state-info");
 
@@ -966,6 +968,7 @@ function bindSettingsForm(source: Settings, appInfo: AppInfo | null) {
   setConnections.value = String(source.connections);
   setSpeed.value = String(source.speedLimitKbps);
   setAutoResume.checked = source.autoResume;
+  setNotify.checked = source.notifyOnFinish;
   setCapture.checked = source.captureEnabled;
   setCapturePort.value = String(source.capturePort);
   captureUrl.value =
@@ -1035,6 +1038,7 @@ async function saveSettings() {
     connections: clampNumber(setConnections.value, 1, 16, 8),
     speedLimitKbps: clampNumber(setSpeed.value, 0, 10_000_000, 0),
     autoResume: setAutoResume.checked,
+    notifyOnFinish: setNotify.checked,
     captureEnabled: setCapture.checked,
     capturePort: clampNumber(setCapturePort.value, 1024, 65535, 6712),
     ytdlpPath: setYtdlp.value.trim(),
@@ -1134,6 +1138,18 @@ installYtdlpBtn.addEventListener("click", async () => {
     toast(String(err), "error");
   } finally {
     installYtdlpBtn.disabled = false;
+  }
+});
+
+notifyTestBtn.addEventListener("click", async () => {
+  notifyTestBtn.disabled = true;
+  try {
+    await api.notifyTest();
+    toast("Test bildirimi gönderildi", "success");
+  } catch (err) {
+    toast(`Bildirim gönderilemedi: ${String(err)}`, "error");
+  } finally {
+    notifyTestBtn.disabled = false;
   }
 });
 

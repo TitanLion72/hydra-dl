@@ -26,6 +26,7 @@ const SETTINGS = {
   webBind: "0.0.0.0",
   webToken: "ev2026",
   torrentEnabled: true,
+  notifyOnFinish: true,
 };
 
 const APP_INFO = {
@@ -377,6 +378,9 @@ export const api = {
   installYtdlp: async () => {
     calls.installYtdlp = (calls.installYtdlp ?? 0) + 1;
     return { available: true, path: "C:/mock/bin/yt-dlp.exe", version: "2026.10.21" };
+  },
+  notifyTest: async () => {
+    calls.notifyTest = (calls.notifyTest ?? 0) + 1;
   },
 };
 

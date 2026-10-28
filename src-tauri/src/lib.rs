@@ -83,6 +83,7 @@ pub fn run() {
             commands::add_download,
             commands::list_torrent_files,
             commands::set_torrent_files,
+            commands::test_notification,
             commands::pause_download,
             commands::resume_download,
             commands::cancel_download,

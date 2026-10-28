@@ -33,7 +33,8 @@ v0.2 = "IDM'den iyi" temeli. Sıra bağımlılığa göre; üstteki bitmeden alt
 - [ ] Proxy (sistem + elle HTTP/SOCKS5); torrent için de geçerli
 - [ ] HLS/DASH'i yt-dlp olmadan indirme (segment birleştirme)
 - [ ] Avcı modunda ağ isteği dinleme (`webRequest`) ile blob/manifest yakalama
-- [ ] Bildirimler (tamamlandı/hata), tray simgesi, arka planda küçültme
+- [x] Bildirimler (tamamlandı/hata) — `tauri-plugin-notification`, `notifyOnFinish`
+- [ ] Tray simgesi, arka planda küçültme
 - [ ] Web arayüzünde torrent ekleme, tohum oranı ve **yt-dlp kurulum düğmesi**
 - [ ] Toplu içe aktarma: bağlantı listesi, panodan otomatik yakalama (opt-in)
 - [ ] İndirme geçmişinde arama, sıralama, toplu seçim, sanal liste (>200 kayıt)

@@ -36,6 +36,8 @@ pub struct Settings {
     pub web_token: String,
     /// BitTorrent motoru.
     pub torrent_enabled: bool,
+    /// Indirme bitince/hata olunca isletim sistemi bildirimi goster.
+    pub notify_on_finish: bool,
 }
 
 impl Default for Settings {
@@ -56,6 +58,7 @@ impl Default for Settings {
             web_bind: "0.0.0.0".into(),
             web_token: String::new(),
             torrent_enabled: true,
+            notify_on_finish: true,
         }
     }
 }
@@ -252,13 +255,29 @@ mod tests {
         let mut store = Store::load(dir.path());
         store.settings.max_concurrent = 5;
         store.settings.download_dir = dir.path().join("indirilenler");
+        store.settings.notify_on_finish = false;
         store.items.push(sample("a"));
         store.save().unwrap();
 
         let reloaded = Store::load(dir.path());
         assert_eq!(reloaded.settings.max_concurrent, 5);
+        assert!(
+            !reloaded.settings.notify_on_finish,
+            "bildirim ayari korunmali"
+        );
         assert_eq!(reloaded.items.len(), 1);
         assert_eq!(reloaded.items[0].filename, "f.bin");
+    }
+
+    #[test]
+    fn eski_ayar_dosyasinda_bildirim_varsayilan_acik() {
+        // Bildirim alani eklenmeden once yazilmis ayar: serde default devreye girer.
+        let dir = tempfile::tempdir().unwrap();
+        let raw = r#"{"version":1,"settings":{"maxConcurrent":4},"items":[]}"#;
+        std::fs::write(dir.path().join("downloads.json"), raw).unwrap();
+        let store = Store::load(dir.path());
+        assert_eq!(store.settings.max_concurrent, 4);
+        assert!(store.settings.notify_on_finish);
     }
 
     #[test]

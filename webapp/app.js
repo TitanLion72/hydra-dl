@@ -62,6 +62,7 @@ const els = {
   setConnections: $("#setConnections"),
   setSpeed: $("#setSpeed"),
   setAutoResume: $("#setAutoResume"),
+  setNotify: $("#setNotify"),
   setCapture: $("#setCapture"),
   setCapturePort: $("#setCapturePort"),
   setWebUrl: $("#setWebUrl"),
@@ -1333,6 +1334,7 @@ function applySettings(settings) {
   els.setSpeed.value = String(data.speedLimitKbps ?? 0);
   els.setCapture.checked = Boolean(data.captureEnabled);
   els.setAutoResume.checked = Boolean(data.autoResume);
+  if (els.setNotify) els.setNotify.checked = data.notifyOnFinish !== false;
   setText(els.setCapturePort, data.capturePort ? String(data.capturePort) : "—");
   els.setToken.value = state.token;
 }
@@ -1453,6 +1455,7 @@ async function saveSettings() {
   next.speedLimitKbps = clampInt(els.setSpeed.value, 0, 10_000_000, 0);
   next.captureEnabled = els.setCapture.checked;
   next.autoResume = els.setAutoResume.checked;
+  if (els.setNotify) next.notifyOnFinish = els.setNotify.checked;
   if (Object.prototype.hasOwnProperty.call(next, "webToken")) {
     next.webToken = els.setToken.value.trim();
   }

@@ -370,6 +370,14 @@ async fn add_torrent(
     }
 }
 
+/// `POST /notify/test` — bildirim altyapısını dener (ayar açık olmasa da gönderir).
+async fn notify_test(State(state): State<Arc<AppState>>) -> Response {
+    match state.send_notification("Hydra DL", "Bildirimler çalışıyor.") {
+        Ok(()) => (StatusCode::OK, Json(serde_json::json!({ "ok": true }))).into_response(),
+        Err(err) => error_response(StatusCode::BAD_GATEWAY, err),
+    }
+}
+
 /// `POST /torrent/files`
 /// - `{ "source": "magnet:..." }` → torrent dosya listesi (indirme baslamaz).
 /// - `{ "id": "...", "files": [0,2] }` → eklenmis torrent'in secimini degistirir.
@@ -537,6 +545,7 @@ pub fn api_router(state: Arc<AppState>) -> Router {
         .route("/settings", get(get_settings).put(put_settings))
         .route("/torrents", post(add_torrent).get(list_torrents))
     .route("/torrent/files", post(torrent_files))
+    .route("/notify/test", post(notify_test))
         .route("/ytdlp", get(ytdlp_status))
         .route("/ytdlp/install", post(install_ytdlp))
         .route("/assets/{*path}", get(static_file))

@@ -102,6 +102,18 @@ bir kez daha baştan denenir (parçalar diskte kalır).
 
 `GET /settings`, `PUT /settings` — `Settings` modeli (`src/api.ts`). `PUT` tüm nesneyi ister.
 
+| Alan | Anlamı |
+|---|---|
+| `notifyOnFinish` | İndirme bitince/hata olunca işletim sistemi bildirimi (varsayılan `true`) |
+
+Windows'ta paketsiz uygulama bildirimi için AUMID kaydı gerekir; Hydra bunu ilk
+bildirimde HKCU\\Software\\Classes\\AppUserModelId\\com.hydradl.app altına yazar.
+Bildirim yalnız masaüstü uygulamasında görünür; telefon arayüzünde anahtar yalnızca ayarı
+değiştirir. Bildirim gösterilemezse indirme akışı bozulmaz.
+
+`POST /notify/test` — ayar kapalı olsa da bir deneme bildirimi gönderir; altyapı çalışmıyorsa
+`502` + hata metni döner (masaüstü ayarlarında "Test bildirimi" düğmesi bunu kullanır).
+
 ## Torrent
 
 | Metot | Yol | Gövde |

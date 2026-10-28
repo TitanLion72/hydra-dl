@@ -380,6 +380,7 @@ impl TorrentEngine {
 
         let mut active = false;
         let mut finished_now: Vec<(String, PathBuf)> = Vec::new();
+        let mut failed_now: Vec<(String, String, String)> = Vec::new();
         {
             let mut guard = self.handles.lock().await;
             for id in &ids {
@@ -428,8 +429,13 @@ impl TorrentEngine {
                         seeders: peers,
                     });
                     if let Some(err) = &error {
+                        // Ayni hatayi her ticker turunda bildirmemek icin yalniz geciste.
+                        let was_failed = item.status == Status::Failed;
                         item.status = Status::Failed;
                         item.error = Some(err.clone());
+                        if !was_failed {
+                            failed_now.push((id.clone(), item.filename.clone(), err.clone()));
+                        }
                     } else if finished {
                         if item.status != Status::Completed {
                             item.status = Status::Completed;
@@ -460,6 +466,7 @@ impl TorrentEngine {
                 {
                     state.update_item(&id, |item| item.filename = filename.clone());
                     state.notice(format!("Torrent tamamlandı: {filename}"), "success");
+                    state.notify("Torrent tamamlandı", &filename);
                 }
             } else {
                 let label = state
@@ -467,7 +474,15 @@ impl TorrentEngine {
                     .map(|d| d.filename)
                     .unwrap_or_else(|| "Torrent".into());
                 state.notice(format!("Torrent tamamlandı: {label}"), "success");
+                state.notify("Torrent tamamlandı", &label);
             }
+        }
+
+        for (_id, label, error) in failed_now {
+            state.notify(
+                "Torrent başarısız",
+                &crate::manager::notify_body(&label, Some(&error)),
+            );
         }
         active
     }

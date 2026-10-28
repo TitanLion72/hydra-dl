@@ -88,6 +88,7 @@ export interface Settings {
   webBind: string;
   webToken: string;
   torrentEnabled: boolean;
+  notifyOnFinish: boolean;
 }
 
 export interface CaptureStatus {
@@ -200,6 +201,7 @@ export const api = {
   openDownload: (id: string) => invoke<void>("open_download", { id }),
   revealDownload: (id: string) => invoke<void>("reveal_download", { id }),
   installYtdlp: () => invoke<YtdlpStatus>("install_ytdlp"),
+  notifyTest: () => invoke<void>("test_notification"),
 };
 
 export function onDownloads(handler: (items: Download[]) => void): Promise<UnlistenFn> {

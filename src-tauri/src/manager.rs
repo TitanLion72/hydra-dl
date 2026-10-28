@@ -128,6 +128,40 @@ impl AppState {
         );
     }
 
+    /// Indirme bitti/hata verdi: isletim sistemi bildirimi goster (ayar acikken).
+    ///
+    /// Bildirim basarisiz olursa indirme akisini bozmaz; yalnizca loglanir.
+    pub fn notify(&self, title: &str, body: &str) {
+        if !self.settings().notify_on_finish {
+            return;
+        }
+        if let Err(err) = self.send_notification(title, body) {
+            eprintln!("[hydra] bildirim gosterilemedi: {err}");
+        }
+    }
+
+    /// Bildirimi kosulsuz gonderir (ayar kontrolu yok); hatayi dondurur.
+    /// Ayarlardaki "Test bildirimi" dugmesi bunu kullanir.
+    ///
+    /// `notify-rust` dogrudan kullaniliyor: Tauri eklentisi gonderimi arka planda
+    /// yapip hatayi yutuyordu, yani "gonderildi" bilgisi guvenilir degildi.
+    pub fn send_notification(&self, title: &str, body: &str) -> Result<(), String> {
+        let app_id = self.app.config().identifier.clone();
+        let display = self
+            .app
+            .config()
+            .product_name
+            .clone()
+            .unwrap_or_else(|| app_id.clone());
+        ensure_app_id_registered(&app_id, &display)?;
+        let mut notification = notify_rust::Notification::new();
+        notification.summary(title).body(body).auto_icon();
+        #[cfg(windows)]
+        {
+            notification.app_id(&app_id);
+        }
+        notification.show().map(|_| ()).map_err(|e| e.to_string())
+    }
     pub fn update_item<F: FnOnce(&mut Download)>(&self, id: &str, f: F) -> bool {
         let mut store = self.store.lock().unwrap();
         match store.find_mut(id) {
@@ -390,6 +424,12 @@ async fn run_http(state: Arc<AppState>, id: String, cancel: Arc<CancelToken>) {
                     item.finished_at = Some(now_ts());
                     item.retry = None;
                 });
+                if let Some(item) = state.item(&id) {
+                    state.notify(
+                        "İndirme başarısız",
+                        &notify_body(&item.filename, item.error.as_deref()),
+                    );
+                }
                 state.persist();
                 state.emit_downloads();
                 return;
@@ -452,6 +492,12 @@ async fn finish_completed(
                 d.error = Some(problem);
                 d.finished_at = Some(now_ts());
             });
+            if let Some(item) = state.item(id) {
+                state.notify(
+                    "İndirme başarısız",
+                    &notify_body(&item.filename, item.error.as_deref()),
+                );
+            }
             state.persist();
             state.emit_downloads();
             return;
@@ -472,6 +518,12 @@ async fn finish_completed(
                     d.error = Some(format!("birlestirme basarisiz: {err}"));
                     d.finished_at = Some(now_ts());
                 });
+                if let Some(item) = state.item(id) {
+                    state.notify(
+                        "İndirme başarısız",
+                        &notify_body(&item.filename, item.error.as_deref()),
+                    );
+                }
                 state.persist();
                 state.emit_downloads();
                 return;
@@ -501,7 +553,51 @@ async fn finish_completed(
     state.persist();
     state.emit_downloads();
     state.notice(format!("Tamamlandi: {}", item.filename), "success");
+    state.notify("İndirme tamamlandı", &notify_body(&item.filename, None));
 }
+
+/// Windows toast'lari paketsiz (unpackaged) Win32 uygulamalarinda yalniz
+/// `HKCU\Software\Classes\AppUserModelId\<AUMID>` kaydi varsa gosterilir;
+/// kayit yoksa Windows bildirimi sessizce duser (Tauri NSIS paketi bunu yazmaz).
+#[cfg(windows)]
+pub fn ensure_app_id_registered(app_id: &str, display_name: &str) -> Result<(), String> {
+    use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let path = format!("Software\\Classes\\AppUserModelId\\{app_id}");
+    let (key, _) = hkcu
+        .create_subkey(&path)
+        .map_err(|e| format!("bildirim kimliği yazılamadı: {e}"))?;
+    key.set_value("DisplayName", &display_name)
+        .map_err(|e| format!("bildirim adı yazılamadı: {e}"))?;
+    // Simge: calisan exe (yoksa Windows varsayilani kullanir).
+    if let Ok(exe) = std::env::current_exe() {
+        let _ = key.set_value("IconUri", &exe.display().to_string());
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub fn ensure_app_id_registered(_app_id: &str, _display_name: &str) -> Result<(), String> {
+    Ok(())
+}
+
+/// Bildirim gövdesi: uzun dosya adı/hata metni kesilir (toast alanı kısa).
+pub fn notify_body(filename: &str, error: Option<&str>) -> String {
+    let name: String = filename.trim().chars().take(80).collect();
+    match error {
+        None => format!("{name} indirildi"),
+        Some(err) => {
+            let detail: String = err.trim().chars().take(140).collect();
+            if detail.is_empty() {
+                format!("{name} indirilemedi")
+            } else {
+                format!("{name}: {detail}")
+            }
+        }
+    }
+}
+
 
 // ---------------------------------------------------------------------------
 // Komutlarin kullandigi islemler
@@ -1023,4 +1119,32 @@ pub fn start_ticker(state: &Arc<AppState>) {
             schedule(&state);
         }
     });
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bildirim_govdesi_dosya_adini_tasir() {
+        assert_eq!(notify_body("arsiv.zip", None), "arsiv.zip indirildi");
+        assert_eq!(
+            notify_body("arsiv.zip", Some("sunucu 404 dondurdu")),
+            "arsiv.zip: sunucu 404 dondurdu"
+        );
+        // Bos hata metni: sade bir cumle.
+        assert_eq!(notify_body("a.bin", Some("   ")), "a.bin indirilemedi");
+    }
+
+    #[test]
+    fn bildirim_govdesi_uzun_metni_kirpar() {
+        let name = "x".repeat(200);
+        let body = notify_body(&name, None);
+        // 80 karakter ad + " indirildi"
+        assert_eq!(body.chars().count(), 80 + " indirildi".chars().count());
+
+        let err = "e".repeat(500);
+        let body = notify_body("dosya.iso", Some(&err));
+        assert!(body.starts_with("dosya.iso: "));
+        assert!(body.chars().count() <= 80 + 2 + 140);
+    }
 }

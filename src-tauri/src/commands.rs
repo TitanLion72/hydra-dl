@@ -80,6 +80,12 @@ pub async fn set_torrent_files(
     state.torrent.set_files(state.inner(), &id, files).await
 }
 
+/// Ayarlardaki "Test bildirimi": ayar kapali olsa da gonderir.
+#[tauri::command]
+pub fn test_notification(state: St<'_>) -> Result<(), String> {
+    state.send_notification("Hydra DL", "Bildirimler çalışıyor.")
+}
+
 #[tauri::command]
 pub async fn probe_url(
     state: St<'_>,

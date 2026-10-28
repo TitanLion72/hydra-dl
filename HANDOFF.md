@@ -2,7 +2,8 @@
 
 > Yeni oturum: **önce bu dosyayı oku**, sonra `git status`. Bitirdiğin dilimi en alta 10 satır yaz.
 
-**Son güncelleme:** 2026-10-28 · v0.2.4 · AGPL-3.0-or-later
+**Son güncelleme:** 2026-10-28 · v0.2.5 · AGPL-3.0-or-later
+
 ---
 
 ## Nerede kaldık
@@ -13,15 +14,15 @@ telefon için web arayüzü, tarayıcı eklentisi (panel + avcı modu).
 
 **Repo public:** <https://github.com/TitanLion72/hydra-dl> (AGPL-3.0, ilk commit `9495fd4`).
 
-**Kurulu sürüm:** v0.2.4, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
+**Kurulu sürüm:** v0.2.5, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
 girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
-`src-tauri\target\release\bundle\nsis\Hydra DL_0.2.4_x64-setup.exe`.
+`src-tauri\target\release\bundle\nsis\Hydra DL_0.2.5_x64-setup.exe`.
 
 ## Doğrulanmış (bu oturum, kanıt var)
 
 | Ne | Kanıt |
 |---|---|
-| Rust testleri | `cargo test` → **76 passed** (1 ağ testi `#[ignore]`) |
+| Rust testleri | `cargo test` → **81 passed** (1 ağ testi `#[ignore]`) |
 | Clippy | `cargo clippy --all-targets -- -D warnings` → 0 uyarı |
 | Arayüz derlemesi | `npm run build` → 21.84 kB JS |
 | Segmentli indirme | `node tools/e2e.mjs` → 16 MB, sha256 eşleşti |
@@ -122,6 +123,17 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
     404'te tekrar yok, 5 denemede durma, tarih/saniye çözümü. `tools/e2e.mjs` artık
     503'lü kaynağı da indiriyor.
 
+21. **İndirme bitince/hata olunca hiçbir bildirim yoktu** (ekran kilitliyken fark edilmiyordu).
+    `notify-rust` ile doğrudan gönderim (Tauri eklentisi hatayı yutuyordu), `notify_on_finish`
+    ayarı (varsayılan açık) ile HTTP/medya bitişi, torrent bitişi ve tüm başarısızlık yolları
+    bildirim gönderiyor. **Windows'ta paketsiz Win32 uygulaması toast gösterebilmek için AUMID
+    kaydı ister**; `ensure_app_id_registered` ilk gönderimde
+    `HKCU\Software\Classes\AppUserModelId\com.hydradl.app` anahtarını (DisplayName + IconUri)
+    yazıyor — bu olmadan Windows bildirimi sessizce düşürüyordu. Metin `manager::notify_body`
+    ile üretiliyor (80/140 karakter kırpma, testli). Torrent hatasında aynı hata her ticker
+    turunda bildirilmiyor (yalnız geçişte). Ayar hem masaüstü hem telefon ayarlarında;
+    masaüstünde **Test bildirimi** düğmesi (`POST /notify/test`).
+
 ## Bilinen açık uçlar
 
 - **Firefox/Zen**: `compat.js` + `HX.api` + `background.scripts` + gecko id ile paket hazır;
@@ -138,6 +150,15 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
   `.torrent`): `POST /torrent/files` → 3 dosya + doğru boyutlar; `POST /add` `files:[0,2]` →
   `totalBytes=400000`; `POST /torrent/files {id,files:[1]}` → `totalBytes=200000`,
   `a.bin:false, b.bin:true, c.bin:false`. Kayıt silindi, artık bırakılmadı.
+- **Windows bildirimi bu makinede görünmüyor (açık uç).** Kod tarafı tamam: `notify-rust`
+  ile gönderim, AUMID kaydı (`HKCU\Software\Classes\AppUserModelId\com.hydradl.app`,
+  DisplayName + IconUri yazıldı), `show()` hata döndürürse arayüzde gösteriliyor. Windows
+  toast servisi çalışıyor (`WpnService`, `WpnUserService_*`) ama
+  `ToastNotificationManager.History.GetHistory()` **boş** ve `wpndatabase.db` hiç
+  değişmiyor → toast Windows tarafından düşürülüyor. Sonraki adım: kısayola
+  `System.AppUserModel.ID` özelliğini yazmak (IPropertyStore) veya kullanıcıda
+  Ayarlar → Sistem → Bildirimler altında Hydra DL'in kapalı olup olmadığını kontrol etmek.
+  Ayar/istek/arayüz tarafı çalışıyor; bildirim görünmese de indirme akışı bozulmuyor.
 - Avcı modunda ağ isteği dinleme (`webRequest`) yok; HLS/manifest yakalama v0.3'te.
 - Yeniden deneme HTTP indirmesinde **ve** `probe` (HEAD/Range keşfi) aşamasında geçerli.
   `.torrent` çözümleme tek deneme yapar (kullanıcı yeniden basar); medya (yt-dlp) kendi

@@ -197,6 +197,7 @@ async function mockApi(
         capturePort: 6712,
         ytdlpPath: "",
         autoResume: true,
+        notifyOnFinish: true,
         webToken: "",
       }),
     }),
@@ -245,6 +246,7 @@ try {
     check(fact.includes("2099.01.01"), `kurulu sürüm gösterildi: ${fact}`);
     check(await page.locator("#installYtdlp").isHidden(), "kurulu iken düğme gizli");
     check(await page.locator("#ytdlpHelp").isHidden(), "kurulu iken yardım metni gizli");
+    check(await page.locator("#setNotify").isChecked(), "bildirim anahtarı açık geliyor");
     check(errors.length === 0, `konsol hatası yok (${errors.join(" | ")})`);
     await page.screenshot({ path: path.join(SHOTS, "hydra-webui-ytdlp-kurulu.png") });
 
