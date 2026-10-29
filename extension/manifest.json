@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Hydra DL Yakalayıcı",
-  "version": "0.2.9",
+  "version": "0.3.0",
   "description": "Hydra DL için IDM tarzı yakalayıcı: indirme paneli, kalite seçimi ve avcı modu.",
   "permissions": ["contextMenus", "cookies", "notifications", "storage", "tabs"],
   "host_permissions": [

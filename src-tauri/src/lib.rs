@@ -6,6 +6,7 @@ mod manager;
 mod model;
 mod store;
 mod torrent;
+mod tray;
 mod util;
 mod web;
 mod ytdlp;
@@ -38,6 +39,12 @@ pub fn run() {
 
             let state = AppState::new(app.handle().clone(), store);
             app.manage(state.clone());
+            app.manage(tray::TrayState::default());
+
+            // Tray simgesi: pencere kapansa bile indirmeler surer.
+            if let Err(err) = tray::setup(app.handle()) {
+                eprintln!("[hydra] tray kurulamadi: {err}");
+            }
 
             manager::start_ticker(&state);
             manager::resume_pending(&state);
@@ -67,6 +74,18 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            // Pencere kapatildi: varsayilan olarak tepsiye kucult (indirmeler surer).
+            // "Cikis" tray menusunden yapilir; o zaman gercekten kapanir.
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                let quitting = window
+                    .try_state::<tray::TrayState>()
+                    .map(|t| t.is_quitting())
+                    .unwrap_or(false);
+                if !quitting {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
             // Pencere kapanirken torrent oturumunu duzgun kapat (DHT/peer'lar).
             if matches!(event, WindowEvent::Destroyed) {
                 if let Some(state) = window.try_state::<Arc<AppState>>() {

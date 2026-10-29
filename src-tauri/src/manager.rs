@@ -1138,6 +1138,9 @@ pub fn start_ticker(state: &Arc<AppState>) {
             if active || torrent_active {
                 state.emit_downloads();
             }
+            // Tray tooltip: aktif indirme + toplam hiz (her turda guncel).
+            let tooltip = crate::tray::tooltip_from_state("Hydra DL", &state.snapshot());
+            crate::tray::update_tooltip(&state.app, &tooltip);
             schedule(&state);
         }
     });

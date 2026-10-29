@@ -126,6 +126,10 @@ değil. Ayrıntı ve tehdit modeli: `SECURITY.md`. Kontrol: `node tools/security
 - yt-dlp yoksa medya indirmesi çalışmaz; arayüz bunu "bulunamadı" olarak göstermeli, sessiz düşmemeli.
 - Torrent testleri gerçek ağ trafiği üretir; CI'da yalnız kaynak tanıma testleri koşar.
 - `src-tauri/target`, `node_modules`, `dist`, `*.log` üretim/geçici — git'e girmez.
+- **Disk dolabilir**: `src-tauri\target` birikimli olarak **50 GB+** olabiliyor; disk
+  %99 dolduğunda derleme `os error 112` (yer yok) ile düşer. Belirti alışılmadık:
+  `failed to build archive ... .lib`. Çözüm: `cargo clean`, sonra tekrar derle.
+  Hızlı test için `CARGO_TARGET_DIR=%TEMP%\hydra-target` kullanılabilir.
 - Yakalama API'si `127.0.0.1`'e kilitli; web API'si LAN'a açılır. İkisini karıştırma.
 - **`setup()` ana thread'de çalışır.** Orada `tokio::spawn` çağırma → "there is no reactor
   running" paniği, süreç 0xc0000409 ile sessizce kapanır. `tauri::async_runtime::spawn` kullan.

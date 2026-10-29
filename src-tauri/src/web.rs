@@ -150,12 +150,19 @@ fn error_response(status: StatusCode, message: impl Into<String>) -> Response {
 
 async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let items = state.snapshot();
+    // Tray gercekten kuruldu mu? (Windows'ta sessiz basarisizlik olmamali)
+    let tray = state
+        .app
+        .try_state::<crate::tray::TrayState>()
+        .map(|t| t.is_ready())
+        .unwrap_or(false);
     Json(serde_json::json!({
         "app": "hydra-dl",
         "version": env!("CARGO_PKG_VERSION"),
         "uptimeSecs": state.uptime_secs(),
         "downloads": items.len(),
         "active": items.iter().filter(|d| d.status.is_running()).count(),
+        "tray": tray,
     }))
 }
 

@@ -33,7 +33,8 @@ v0.2 = "IDM'den iyi" temeli. Sıra bağımlılığa göre; üstteki bitmeden alt
 - [ ] HLS/DASH'i yt-dlp olmadan indirme (segment birleştirme)
 - [ ] Avcı modunda ağ isteği dinleme (`webRequest`) ile blob/manifest yakalama
 - [x] Bildirimler (tamamlandı/hata) — `notify-rust` + AUMID, kullanıcı teyit etti
-- [ ] Tray simgesi, arka planda küçültme
+- [x] **Tray simgesi**: menü (Göster/Gizle, Tümünü duraklat/devam, Çıkış), sol tık
+      pencereyi açar, pencere kapatınca tepsiye küçülür, tooltip'te aktif indirme + hız
 - [ ] Web arayüzünde torrent ekleme ve tohum oranı
 - [ ] Toplu içe aktarma: bağlantı listesi, panodan otomatik yakalama (opt-in)
 - [ ] İndirme geçmişinde arama, sıralama, toplu seçim, sanal liste (>200 kayıt)

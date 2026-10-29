@@ -2,7 +2,7 @@
 
 > Yeni oturum: **önce bu dosyayı oku**, sonra `git status`. Bitirdiğin dilimi en alta 10 satır yaz.
 
-**Son güncelleme:** 2026-10-29 · v0.2.9 · AGPL-3.0-or-later
+**Son güncelleme:** 2026-10-29 · v0.3.0 · AGPL-3.0-or-later
 
 ---
 
@@ -14,15 +14,15 @@ telefon için web arayüzü, tarayıcı eklentisi (panel + avcı modu).
 
 **Repo public:** <https://github.com/TitanLion72/hydra-dl> (AGPL-3.0, ilk commit `9495fd4`).
 
-**Kurulu sürüm:** v0.2.9, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
+**Kurulu sürüm:** v0.3.0, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
 girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
-`src-tauri\target\release\bundle\nsis\Hydra DL_0.2.9_x64-setup.exe`.
+`src-tauri\target\release\bundle\nsis\Hydra DL_0.3.0_x64-setup.exe`.
 
 ## Doğrulanmış (bu oturum, kanıt var)
 
 | Ne | Kanıt |
 |---|---|
-| Rust testleri | `cargo test` → **100 passed** (1 ağ testi `#[ignore]`) |
+| Rust testleri | `cargo test` → **102 passed** (1 ağ testi `#[ignore]`) |
 | Clippy | `cargo clippy --all-targets -- -D warnings` → 0 uyarı |
 | Arayüz derlemesi | `npm run build` → 21.84 kB JS |
 | Segmentli indirme | `node tools/e2e.mjs` → 16 MB, sha256 eşleşti |
@@ -43,6 +43,7 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
 | **Güvenlik taraması** | `node tools/security-check.mjs` → PASS (koruma regresyonu + sır/yol) |
 | **cargo audit** | `cd src-tauri && cargo audit` → exit 0 (1 gerekçeli istisna: ringbuf/librqbit-utp) |
 | e2e 503 senaryosu | `tools/e2e.mjs` → 16 MB + 503'lü 2 MB kaynak, iki hash de doğru |
+| **Tray (canlı, kurulu 0.3.0)** | `/health` → `"tray":true`; WM_CLOSE → pencere gizlendi, süreç + API yaşamaya devam etti (indirmeler sürer) |
 
 ## Bu oturumda düzeltilen gerçek hatalar
 
@@ -81,6 +82,9 @@ Bu oturumun öne çıkanları:
   Firefox'ta tüm siteler için host izni kullanıcı onayı ister; izin yoksa indirme
   **çerezsiz** sürer (sessiz hata yok, akış bozulmaz). Çerez `downloads.json`'da saklanır
   (duraklat/devam için) — dosyayı paylaşırken dikkat.
+- **Tray**: pencere kapandığında uygulama tepside çalışmaya devam eder (indirmeler sürer);
+  gerçekten çıkmak için tray menüsünden **Çıkış**. Tooltip'te aktif indirme + toplam hız.
+  Windows'ta tray simgesi gizli simge kutusunda olabilir (Ayarlar → Görev çubuğu).
 - Avcı modunda ağ isteği dinleme (`webRequest`) yok; HLS/manifest yakalama v0.3'te.
 - Yeniden deneme HTTP indirmesinde **ve** `probe` (HEAD/Range keşfi) aşamasında geçerli.
   `.torrent` çözümleme tek deneme yapar (kullanıcı yeniden basar); medya (yt-dlp) kendi
@@ -105,8 +109,8 @@ yeterli değil.
    sürüm değişikliği var. Kullanıcı onayı bekliyor.
 3. **Kalan güvenlik sertleştirmesi:** isteğe bağlı HTTPS (yerel ağda self-signed) —
    token düz metin gitmesin. (Sabit zamanlı token + hız sınırı 0.2.8'de bitti.)
-4. **v0.3 devam:** çerez/oturum aktarımı (eklenti → uygulama), yt-dlp'siz HLS/DASH,
-   tray simgesi, web arayüzünde torrent ekleme, geçmiş arama/sıralama.
+4. **v0.3 devam:** yt-dlp'siz HLS/DASH, web arayüzünde torrent ekleme, geçmiş
+   arama/sıralama. (Çerez aktarımı 0.2.9'da, tray 0.3.0'da bitti.)
 5. `ringbuf` muafiyeti: `librqbit-utp` 0.4.9+/0.5.2+ çıkınca `src-tauri/.cargo/audit.toml`
    istisnasını kaldır.
 6. Torrent proxy desteği: librqbit sürümü proxy kazanırsa `proxyUrl` oraya da bağlanır.

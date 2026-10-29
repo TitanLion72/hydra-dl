@@ -33,6 +33,7 @@ manager.rs ──downloads:changed──► src/, webapp/
 | `src-tauri/src/engine/mod.rs` | `CancelToken` (watch kanalı), global `RateLimiter` (token bucket) | Tüm indirmeler paylaşır |
 | `src-tauri/src/engine/http.rs` | `probe` (HEAD / 1 baytlık Range), Range indirme, `.part` yazımı, parça birleştirme | Birleştirme `.hydra-tmp` → rename |
 | `src-tauri/src/manager.rs` | `AppState`, kuyruk/eşzamanlılık, 400 ms ticker, hız ölçümü, pause/resume/cancel/remove, olay yayını, kurtarma | Orkestrasyonun tek sahibi |
+| `src-tauri/src/tray.rs` | Tepsi simgesi + menü (Göster/Gizle, tümünü duraklat, Çıkış), tooltip (aktif indirme + hız), kapatınca tepsiye küçülme | Pencere kapansa da indirmeler sürer |
 | `src-tauri/src/extract.rs` | Akıllı kaynak bulucu: magnet tespiti, sayfa HTML'inden aday çıkarma (`og:video`, JSON-LD, `<video>/<source>`, script), HLS varyant çözümü, `probe` | Saf ayrıştırıcılar testli |
 | `src-tauri/src/ytdlp.rs` | yt-dlp bulma/doğrulama, format listesi, süreç yönetimi, ilerleme ayrıştırma, iptal | `__HYDRA__|` ilerleme protokolü |
 | `src-tauri/src/torrent.rs` | BitTorrent motoru (librqbit): magnet ve `.torrent`, peer/seeder istatistiği, kapatma | Torrent'ler normal listeye `kind: torrent` olarak düşer |
