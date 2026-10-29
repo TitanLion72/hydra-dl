@@ -249,6 +249,7 @@ mod tests {
             finished_at: None,
             connections: 4,
             referer: None,
+            cookie: None,
             mime: None,
             file_path: None,
             format: None,

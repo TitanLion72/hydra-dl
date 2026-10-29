@@ -70,6 +70,21 @@ Gövde: `{ "url": "...", "media": true|false|null }`
 
 `format` verilirse yt-dlp `-f <format>` ile indirilir. `media` verilmezse otomatik algılanır.
 
+### Çerez / oturum (giriş isteyen siteler)
+
+`/probe` ve `/add` gövdelerine `cookie` alanı eklenebilir:
+
+```json
+{ "url": "https://site/dosya.zip", "referer": "https://site/panel", "cookie": "sid=abc; tema=koyu" }
+```
+
+- Çerez **hem probe** (HEAD/Range) **hem segment indirmelerinde** `Cookie` başlığı olarak
+  gönderilir; medya indirmelerinde yt-dlp'ye `--add-header "Cookie: …"` + `--referer` gider.
+- Değer tarayıcı eklentisinden gelir (`cookies` izni). Alan yoksa indirme çerezsiz sürer.
+- **Güvenlik:** CR/LF/NUL içeren veya 8 KB'tan uzun değer reddedilir (başlık enjeksiyonu).
+  Çerez `downloads.json` içinde saklanır (duraklat/devam için gerekli) ve `/downloads`
+  yanıtında döner — API token korumalıdır, paylaşmayın.
+
 ## Kontrol
 
 | Metot | Yol | Not |

@@ -65,6 +65,11 @@ pub struct ProbeBody {
     pub url: String,
     #[serde(default)]
     pub media: Option<bool>,
+    /// Giris isteyen siteler icin sayfa adresi ve oturum cerezi.
+    #[serde(default)]
+    pub referer: Option<String>,
+    #[serde(default)]
+    pub cookie: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -76,6 +81,9 @@ pub struct AddBody {
     pub filename: Option<String>,
     #[serde(default)]
     pub referer: Option<String>,
+    /// Giris isteyen siteler icin oturum cerezi (name=value; ...).
+    #[serde(default)]
+    pub cookie: Option<String>,
     #[serde(default)]
     pub format: Option<String>,
     #[serde(default)]
@@ -94,6 +102,8 @@ pub struct AddQuery {
     pub dir: Option<String>,
     #[serde(default)]
     pub referer: Option<String>,
+    #[serde(default)]
+    pub cookie: Option<String>,
     #[serde(default)]
     pub format: Option<String>,
     #[serde(default)]
@@ -179,20 +189,31 @@ async fn events(
 }
 
 async fn probe(State(state): State<Arc<AppState>>, Json(body): Json<ProbeBody>) -> Response {
-    probe_impl(state, body.url, body.media).await
+    probe_impl(state, body).await
 }
 
 async fn probe_get(State(state): State<Arc<AppState>>, Query(query): Query<ProbeBody>) -> Response {
-    probe_impl(state, query.url, query.media).await
+    probe_impl(state, query).await
 }
 
-async fn probe_impl(state: Arc<AppState>, url: String, media: Option<bool>) -> Response {
+async fn probe_impl(state: Arc<AppState>, body: ProbeBody) -> Response {
+    let url = body.url;
+    let media = body.media;
     if url.trim().is_empty() {
         return error_response(StatusCode::BAD_REQUEST, "url gerekli");
     }
     let settings = state.settings();
     let ytdlp = crate::ytdlp::resolve(&state.app, &settings.ytdlp_path);
-    match crate::extract::probe(&state.http(), ytdlp.as_deref(), &url, media).await {
+    match crate::extract::probe_with(
+        &state.http(),
+        ytdlp.as_deref(),
+        &url,
+        media,
+        body.referer.as_deref(),
+        body.cookie.as_deref(),
+    )
+    .await
+    {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(err) => error_response(StatusCode::UNPROCESSABLE_ENTITY, err),
     }
@@ -206,6 +227,7 @@ async fn add(State(state): State<Arc<AppState>>, Json(body): Json<AddBody>) -> R
             dir: body.dir,
             filename: body.filename,
             referer: body.referer,
+            cookie: body.cookie,
             format: body.format,
             media: body.media,
             files: body.files,
@@ -222,6 +244,7 @@ async fn add_get(State(state): State<Arc<AppState>>, Query(query): Query<AddQuer
             dir: query.dir,
             filename: query.filename,
             referer: query.referer,
+            cookie: query.cookie,
             format: query.format,
             media: query.media,
             files: None,
@@ -238,6 +261,7 @@ async fn add_impl(state: Arc<AppState>, body: AddBody) -> Response {
         dir: body.dir.filter(|d| !d.trim().is_empty()).map(PathBuf::from),
         filename: body.filename.filter(|f| !f.trim().is_empty()),
         referer: body.referer,
+        cookie: body.cookie,
         media: body.media,
         format: body.format.filter(|f| !f.trim().is_empty()),
         files: body.files,

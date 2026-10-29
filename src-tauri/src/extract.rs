@@ -552,6 +552,18 @@ pub async fn probe(
     raw_url: &str,
     media: Option<bool>,
 ) -> Result<ProbeResult, String> {
+    probe_with(client, ytdlp_bin, raw_url, media, None, None).await
+}
+
+/// Baslikli probe: giris isteyen sitelerde referer/cerez gerekir.
+pub async fn probe_with(
+    client: &reqwest::Client,
+    ytdlp_bin: Option<&std::path::Path>,
+    raw_url: &str,
+    media: Option<bool>,
+    referer: Option<&str>,
+    cookie: Option<&str>,
+) -> Result<ProbeResult, String> {
     let raw_url = raw_url.trim();
     if raw_url.is_empty() {
         return Err("Bağlantı boş".into());
@@ -574,7 +586,8 @@ pub async fn probe(
     let mut warnings: Vec<String> = Vec::new();
 
     // 1) Dogrudan dosya mi?
-    let direct = http::probe(client, raw_url).await;
+    let direct =
+        http::probe_with(client, raw_url, http::RequestHeaders::new(referer, cookie)).await;
     if let Ok(probe) = &direct {
         let mime = probe.mime.clone().unwrap_or_default();
         let is_html = looks_like_html(Some(&mime));

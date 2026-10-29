@@ -26,7 +26,8 @@ v0.2 = "IDM'den iyi" temeli. Sıra bağımlılığa göre; üstteki bitmeden alt
 
 ## v0.3 — bir sonraki dilim
 
-- [ ] Çerez/oturum aktarımı: eklenti → uygulama (giriş isteyen sayfalar)
+- [x] **Çerez/oturum aktarımı**: eklenti `cookies` izni → `/probe` + `/add` `cookie` →
+      `Cookie` başlığı + yt-dlp `--add-header`; CRLF/8 KB doğrulaması
 - [x] `Retry-After` + üstel geri çekilme (segment başına 5 deneme, `Download.retry`)
 - [x] **Proxy** (HTTP/HTTPS/SOCKS5): tek ayar, HTTP + probe + yt-dlp; torrent hariç
 - [ ] HLS/DASH'i yt-dlp olmadan indirme (segment birleştirme)

@@ -162,6 +162,10 @@ pub struct Download {
     /// Medya indirmesinde kaynak sayfa (referer) bilgisi.
     #[serde(default)]
     pub referer: Option<String>,
+    /// Giriş isteyen siteler için oturum çerezi (`name=value; ...`).
+    /// Tarayıcı eklentisinden gelir; API yanıtlarında da döner (token korumalı).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cookie: Option<String>,
     #[serde(default)]
     pub mime: Option<String>,
     #[serde(default)]
@@ -412,6 +416,7 @@ mod tests {
             finished_at: None,
             connections: 4,
             referer: None,
+            cookie: None,
             mime: None,
             file_path: None,
             format: None,

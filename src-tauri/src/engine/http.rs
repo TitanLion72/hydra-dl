@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use futures_util::StreamExt;
 use reqwest::header::{
     ACCEPT_ENCODING, ACCEPT_RANGES, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_RANGE,
-    CONTENT_TYPE, RANGE, REFERER, RETRY_AFTER,
+    CONTENT_TYPE, COOKIE, RANGE, REFERER, RETRY_AFTER,
 };
 use reqwest::{Client, StatusCode};
 use std::fmt;
@@ -183,10 +183,21 @@ fn parse_content_range(value: &str) -> Option<u64> {
 ///
 /// Gecici sunucu hatasinda (429/503/5xx) baglanti kurulurken de yeniden denenir;
 /// aksi halde indirme hic baslamadan "sunucu 503 dondurdu" ile biterdi.
+/// Basliksiz probe (testler ve basit cagrilar icin sarmalayici).
+#[cfg(test)]
 pub async fn probe(client: &Client, url: &str) -> Result<Probe, String> {
+    probe_with(client, url, RequestHeaders::default()).await
+}
+
+/// Baslikli probe: giris isteyen sitelerde cerez/referer gerekir.
+pub async fn probe_with(
+    client: &Client,
+    url: &str,
+    headers: RequestHeaders<'_>,
+) -> Result<Probe, String> {
     let mut attempt = 0u32;
     loop {
-        match probe_once(client, url).await {
+        match probe_once(client, url, headers).await {
             Ok(probe) => return Ok(probe),
             Err(err) => {
                 let Some(retry_after) = err.retry_after() else {
@@ -204,12 +215,19 @@ pub async fn probe(client: &Client, url: &str) -> Result<Probe, String> {
 }
 
 /// Tek bir probe denemesi (HEAD, olmazsa 1 baytlik Range).
-async fn probe_once(client: &Client, url: &str) -> Result<Probe, HttpError> {
-    let head = client
-        .head(url)
-        .header(ACCEPT_ENCODING, "identity")
-        .send()
-        .await;
+async fn probe_once(
+    client: &Client,
+    url: &str,
+    headers: RequestHeaders<'_>,
+) -> Result<Probe, HttpError> {
+    let mut head_req = client.head(url).header(ACCEPT_ENCODING, "identity");
+    if let Some(referer) = RequestHeaders::safe_value(headers.referer.unwrap_or("")) {
+        head_req = head_req.header(REFERER, referer);
+    }
+    if let Some(cookie) = RequestHeaders::safe_value(headers.cookie.unwrap_or("")) {
+        head_req = head_req.header(COOKIE, cookie);
+    }
+    let head = head_req.send().await;
 
     if let Ok(resp) = head {
         let retry_after = resp
@@ -249,10 +267,17 @@ async fn probe_once(client: &Client, url: &str) -> Result<Probe, HttpError> {
     }
 
     // HEAD desteklenmiyor / reddedildi: 1 baytlik Range ile dene.
-    let resp = client
+    let mut range_req = client
         .get(url)
         .header(ACCEPT_ENCODING, "identity")
-        .header(RANGE, "bytes=0-0")
+        .header(RANGE, "bytes=0-0");
+    if let Some(referer) = RequestHeaders::safe_value(headers.referer.unwrap_or("")) {
+        range_req = range_req.header(REFERER, referer);
+    }
+    if let Some(cookie) = RequestHeaders::safe_value(headers.cookie.unwrap_or("")) {
+        range_req = range_req.header(COOKIE, cookie);
+    }
+    let resp = range_req
         .send()
         .await
         .map_err(|e| HttpError::Network(format!("baglanti kurulamadi: {e}")))?;
@@ -300,11 +325,41 @@ async fn probe_once(client: &Client, url: &str) -> Result<Probe, HttpError> {
     })
 }
 
-/// Bir indirme denemesinin girdileri.
+/// İstek başlıkları: sayfa adresi (Referer) ve oturum çerezi (Cookie).
+///
+/// Çerez kullanıcı tarayıcısından gelir; **başlık enjeksiyonuna** karşı
+/// temizlenir. `Cookie`/`Referer` değerlerinde CR/LF bulunursa o başlık
+/// gönderilmez (istek kaçırma girişimi).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RequestHeaders<'a> {
+    pub referer: Option<&'a str>,
+    pub cookie: Option<&'a str>,
+}
+
+impl<'a> RequestHeaders<'a> {
+    pub fn new(referer: Option<&'a str>, cookie: Option<&'a str>) -> Self {
+        Self { referer, cookie }
+    }
+
+    /// Başlık değeri güvenli mi? (CR/LF/NUL yok, boş değil, >8 KB değil)
+    pub fn safe_value(value: &str) -> Option<&str> {
+        let trimmed = value.trim();
+        if trimmed.is_empty() || trimmed.len() > 8 * 1024 {
+            return None;
+        }
+        // CR, LF ve NUL: başlık bölme / enjeksiyon.
+        if trimmed.bytes().any(|b| b == b'\r' || b == b'\n' || b == 0) {
+            return None;
+        }
+        Some(trimmed)
+    }
+}
+
 pub struct DownloadRequest<'a> {
     pub client: &'a Client,
     pub url: &'a str,
-    pub referer: Option<&'a str>,
+    /// Sayfa adresi + çerez (giriş isteyen siteler için).
+    pub headers: RequestHeaders<'a>,
     pub segments: &'a [Segment],
     pub parts_dir: &'a Path,
     pub cancel: &'a CancelToken,
@@ -320,7 +375,7 @@ pub async fn download_segments(request: DownloadRequest<'_>) -> Result<(), HttpE
     let DownloadRequest {
         client,
         url,
-        referer,
+        headers,
         segments,
         parts_dir,
         cancel,
@@ -334,7 +389,7 @@ pub async fn download_segments(request: DownloadRequest<'_>) -> Result<(), HttpE
 
     let tasks = segments.iter().zip(progress.iter()).map(|(seg, done)| {
         download_one(
-            client, url, referer, seg, parts_dir, cancel, done, limiter, on_retry,
+            client, url, headers, seg, parts_dir, cancel, done, limiter, on_retry,
         )
     });
     // Ilk kalici hata digerlerini de durdurur; yarim kalan parcalar sonraki denemede surer.
@@ -346,7 +401,7 @@ pub async fn download_segments(request: DownloadRequest<'_>) -> Result<(), HttpE
 async fn download_one(
     client: &Client,
     url: &str,
-    referer: Option<&str>,
+    headers: RequestHeaders<'_>,
     seg: &Segment,
     parts_dir: &Path,
     cancel: &CancelToken,
@@ -357,7 +412,7 @@ async fn download_one(
     let mut attempt = 0u32;
     loop {
         match attempt_once(
-            client, url, referer, seg, parts_dir, cancel, progress, limiter,
+            client, url, headers, seg, parts_dir, cancel, progress, limiter,
         )
         .await
         {
@@ -392,7 +447,7 @@ async fn download_one(
 async fn attempt_once(
     client: &Client,
     url: &str,
-    referer: Option<&str>,
+    headers: RequestHeaders<'_>,
     seg: &Segment,
     parts_dir: &Path,
     cancel: &CancelToken,
@@ -434,8 +489,13 @@ async fn attempt_once(
         .get(url)
         .header(ACCEPT_ENCODING, "identity")
         .header(ACCEPT_RANGES, "bytes");
-    if let Some(referer) = referer {
+    if let Some(referer) = RequestHeaders::safe_value(headers.referer.unwrap_or("")) {
         request = request.header(REFERER, referer);
+    }
+    // Cerez: giris isteyen sitelerde indirme icin gerekli. CRLF iceren deger
+    // (baslik enjeksiyonu) sessizce atlanir.
+    if let Some(cookie) = RequestHeaders::safe_value(headers.cookie.unwrap_or("")) {
+        request = request.header(COOKIE, cookie);
     }
     let mut range_seg = seg.clone();
     range_seg.done = done;
@@ -755,7 +815,7 @@ mod tests {
         let result = download_segments(DownloadRequest {
             client: &client,
             url,
-            referer: None,
+            headers: RequestHeaders::default(),
             segments,
             parts_dir: &parts,
             cancel: &cancel,
@@ -958,7 +1018,7 @@ mod tests {
         download_segments(DownloadRequest {
             client: &client,
             url: &url,
-            referer: None,
+            headers: RequestHeaders::default(),
             segments: &segments,
             parts_dir: &parts,
             cancel: &cancel,
@@ -998,7 +1058,7 @@ mod tests {
         download_segments(DownloadRequest {
             client: &client,
             url: &url,
-            referer: None,
+            headers: RequestHeaders::default(),
             segments: &segments,
             parts_dir: &parts,
             cancel: &cancel,
@@ -1039,7 +1099,7 @@ mod tests {
         let err = download_segments(DownloadRequest {
             client: &client,
             url: &url,
-            referer: None,
+            headers: RequestHeaders::default(),
             segments: &segments,
             parts_dir: dir.path(),
             cancel: &cancel,
@@ -1076,7 +1136,7 @@ mod tests {
         let result = download_segments(DownloadRequest {
             client: &client,
             url: &url,
-            referer: None,
+            headers: RequestHeaders::default(),
             segments: &segments,
             parts_dir: &parts,
             cancel: &cancel,
@@ -1130,6 +1190,156 @@ mod tests {
         // Gecersiz proxy: panik yok, proxysiz istemci.
         let _ = build_client_with_proxy("saçma değer");
         let _ = build_client_with_proxy("");
+    }
+
+    #[test]
+    fn baslik_degerleri_temizlenir() {
+        // Gecerli degerler.
+        assert_eq!(
+            RequestHeaders::safe_value("sid=abc; tema=koyu"),
+            Some("sid=abc; tema=koyu")
+        );
+        assert_eq!(
+            RequestHeaders::safe_value("  https://x/y  "),
+            Some("https://x/y")
+        );
+
+        // Baslik enjeksiyonu: CR/LF/NUL reddedilir.
+        for kotu in [
+            "sid=abc\r\nX-Kotu: 1",
+            "sid=abc\nX-Kotu: 1",
+            "sid=abc\rX",
+            "sid=abc\0",
+        ] {
+            assert_eq!(
+                RequestHeaders::safe_value(kotu),
+                None,
+                "reddedilmeli: {kotu:?}"
+            );
+        }
+        // Bos / asiri uzun.
+        assert_eq!(RequestHeaders::safe_value(""), None);
+        assert_eq!(RequestHeaders::safe_value("   "), None);
+        let uzun = "a".repeat(8 * 1024 + 1);
+        assert_eq!(RequestHeaders::safe_value(&uzun), None);
+        // Tam sinir kabul edilir.
+        let sinir = "a".repeat(8 * 1024);
+        assert!(RequestHeaders::safe_value(&sinir).is_some());
+    }
+
+    /// Cerez olmadan 403, cerezle 200 donen sunucu: indirme gercekten
+    /// cerezi gonderiyor mu?
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cerez_gonderilir_ve_indirme_basarili_olur() {
+        let data = test_data(40_000);
+        let url = spawn_cookie_server(data.clone(), "oturum=dogru").await;
+
+        let segments = vec![Segment {
+            index: 0,
+            start: 0,
+            end: Some(data.len() as u64 - 1),
+            done: 0,
+        }];
+        let client = build_client();
+        let dir = tempfile::tempdir().unwrap();
+        let parts = dir.path().join("parts");
+        let cancel = CancelToken::new();
+        let limiter = RateLimiter::new(0);
+        let progress: Vec<AtomicU64> = segments.iter().map(|_| AtomicU64::new(0)).collect();
+
+        // 1) Cerez yok -> 403.
+        let without = download_segments(DownloadRequest {
+            client: &client,
+            url: &url,
+            headers: RequestHeaders::default(),
+            segments: &segments,
+            parts_dir: &parts,
+            cancel: &cancel,
+            progress: &progress,
+            limiter: &limiter,
+            on_retry: None,
+        })
+        .await;
+        assert!(without.is_err(), "cerezsiz indirme basarili olmamali");
+
+        // 2) Cerez var -> basarili + icerik dogru.
+        let with = download_segments(DownloadRequest {
+            client: &client,
+            url: &url,
+            headers: RequestHeaders::new(None, Some("oturum=dogru")),
+            segments: &segments,
+            parts_dir: &parts,
+            cancel: &cancel,
+            progress: &progress,
+            limiter: &limiter,
+            on_retry: None,
+        })
+        .await;
+        assert!(with.is_ok(), "cerezli indirme basarili olmali: {with:?}");
+
+        let target = dir.path().join("out.bin");
+        concat_parts(&parts, &segments, &target).await.unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), data);
+    }
+
+    /// Cerez isteyen sunucu (`Cookie: <beklenen>` yoksa 403).
+    async fn spawn_cookie_server(data: Vec<u8>, expected_cookie: &'static str) -> String {
+        async fn handler(
+            State((data, expected)): State<(Arc<Vec<u8>>, &'static str)>,
+            headers: HeaderMap,
+        ) -> Response {
+            let ok = headers
+                .get(header::COOKIE)
+                .and_then(|v| v.to_str().ok())
+                .map(|v| v.contains(expected))
+                .unwrap_or(false);
+            if !ok {
+                return Response::builder().status(403).body(Body::empty()).unwrap();
+            }
+            let total = data.len() as u64;
+            let range = headers
+                .get(header::RANGE)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.strip_prefix("bytes="));
+            if let Some(range) = range {
+                let mut split = range.split('-');
+                let start: u64 = split.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+                let end: u64 = split
+                    .next()
+                    .filter(|s| !s.is_empty())
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(total.saturating_sub(1));
+                let start = start.min(total.saturating_sub(1));
+                let end = end.min(total.saturating_sub(1));
+                let slice = data[start as usize..=end as usize].to_vec();
+                return Response::builder()
+                    .status(206)
+                    .header(header::CONTENT_LENGTH, slice.len().to_string())
+                    .header(
+                        header::CONTENT_RANGE,
+                        format!("bytes {start}-{end}/{total}"),
+                    )
+                    .header(header::ACCEPT_RANGES, "bytes")
+                    .body(Body::from(slice))
+                    .unwrap();
+            }
+            Response::builder()
+                .status(200)
+                .header(header::CONTENT_LENGTH, total.to_string())
+                .header(header::ACCEPT_RANGES, "bytes")
+                .body(Body::from(data.as_ref().clone()))
+                .unwrap()
+        }
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = Router::new()
+            .route("/file", get(handler))
+            .with_state((Arc::new(data), expected_cookie));
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        format!("http://{addr}/file")
     }
 
     #[test]

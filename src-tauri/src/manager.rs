@@ -22,6 +22,8 @@ pub struct AddOptions {
     pub dir: Option<PathBuf>,
     pub filename: Option<String>,
     pub referer: Option<String>,
+    /// Giriş isteyen siteler için oturum çerezi (`name=value; ...`).
+    pub cookie: Option<String>,
     /// Some(true) = yt-dlp, Some(false) = dogrudan HTTP, None = otomatik.
     pub media: Option<bool>,
     /// yt-dlp format kimligi (`-f`).
@@ -362,7 +364,7 @@ async fn run_http(state: Arc<AppState>, id: String, cancel: Arc<CancelToken>) {
         let result = http::download_segments(http::DownloadRequest {
             client: &state.http(),
             url: &local.url,
-            referer: local.referer.as_deref(),
+            headers: http::RequestHeaders::new(local.referer.as_deref(), local.cookie.as_deref()),
             segments: &local.segments,
             parts_dir: &parts_dir,
             cancel: &cancel,
@@ -665,7 +667,12 @@ pub async fn add(
             .unwrap_or_else(|| "medya".into());
         (guessed, None, true, Some("media".to_string()), Kind::Media)
     } else {
-        let probe = http::probe(&state.http(), url).await?;
+        let probe = http::probe_with(
+            &state.http(),
+            url,
+            http::RequestHeaders::new(options.referer.as_deref(), options.cookie.as_deref()),
+        )
+        .await?;
         let filename = options
             .filename
             .clone()
@@ -715,7 +722,8 @@ pub async fn add(
         created_at: now_ts(),
         finished_at: None,
         connections,
-        referer: options.referer.or_else(|| Some(url.to_string())),
+        referer: options.referer.clone().or_else(|| Some(url.to_string())),
+        cookie: options.cookie.clone(),
         mime,
         file_path: None,
         format: options.format.clone(),
@@ -775,6 +783,7 @@ async fn add_torrent(
         finished_at: None,
         connections: 0,
         referer: None,
+        cookie: None,
         mime: Some("torrent".into()),
         file_path: None,
         format: None,

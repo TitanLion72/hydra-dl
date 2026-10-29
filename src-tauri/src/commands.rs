@@ -40,6 +40,7 @@ pub async fn add_download(
     filename: Option<String>,
     media: Option<bool>,
     referer: Option<String>,
+    cookie: Option<String>,
     format: Option<String>,
     files: Option<Vec<usize>>,
 ) -> Result<Download, String> {
@@ -47,6 +48,7 @@ pub async fn add_download(
         dir: dir.filter(|d| !d.trim().is_empty()).map(PathBuf::from),
         filename: filename.filter(|f| !f.trim().is_empty()),
         referer,
+        cookie,
         media,
         format: format.filter(|f| !f.trim().is_empty()),
         files,

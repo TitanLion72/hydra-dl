@@ -112,6 +112,29 @@ check("kaynak manifest: optional_host_permissions var (Firefox izni)", () => {
   assert.ok(manifest.optional_host_permissions.includes("http://127.0.0.1/*"));
 });
 
+check("kaynak manifest: cookies izni var (giriş isteyen siteler)", () => {
+  assert.ok(
+    manifest.permissions.includes("cookies"),
+    "cookies izni yok: oturum çerezi okunamaz",
+  );
+  // Çerez okumak için hedef sitelere host erişimi gerekir.
+  assert.ok(
+    manifest.host_permissions.includes("https://*/*") &&
+      manifest.host_permissions.includes("http://*/*"),
+    "host_permissions tüm siteleri kapsamalı (çerez okuma)",
+  );
+});
+
+await checkAsync("panel: çerez toplanıp /add gövdesine konuyor", async () => {
+  const panel = await readFile(path.join(ext, "panel.js"), "utf8");
+  const shared = await readFile(path.join(ext, "shared.js"), "utf8");
+  assert.ok(shared.includes("hydraCookiesFor"), "shared.js'te hydraCookiesFor yok");
+  assert.ok(shared.includes("cookies.getAll"), "çerezler cookies.getAll ile okunmalı");
+  assert.ok(shared.includes("body.cookie"), "/add gövdesine cookie konmalı");
+  assert.ok(panel.includes("H.hydraCookiesFor"), "panel çerez toplamıyor");
+  assert.ok(panel.includes("cookie: state.cookie"), "panel cookie alanını göndermiyor");
+});
+
 // ---------------------------------------------------------------- bağlam sırası
 
 check("background.js compat.js'i önce yükler", () => {

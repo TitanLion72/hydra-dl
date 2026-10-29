@@ -158,10 +158,35 @@ async function hydraHealth() {
   return hydraFetch("/health");
 }
 
-async function hydraProbe(url, media) {
+async function hydraProbe(url, media, referer, cookie) {
   const body = { url };
   if (media !== undefined && media !== null) body.media = media === true;
+  if (referer) body.referer = referer;
+  if (cookie) body.cookie = cookie;
   return hydraFetch("/probe", { method: "POST", body, timeoutMs: HYDRA_PROBE_TIMEOUT_MS });
+}
+
+/**
+ * Adres için tarayıcı çerezlerini `ad=değer; ...` biçiminde toplar.
+ *
+ * Yalnız kullanıcı bir indirmeyi açıkça başlattığında çağrılır; çerezler
+ * yalnız kullanıcının kendi Hydra sunucusuna gönderilir. Okunamazsa (izin
+ * verilmemiş, Firefox host izni yok) boş döner ve indirme çerezsiz sürer.
+ */
+async function hydraCookiesFor(url) {
+  try {
+    if (!/^https?:/i.test(url)) return "";
+    const cookies = await HX.api.cookies.getAll({ url });
+    if (!Array.isArray(cookies) || cookies.length === 0) return "";
+    const header = cookies
+      .filter((c) => c && c.name)
+      .map((c) => `${c.name}=${c.value ?? ""}`)
+      .join("; ");
+    // Sunucu tarafı 8 KB'tan uzun değeri reddeder (başlık enjeksiyonu sınırı).
+    return header.length > 8000 ? header.slice(0, 8000) : header;
+  } catch {
+    return "";
+  }
 }
 
 async function hydraAdd(payload) {
@@ -170,6 +195,7 @@ async function hydraAdd(payload) {
   if (payload.filename) body.filename = payload.filename;
   if (payload.dir) body.dir = payload.dir;
   if (payload.referer) body.referer = payload.referer;
+  if (payload.cookie) body.cookie = payload.cookie;
   if (payload.media !== undefined) body.media = payload.media === true;
 
   try {

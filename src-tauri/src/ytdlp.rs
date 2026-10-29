@@ -425,6 +425,24 @@ fn network_args_with_proxy(speed_limit_bps: u64, proxy: &str) -> Vec<String> {
     args
 }
 
+/// Sayfa adresi ve çerez başlıkları (yt-dlp).
+///
+/// Çerez değeri ayraçla (`--add-header`) verilir; CR/LF içeren değer
+/// **reddedilir** (başlık enjeksiyonu). `--add-header` yt-dlp'de bir sonraki
+/// argümanı değer sayar, bu yüzden değer ayrı bir argüman olarak eklenir.
+fn auth_header_args(referer: Option<&str>, cookie: Option<&str>) -> Vec<String> {
+    let mut args = Vec::new();
+    if let Some(value) = crate::engine::http::RequestHeaders::safe_value(referer.unwrap_or("")) {
+        args.push("--referer".into());
+        args.push(value.to_string());
+    }
+    if let Some(value) = crate::engine::http::RequestHeaders::safe_value(cookie.unwrap_or("")) {
+        args.push("--add-header".into());
+        args.push(format!("Cookie: {value}"));
+    }
+    args
+}
+
 /// Seçenek ayrıştırmasını kapatan ayırıcı.
 ///
 /// Kullanıcı URL'i yt-dlp'ye **pozisyonel** argüman olarak gider. `--` konmazsa
@@ -536,6 +554,10 @@ pub async fn run(state: Arc<AppState>, id: String, cancel: Arc<CancelToken>) {
     cmd.args(network_args_with_proxy(
         settings.speed_limit_bytes(),
         &settings.proxy_url,
+    ))
+    .args(auth_header_args(
+        item.referer.as_deref(),
+        item.cookie.as_deref(),
     ))
     .args(build_args(
         &item.url,
@@ -810,6 +832,35 @@ mod tests {
             .position(|a| a == "--limit-rate")
             .expect("--limit-rate yok");
         assert_eq!(limited[index + 1], (1024 * 512).to_string());
+    }
+
+    #[test]
+    fn cerez_ve_referer_yt_dlp_argumanlarina_eklenir() {
+        let args = auth_header_args(Some("https://site/izle"), Some("sid=abc; x=1"));
+        let referer = args
+            .iter()
+            .position(|a| a == "--referer")
+            .expect("--referer yok");
+        assert_eq!(args[referer + 1], "https://site/izle");
+        let header = args
+            .iter()
+            .position(|a| a == "--add-header")
+            .expect("--add-header yok");
+        assert_eq!(args[header + 1], "Cookie: sid=abc; x=1");
+
+        // Bos degerler arguman uretmez.
+        assert!(auth_header_args(None, None).is_empty());
+        assert!(auth_header_args(Some("  "), Some("")).is_empty());
+
+        // Baslik enjeksiyonu: CRLF iceren cerez eklenmez.
+        let injected = auth_header_args(None, Some("sid=1\r\nX-Kotu: 1"));
+        assert!(
+            !injected.iter().any(|a| a == "--add-header"),
+            "CRLF reddedilmeli"
+        );
+        // Referer'da da ayni kural.
+        let injected_ref = auth_header_args(Some("https://x/\nX: 1"), None);
+        assert!(!injected_ref.iter().any(|a| a == "--referer"));
     }
 
     #[test]

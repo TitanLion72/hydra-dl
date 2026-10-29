@@ -2,7 +2,7 @@
 
 > Yeni oturum: **önce bu dosyayı oku**, sonra `git status`. Bitirdiğin dilimi en alta 10 satır yaz.
 
-**Son güncelleme:** 2026-10-29 · v0.2.8 · AGPL-3.0-or-later
+**Son güncelleme:** 2026-10-29 · v0.2.9 · AGPL-3.0-or-later
 
 ---
 
@@ -14,15 +14,15 @@ telefon için web arayüzü, tarayıcı eklentisi (panel + avcı modu).
 
 **Repo public:** <https://github.com/TitanLion72/hydra-dl> (AGPL-3.0, ilk commit `9495fd4`).
 
-**Kurulu sürüm:** v0.2.8, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
+**Kurulu sürüm:** v0.2.9, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
 girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
-`src-tauri\target\release\bundle\nsis\Hydra DL_0.2.8_x64-setup.exe`.
+`src-tauri\target\release\bundle\nsis\Hydra DL_0.2.9_x64-setup.exe`.
 
 ## Doğrulanmış (bu oturum, kanıt var)
 
 | Ne | Kanıt |
 |---|---|
-| Rust testleri | `cargo test` → **97 passed** (1 ağ testi `#[ignore]`) |
+| Rust testleri | `cargo test` → **100 passed** (1 ağ testi `#[ignore]`) |
 | Clippy | `cargo clippy --all-targets -- -D warnings` → 0 uyarı |
 | Arayüz derlemesi | `npm run build` → 21.84 kB JS |
 | Segmentli indirme | `node tools/e2e.mjs` → 16 MB, sha256 eşleşti |
@@ -76,6 +76,11 @@ Bu oturumun öne çıkanları:
 - **Windows bildirimi çalışıyor** (kullanıcı teyit etti, 2026-10-29): biten indirmede toast
   görünüyor. AUMID kaydı + `notify-rust` yeterliydi. Telefon tarafı kullanıcı tarafından
   henüz denenmedi (sunucu tarafı test edildi).
+- **Çerez/oturum**: eklenti `cookies` izniyle, kullanıcı indirmeyi başlattığında hedef
+  adresin çerezlerini toplar ve **yalnız kullanıcının kendi Hydra sunucusuna** gönderir.
+  Firefox'ta tüm siteler için host izni kullanıcı onayı ister; izin yoksa indirme
+  **çerezsiz** sürer (sessiz hata yok, akış bozulmaz). Çerez `downloads.json`'da saklanır
+  (duraklat/devam için) — dosyayı paylaşırken dikkat.
 - Avcı modunda ağ isteği dinleme (`webRequest`) yok; HLS/manifest yakalama v0.3'te.
 - Yeniden deneme HTTP indirmesinde **ve** `probe` (HEAD/Range keşfi) aşamasında geçerli.
   `.torrent` çözümleme tek deneme yapar (kullanıcı yeniden basar); medya (yt-dlp) kendi

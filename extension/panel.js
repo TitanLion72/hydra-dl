@@ -33,6 +33,8 @@ const state = {
   busy: false,
   filenameDirty: false,
   added: false,
+  /// Tarayıcıdan toplanan oturum çerezi (giriş isteyen siteler).
+  cookie: "",
 };
 
 const el = {
@@ -454,7 +456,10 @@ async function load(targetUrl) {
   }
 
   try {
-    const probe = await H.hydraProbe(targetUrl);
+    // Giriş isteyen sayfalarda probe da çerez ister; okunamazsa boş kalır.
+    const cookie = await H.hydraCookiesFor(targetUrl);
+    state.cookie = cookie;
+    const probe = await H.hydraProbe(targetUrl, undefined, state.referer, cookie);
     state.probe = probe;
     render(probe);
   } catch (err) {
@@ -492,6 +497,7 @@ async function submit() {
     url: target,
     filename: el.filename.value.trim() || undefined,
     referer: state.referer || undefined,
+    cookie: state.cookie || undefined,
   };
 
   // format yalnız gerçek bir yt-dlp kimliği varsa gönderilir; düz dosyada alan hiç konmaz.
