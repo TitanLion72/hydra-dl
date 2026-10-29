@@ -674,9 +674,90 @@ pub fn with_origin_guard(router: Router) -> Router {
     router.layer(middleware::from_fn(origin_guard))
 }
 
+/// Token karşılaştırması: **sabit zamanlı**.
+///
+/// `==` erken çıkış yapar; yanıt süresinden doğru token'ın öneki öğrenilebilir
+/// (timing side-channel). Burada uzunluk ve tüm baytlar her durumda işlenir.
+pub fn token_matches(expected: &str, candidate: &str) -> bool {
+    let a = expected.as_bytes();
+    let b = candidate.as_bytes();
+    // Uzunluk farkı erken döner (token uzunluğu gizli değil, /settings'te görünür).
+    if a.len() != b.len() {
+        // Yine de sabit iş yapalım: farklı uzunlukta da tüm baytları gez.
+        let mut diff = 1u8;
+        for i in 0..a.len().max(b.len()) {
+            let x = a.get(i).copied().unwrap_or(0);
+            let y = b.get(i).copied().unwrap_or(0);
+            diff |= x ^ y;
+        }
+        return diff == 0;
+    }
+    let mut diff = 0u8;
+    for i in 0..a.len() {
+        diff |= a[i] ^ b[i];
+    }
+    diff == 0
+}
+
+/// Başarısız token denemeleri için kayan pencere hız sınırı.
+///
+/// Token kaba kuvvetini yavaşlatır. Yalnız **başarısız** denemeler sayılır;
+/// doğru token'la çalışan istemci hiç etkilenmez.
+#[derive(Debug)]
+pub struct AuthLimiter {
+    /// (zaman, adres) kayıtları; pencere dışına çıkanlar temizlenir.
+    failures: std::sync::Mutex<std::collections::VecDeque<std::time::Instant>>,
+    max_failures: usize,
+    window: std::time::Duration,
+}
+
+impl AuthLimiter {
+    pub fn new(max_failures: usize, window: std::time::Duration) -> Self {
+        Self {
+            failures: std::sync::Mutex::new(std::collections::VecDeque::new()),
+            max_failures,
+            window,
+        }
+    }
+
+    /// Varsayılan: 10 dakikada 20 başarısız deneme.
+    pub fn default_policy() -> Self {
+        Self::new(20, std::time::Duration::from_secs(600))
+    }
+
+    /// Şu an istek kabul edilebilir mi?
+    pub fn allowed(&self) -> bool {
+        let now = std::time::Instant::now();
+        let mut guard = self.failures.lock().unwrap();
+        while guard
+            .front()
+            .is_some_and(|t| now.duration_since(*t) > self.window)
+        {
+            guard.pop_front();
+        }
+        guard.len() < self.max_failures
+    }
+
+    /// Başarısız deneme kaydet.
+    pub fn record_failure(&self) {
+        let mut guard = self.failures.lock().unwrap();
+        guard.push_back(std::time::Instant::now());
+        // Sınırsız büyümesin.
+        while guard.len() > self.max_failures * 4 {
+            guard.pop_front();
+        }
+    }
+
+    /// Başarılı giriş: sayaç sıfırlanır (meşru istemci engellenmesin).
+    pub fn record_success(&self) {
+        self.failures.lock().unwrap().clear();
+    }
+}
+
 fn auth_middleware(
     token: String,
     webapp_root: PathBuf,
+    limiter: Arc<AuthLimiter>,
 ) -> impl Fn(
     Request<Body>,
     Next,
@@ -685,6 +766,7 @@ fn auth_middleware(
     move |request: Request<Body>, next: Next| {
         let token = token.clone();
         let root = webapp_root.clone();
+        let limiter = limiter.clone();
         Box::pin(async move {
             if token.is_empty() {
                 // Token yok: kurulum kolaylığı için açık, ama arayüz uyarı gösterir.
@@ -694,21 +776,34 @@ fn auth_middleware(
             if !needs_token(&path, &root) {
                 return next.run(request).await;
             }
-            let header_ok = request
+            if !limiter.allowed() {
+                return error_response(
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "çok fazla başarısız deneme; birkaç dakika sonra tekrar dene",
+                );
+            }
+            let header_candidate = request
                 .headers()
                 .get("x-hydra-token")
                 .and_then(|v| v.to_str().ok())
-                .map(|v| v == token)
-                .unwrap_or(false);
-            let query_ok = request.uri().query().map(|q| {
-                q.split('&').any(|pair| {
-                    let mut parts = pair.splitn(2, '=');
-                    parts.next() == Some("token") && parts.next() == Some(token.as_str())
+                .unwrap_or("");
+            let query_candidate = request
+                .uri()
+                .query()
+                .and_then(|q| {
+                    q.split('&').find_map(|pair| {
+                        let mut parts = pair.splitn(2, '=');
+                        (parts.next() == Some("token")).then(|| parts.next().unwrap_or(""))
+                    })
                 })
-            });
-            if header_ok || query_ok == Some(true) {
+                .unwrap_or("");
+            let ok = (!header_candidate.is_empty() && token_matches(&token, header_candidate))
+                || (!query_candidate.is_empty() && token_matches(&token, query_candidate));
+            if ok {
+                limiter.record_success();
                 next.run(request).await
             } else {
+                limiter.record_failure();
                 error_response(StatusCode::UNAUTHORIZED, "geçersiz token")
             }
         })
@@ -770,10 +865,13 @@ async fn serve(
 
     // Statik kok: token korumasinin "hangi yol serbest" karari icin gerekli.
     let webapp_root = webapp_dir(&state);
+    // Token kaba kuvvetini yavaslat (10 dk / 20 basarisiz deneme).
+    let auth_limiter = Arc::new(AuthLimiter::default_policy());
     // Katman sirasi (dis -> ic): origin_guard, cors, auth, router.
     let mut router = api_router(state).layer(middleware::from_fn(auth_middleware(
         token.clone().unwrap_or_default(),
         webapp_root,
+        auth_limiter,
     )));
     router = router.layer(middleware::from_fn(cors));
     router = with_origin_guard(router);
@@ -904,9 +1002,52 @@ mod tests {
         assert_eq!(pick_webapp_dir(&[bos, dolu.clone()]), Some(dolu));
     }
 
+    /// Token sabit zamanli karsilastirilir (timing side-channel).
+    #[test]
+    fn token_sabit_zamanli_karsilastirilir() {
+        assert!(token_matches("abc123", "abc123"));
+        assert!(!token_matches("abc123", "abc124"));
+        assert!(!token_matches("abc123", "abc12"));
+        assert!(!token_matches("abc123", ""));
+        // Bos token hicbir seyle eslesmemeli.
+        assert!(!token_matches("", "x"));
+        // Uzun token: farkli uzunluk da reddedilir, panik yok.
+        let long = "a".repeat(64);
+        assert!(token_matches(&long, &long));
+        assert!(!token_matches(&long, &format!("{}b", "a".repeat(63))));
+    }
+
+    #[test]
+    fn auth_hiz_siniri_basarisiz_denemeleri_sayar() {
+        let limiter = AuthLimiter::new(3, std::time::Duration::from_secs(60));
+        assert!(limiter.allowed());
+        limiter.record_failure();
+        limiter.record_failure();
+        assert!(limiter.allowed(), "2/3 denemede hala izinli");
+        limiter.record_failure();
+        assert!(!limiter.allowed(), "3. basarisiz denemeden sonra engelli");
+        // Dogru token gelince sayac sifirlanir.
+        limiter.record_success();
+        assert!(limiter.allowed());
+    }
+
+    #[test]
+    fn auth_hiz_siniri_pencere_disarini_temizler() {
+        // Cok kisa pencere: eski kayitlar dusmeli.
+        let limiter = AuthLimiter::new(2, std::time::Duration::from_millis(30));
+        limiter.record_failure();
+        limiter.record_failure();
+        assert!(!limiter.allowed());
+        std::thread::sleep(std::time::Duration::from_millis(60));
+        assert!(
+            limiter.allowed(),
+            "pencere disina cikan kayitlar sayilmamali"
+        );
+    }
+
     /// Guvenlik: token korumasi **varsayilan olarak her yolu** kapsar.
-    /// Yalniz `/health` ve gercekten var olan statik dosyalar serbesttir.
-    /// Eski "prefix listesi" yaklasiminda `/torrent/files` ve `/notify/test`
+    /// Yalniz `/health` ve gercekten var olan statik dosyalar serbesttir; eski
+    /// "prefix listesi" yaklasiminda `/torrent/files` ve `/notify/test`
     /// korumasiz kaliyordu (gercek acik, kapatildi).
     #[test]
     fn token_varsayilan_olarak_her_yolu_korur() {

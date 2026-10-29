@@ -2,7 +2,7 @@
 
 > Yeni oturum: **önce bu dosyayı oku**, sonra `git status`. Bitirdiğin dilimi en alta 10 satır yaz.
 
-**Son güncelleme:** 2026-10-29 · v0.2.7 · AGPL-3.0-or-later
+**Son güncelleme:** 2026-10-29 · v0.2.8 · AGPL-3.0-or-later
 
 ---
 
@@ -14,15 +14,15 @@ telefon için web arayüzü, tarayıcı eklentisi (panel + avcı modu).
 
 **Repo public:** <https://github.com/TitanLion72/hydra-dl> (AGPL-3.0, ilk commit `9495fd4`).
 
-**Kurulu sürüm:** v0.2.7, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
+**Kurulu sürüm:** v0.2.8, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
 girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
-`src-tauri\target\release\bundle\nsis\Hydra DL_0.2.7_x64-setup.exe`.
+`src-tauri\target\release\bundle\nsis\Hydra DL_0.2.8_x64-setup.exe`.
 
 ## Doğrulanmış (bu oturum, kanıt var)
 
 | Ne | Kanıt |
 |---|---|
-| Rust testleri | `cargo test` → **94 passed** (1 ağ testi `#[ignore]`) |
+| Rust testleri | `cargo test` → **97 passed** (1 ağ testi `#[ignore]`) |
 | Clippy | `cargo clippy --all-targets -- -D warnings` → 0 uyarı |
 | Arayüz derlemesi | `npm run build` → 21.84 kB JS |
 | Segmentli indirme | `node tools/e2e.mjs` → 16 MB, sha256 eşleşti |
@@ -98,8 +98,8 @@ yeterli değil.
 2. **Dış PR'lar (`smart-screen`, bizim repo değil):** #3 yol enjeksiyonu **doğru** (ham
    soketle 10/10); #1 `audit` kırmızısını gideriyor; #2 çakışıyor ve lockfile'da alakasız
    sürüm değişikliği var. Kullanıcı onayı bekliyor.
-3. **Kalan güvenlik sertleştirmesi:** auth hatalarında hız sınırı (token kaba kuvveti),
-   sabit zamanlı token karşılaştırması, isteğe bağlı HTTPS.
+3. **Kalan güvenlik sertleştirmesi:** isteğe bağlı HTTPS (yerel ağda self-signed) —
+   token düz metin gitmesin. (Sabit zamanlı token + hız sınırı 0.2.8'de bitti.)
 4. **v0.3 devam:** çerez/oturum aktarımı (eklenti → uygulama), yt-dlp'siz HLS/DASH,
    tray simgesi, web arayüzünde torrent ekleme, geçmiş arama/sıralama.
 5. `ringbuf` muafiyeti: `librqbit-utp` 0.4.9+/0.5.2+ çıkınca `src-tauri/.cargo/audit.toml`

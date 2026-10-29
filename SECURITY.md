@@ -48,9 +48,11 @@ Bu kurallar `AGENTS.md`'de bağlayıcıdır; ihlal eden PR birleştirilmez.
    denetlenir: aynı köken + tarayıcı eklentisi şemaları. `null`/`data:`/`file:` reddedilir.
    **İki sunucu da** (`127.0.0.1:6712` yakalama + `0.0.0.0:6790` web) `with_origin_guard`
    kullanır — yakalama sunucusu token'sız olduğu için asıl CSRF riski oradaydı.
-4. **Token karşılaştırması sabit zamanlı olmalı** (ileride: `subtle::ConstantTimeEq`).
-   Token yalnız `[A-Za-z0-9]`, en fazla 64 karakter; URL'de taşınabilir (QR) ama
-   loglanmaz.
+4. **Token karşılaştırması sabit zamanlı** (`token_matches`): `==` erken çıkış yapıp
+   yanıt süresinden doğru token'ın öneki sızdırılabiliyordu. Token yalnız `[A-Za-z0-9]`,
+   en fazla 64 karakter; URL'de taşınabilir (QR) ama loglanmaz.
+   **Başarısız denemeler hız sınırına tabidir** (`AuthLimiter`: 10 dakikada 20 hata →
+   `429`). Doğru token gelince sayaç sıfırlanır, meşru istemci hiç etkilenmez.
 5. **Sırlar repoya girmez.** `.env`, token, kişisel yol, ekran görüntüsü, `downloads.json`
    commit edilmez (`.gitignore` + CI kontrolü).
 6. **Dış komut çağrıları argüman listesiyle** (`Command::arg`), kabuk yorumlamasıyla
@@ -77,7 +79,6 @@ Bu kurallar `AGENTS.md`'de bağlayıcıdır; ihlal eden PR birleştirilmez.
 | `cargo audit` | Bilinen CVE/RUSTSEC uyarıları |
 | `npm audit --audit-level=high` | npm güvenlik açıkları |
 | `node tools/security-check.mjs` | Repoda sır/kişisel yol taraması + yol koruma regresyonu |
-
 Kırmızı kontrol **birleştirmeyi engeller**. "Sonra düzeltirim" yok.
 
 ## CodeQL bulguları — kabul edilen riskler
