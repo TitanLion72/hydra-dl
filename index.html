@@ -129,6 +129,19 @@
             <span>Bitince/hata olunca bildirim göster</span>
           </label>
           <button class="ghost small" id="notify-test" type="button">Test bildirimi</button>
+          <label class="field">
+            <span>Proxy (isteğe bağlı)</span>
+            <input
+              id="set-proxy"
+              type="text"
+              spellcheck="false"
+              placeholder="http://127.0.0.1:8080 veya socks5://127.0.0.1:1080"
+            />
+          </label>
+          <p class="hint">
+            Boş bırakılırsa proxy kullanılmaz. HTTP, HTTPS ve SOCKS5 desteklenir; medya
+            indirmeleri (yt-dlp) de aynı proxy'yi kullanır.
+          </p>
         </section>
 
         <section class="field-group">

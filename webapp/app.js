@@ -63,6 +63,7 @@ const els = {
   setSpeed: $("#setSpeed"),
   setAutoResume: $("#setAutoResume"),
   setNotify: $("#setNotify"),
+  setProxy: $("#setProxy"),
   setCapture: $("#setCapture"),
   setCapturePort: $("#setCapturePort"),
   setWebUrl: $("#setWebUrl"),
@@ -1335,6 +1336,7 @@ function applySettings(settings) {
   els.setCapture.checked = Boolean(data.captureEnabled);
   els.setAutoResume.checked = Boolean(data.autoResume);
   if (els.setNotify) els.setNotify.checked = data.notifyOnFinish !== false;
+  if (els.setProxy) els.setProxy.value = data.proxyUrl || "";
   setText(els.setCapturePort, data.capturePort ? String(data.capturePort) : "—");
   els.setToken.value = state.token;
 }
@@ -1456,6 +1458,7 @@ async function saveSettings() {
   next.captureEnabled = els.setCapture.checked;
   next.autoResume = els.setAutoResume.checked;
   if (els.setNotify) next.notifyOnFinish = els.setNotify.checked;
+  if (els.setProxy) next.proxyUrl = els.setProxy.value.trim();
   if (Object.prototype.hasOwnProperty.call(next, "webToken")) {
     next.webToken = els.setToken.value.trim();
   }

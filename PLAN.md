@@ -27,13 +27,11 @@ v0.2 = "IDM'den iyi" temeli. Sıra bağımlılığa göre; üstteki bitmeden alt
 ## v0.3 — bir sonraki dilim
 
 - [ ] Çerez/oturum aktarımı: eklenti → uygulama (giriş isteyen sayfalar)
-- [x] `Retry-After` + üstel geri çekilme; 429/503 yönetimi (segment başına 5 deneme,
-      `Download.retry` arayüzde)
-- [ ] `/probe` ve `.torrent` çözümlemede de yeniden deneme (şimdilik tek deneme)
-- [ ] Proxy (sistem + elle HTTP/SOCKS5); torrent için de geçerli
+- [x] `Retry-After` + üstel geri çekilme (segment başına 5 deneme, `Download.retry`)
+- [x] **Proxy** (HTTP/HTTPS/SOCKS5): tek ayar, HTTP + probe + yt-dlp; torrent hariç
 - [ ] HLS/DASH'i yt-dlp olmadan indirme (segment birleştirme)
 - [ ] Avcı modunda ağ isteği dinleme (`webRequest`) ile blob/manifest yakalama
-- [x] Bildirimler (tamamlandı/hata) — `notify-rust` + AUMID, `notifyOnFinish`
+- [x] Bildirimler (tamamlandı/hata) — `notify-rust` + AUMID, kullanıcı teyit etti
 - [ ] Tray simgesi, arka planda küçültme
 - [ ] Web arayüzünde torrent ekleme ve tohum oranı
 - [ ] Toplu içe aktarma: bağlantı listesi, panodan otomatik yakalama (opt-in)

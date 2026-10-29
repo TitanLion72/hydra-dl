@@ -403,17 +403,24 @@ pub fn display_filename(title: &str, ext: &str) -> Option<String> {
     })
 }
 
-/// Ag ayarlari: parca eszamanliligi ve (ayarliysa) hiz limiti.
+/// Ag ayarlari: parca eszamanliligi, (ayarliysa) hiz limiti ve proxy.
 ///
 /// yt-dlp varsayilan olarak HLS/DASH parcalarini **tek tek** ceker; 4 parca ile
 /// eszamanli cekmek ayni baglantida 3-4 kat hiz veriyor. Hiz limiti ayarliysa
 /// medya indirmesi de uyar (yt-dlp bizim token bucket'imizi paylasamadigi icin
 /// tam limiti alir; HTTP indirmeleriyle ayni anda calisirsa toplam limit asilabilir).
-fn network_args(speed_limit_bps: u64) -> Vec<String> {
+/// Proxy adresi kullanici ayarindan gelir ve `--proxy` degeri olarak verilir;
+/// `-` ile baslayan deger kabul edilmez (secenek kaydirma).
+fn network_args_with_proxy(speed_limit_bps: u64, proxy: &str) -> Vec<String> {
     let mut args: Vec<String> = vec!["--concurrent-fragments".into(), "4".into()];
     if speed_limit_bps > 0 {
         args.push("--limit-rate".into());
         args.push(speed_limit_bps.to_string());
+    }
+    let proxy = proxy.trim();
+    if !proxy.is_empty() && !proxy.starts_with('-') {
+        args.push("--proxy".into());
+        args.push(proxy.to_string());
     }
     args
 }
@@ -526,17 +533,20 @@ pub async fn run(state: Arc<AppState>, id: String, cancel: Arc<CancelToken>) {
     let _ = tokio::fs::remove_file(&title_file).await;
 
     let mut cmd = tokio::process::Command::new(binary);
-    cmd.args(network_args(settings.speed_limit_bytes()))
-        .args(build_args(
-            &item.url,
-            &item.dir,
-            &print_file,
-            &title_file,
-            item.format.as_deref(),
-        ))
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    cmd.args(network_args_with_proxy(
+        settings.speed_limit_bytes(),
+        &settings.proxy_url,
+    ))
+    .args(build_args(
+        &item.url,
+        &item.dir,
+        &print_file,
+        &title_file,
+        item.format.as_deref(),
+    ))
+    .stdin(Stdio::null())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
     #[cfg(windows)]
     {
         cmd.creation_flags(WINDOWS_NO_WINDOW);
@@ -787,19 +797,43 @@ mod tests {
     #[test]
     fn ag_ayarlari_parca_ve_hiz_limiti() {
         // Parcalar eszamanli cekilir (yt-dlp varsayilani tek tek = yavas).
-        let unlimited = network_args(0);
+        let unlimited = network_args_with_proxy(0, "");
         assert!(unlimited
             .windows(2)
             .any(|w| w == ["--concurrent-fragments", "4"]));
         assert!(!unlimited.iter().any(|a| a == "--limit-rate"));
 
         // Hiz limiti ayarliysa medya indirmesi de uyar (bayt/sn).
-        let limited = network_args(1024 * 512);
+        let limited = network_args_with_proxy(1024 * 512, "");
         let index = limited
             .iter()
             .position(|a| a == "--limit-rate")
             .expect("--limit-rate yok");
         assert_eq!(limited[index + 1], (1024 * 512).to_string());
+    }
+
+    #[test]
+    fn proxy_argumani_eklenir_ve_guvenli() {
+        // Proxy ayarliysa --proxy <adres> eklenir.
+        let with_proxy = network_args_with_proxy(0, "socks5://127.0.0.1:1080");
+        let index = with_proxy
+            .iter()
+            .position(|a| a == "--proxy")
+            .expect("--proxy yok");
+        assert_eq!(with_proxy[index + 1], "socks5://127.0.0.1:1080");
+
+        // Bos/whitespace: eklenmez.
+        assert!(!network_args_with_proxy(0, "")
+            .iter()
+            .any(|a| a == "--proxy"));
+        assert!(!network_args_with_proxy(0, "   ")
+            .iter()
+            .any(|a| a == "--proxy"));
+
+        // '-' ile baslayan deger secenek kaydirmasi olur; kabul edilmez.
+        assert!(!network_args_with_proxy(0, "--exec=calc")
+            .iter()
+            .any(|a| a == "--proxy"));
     }
 
     #[test]

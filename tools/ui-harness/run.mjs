@@ -253,6 +253,10 @@ async function main() {
       (await page.locator("#set-notify").isChecked()) === expected.notifyOnFinish,
       "#set-notify mock ayariyla uyumlu",
     );
+    check(
+      (await page.locator("#set-proxy").inputValue()) === expected.proxyUrl,
+      "#set-proxy mock ayariyla uyumlu",
+    );
     check((await page.locator("#set-web-port").inputValue()) === String(expected.webPort), "#set-web-port mock ayariyla uyumlu");
     check(
       (await page.locator("#set-concurrent").inputValue()) === String(expected.maxConcurrent),

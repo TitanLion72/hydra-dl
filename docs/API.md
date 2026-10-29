@@ -105,11 +105,18 @@ bir kez daha baştan denenir (parçalar diskte kalır).
 | Alan | Anlamı |
 |---|---|
 | `notifyOnFinish` | İndirme bitince/hata olunca işletim sistemi bildirimi (varsayılan `true`) |
+| `proxyUrl` | HTTP/SOCKS5 proxy: `http://host:port`, `https://…`, `socks5://…`, `socks5h://…`. Boş = proxy yok. Geçersiz değer kaydedilirken temizlenir |
 
 Windows'ta paketsiz uygulama bildirimi için AUMID kaydı gerekir; Hydra bunu ilk
 bildirimde HKCU\\Software\\Classes\\AppUserModelId\\com.hydradl.app altına yazar.
 Bildirim yalnız masaüstü uygulamasında görünür; telefon arayüzünde anahtar yalnızca ayarı
 değiştirir. Bildirim gösterilemezse indirme akışı bozulmaz.
+
+**Proxy:** `proxyUrl` doluysa tüm HTTP indirmeleri, sayfa taraması (`/probe`), `.torrent`
+çözümleme ve **medya indirmeleri (yt-dlp `--proxy`)** aynı proxy'yi kullanır. Ayar
+kaydedildiğinde HTTP istemcisi yeniden kurulur; çalışan indirmeler eski bağlantılarıyla
+devam eder, yeni indirmeler proxy'yi kullanır. Torrent (P2P) trafiği proxy'den geçmez
+— librqbit'in proxy desteği yok.
 
 `POST /notify/test` — ayar kapalı olsa da bir deneme bildirimi gönderir; altyapı çalışmıyorsa
 `502` + hata metni döner (masaüstü ayarlarında "Test bildirimi" düğmesi bunu kullanır).

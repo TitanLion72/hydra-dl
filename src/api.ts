@@ -89,6 +89,7 @@ export interface Settings {
   webToken: string;
   torrentEnabled: boolean;
   notifyOnFinish: boolean;
+  proxyUrl: string;
 }
 
 export interface CaptureStatus {

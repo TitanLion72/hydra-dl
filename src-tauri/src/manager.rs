@@ -41,7 +41,8 @@ pub struct AppState {
     handles: Mutex<HashMap<String, Handle>>,
     progress: Mutex<HashMap<String, Arc<Vec<AtomicU64>>>>,
     limiter: Arc<RateLimiter>,
-    http: reqwest::Client,
+    /// Proxy ayarı değişince yeniden kurulur (klonu ucuz).
+    http: Mutex<reqwest::Client>,
     started: Instant,
     pub capture: Mutex<Option<crate::capture::CaptureHandle>>,
     pub web: Mutex<Option<crate::web::WebHandle>>,
@@ -55,6 +56,7 @@ impl AppState {
         }
         let _ = std::fs::create_dir_all(&store.settings.download_dir);
         let limiter = RateLimiter::new(store.settings.speed_limit_bytes());
+        let proxy = store.settings.proxy_url.clone();
         let _ = store.save();
 
         Arc::new(Self {
@@ -63,7 +65,7 @@ impl AppState {
             handles: Mutex::new(HashMap::new()),
             progress: Mutex::new(HashMap::new()),
             limiter,
-            http: http::build_client(),
+            http: Mutex::new(http::build_client_with_proxy(&proxy)),
             started: Instant::now(),
             capture: Mutex::new(None),
             web: Mutex::new(None),
@@ -87,8 +89,18 @@ impl AppState {
         self.store.lock().unwrap().settings.clone()
     }
 
-    pub fn http(&self) -> &reqwest::Client {
-        &self.http
+    pub fn http(&self) -> reqwest::Client {
+        // reqwest::Client klonu ucuzdur (icte Arc). Proxy ayari degisince
+        // `rebuild_http` yeni istemci koyar; boylece calisan indirmeler
+        // eski istemcileriyle devam eder, yenileri proxy'yi kullanir.
+        self.http.lock().unwrap().clone()
+    }
+
+    /// Proxy/ayar degisikliginden sonra HTTP istemcisini yeniden kurar.
+    pub fn rebuild_http(&self) {
+        let proxy = self.settings().proxy_url;
+        let client = http::build_client_with_proxy(&proxy);
+        *self.http.lock().unwrap() = client;
     }
 
     pub fn limiter(&self) -> &Arc<RateLimiter> {
@@ -348,7 +360,7 @@ async fn run_http(state: Arc<AppState>, id: String, cancel: Arc<CancelToken>) {
             }
         };
         let result = http::download_segments(http::DownloadRequest {
-            client: state.http(),
+            client: &state.http(),
             url: &local.url,
             referer: local.referer.as_deref(),
             segments: &local.segments,
@@ -653,7 +665,7 @@ pub async fn add(
             .unwrap_or_else(|| "medya".into());
         (guessed, None, true, Some("media".to_string()), Kind::Media)
     } else {
-        let probe = http::probe(state.http(), url).await?;
+        let probe = http::probe(&state.http(), url).await?;
         let filename = options
             .filename
             .clone()
@@ -781,7 +793,7 @@ async fn add_torrent(
         .torrent
         .add(
             state,
-            state.http(),
+            &state.http(),
             TorrentJob {
                 id: item.id.clone(),
                 source,
@@ -982,6 +994,8 @@ pub fn save_settings(state: &Arc<AppState>, mut settings: Settings) -> Result<Se
         let _ = store.save();
     }
     state.limiter.set_limit(settings.speed_limit_bytes());
+    // Proxy degistiyse yeni indirmeler yeni istemciyi kullanir.
+    state.rebuild_http();
     state.emit_downloads();
     schedule(state);
     Ok(settings)
@@ -1033,7 +1047,7 @@ pub fn resume_torrents(state: &Arc<AppState>) {
                 .torrent
                 .add(
                     &state,
-                    state.http(),
+                    &state.http(),
                     TorrentJob {
                         id: id.clone(),
                         source: &source,

@@ -192,7 +192,7 @@ async fn probe_impl(state: Arc<AppState>, url: String, media: Option<bool>) -> R
     }
     let settings = state.settings();
     let ytdlp = crate::ytdlp::resolve(&state.app, &settings.ytdlp_path);
-    match crate::extract::probe(state.http(), ytdlp.as_deref(), &url, media).await {
+    match crate::extract::probe(&state.http(), ytdlp.as_deref(), &url, media).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(err) => error_response(StatusCode::UNPROCESSABLE_ENTITY, err),
     }
@@ -394,7 +394,7 @@ async fn torrent_files(
             );
         }
         let dir = settings.download_dir.clone();
-        match state.torrent.list(state.http(), &source, &dir).await {
+        match state.torrent.list(&state.http(), &source, &dir).await {
             Ok(listing) => (StatusCode::OK, Json(listing)).into_response(),
             Err(err) => error_response(StatusCode::UNPROCESSABLE_ENTITY, err),
         }

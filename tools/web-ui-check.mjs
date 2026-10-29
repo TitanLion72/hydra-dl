@@ -198,6 +198,7 @@ async function mockApi(
         ytdlpPath: "",
         autoResume: true,
         notifyOnFinish: true,
+        proxyUrl: "",
         webToken: "",
       }),
     }),
@@ -247,6 +248,7 @@ try {
     check(await page.locator("#installYtdlp").isHidden(), "kurulu iken düğme gizli");
     check(await page.locator("#ytdlpHelp").isHidden(), "kurulu iken yardım metni gizli");
     check(await page.locator("#setNotify").isChecked(), "bildirim anahtarı açık geliyor");
+    check((await page.locator("#setProxy").inputValue()) === "", "proxy alanı boş geliyor");
     check(errors.length === 0, `konsol hatası yok (${errors.join(" | ")})`);
     await page.screenshot({ path: path.join(SHOTS, "hydra-webui-ytdlp-kurulu.png") });
 

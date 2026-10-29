@@ -2,7 +2,7 @@
 
 > Yeni oturum: **önce bu dosyayı oku**, sonra `git status`. Bitirdiğin dilimi en alta 10 satır yaz.
 
-**Son güncelleme:** 2026-10-28 · v0.2.6 · AGPL-3.0-or-later
+**Son güncelleme:** 2026-10-29 · v0.2.7 · AGPL-3.0-or-later
 
 ---
 
@@ -14,15 +14,15 @@ telefon için web arayüzü, tarayıcı eklentisi (panel + avcı modu).
 
 **Repo public:** <https://github.com/TitanLion72/hydra-dl> (AGPL-3.0, ilk commit `9495fd4`).
 
-**Kurulu sürüm:** v0.2.6, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
+**Kurulu sürüm:** v0.2.7, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
 girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
-`src-tauri\target\release\bundle\nsis\Hydra DL_0.2.6_x64-setup.exe`.
+`src-tauri\target\release\bundle\nsis\Hydra DL_0.2.7_x64-setup.exe`.
 
 ## Doğrulanmış (bu oturum, kanıt var)
 
 | Ne | Kanıt |
 |---|---|
-| Rust testleri | `cargo test` → **85 passed** (1 ağ testi `#[ignore]`) |
+| Rust testleri | `cargo test` → **94 passed** (1 ağ testi `#[ignore]`) |
 | Clippy | `cargo clippy --all-targets -- -D warnings` → 0 uyarı |
 | Arayüz derlemesi | `npm run build` → 21.84 kB JS |
 | Segmentli indirme | `node tools/e2e.mjs` → 16 MB, sha256 eşleşti |
@@ -73,16 +73,9 @@ Bu oturumun öne çıkanları:
   `.torrent`): `POST /torrent/files` → 3 dosya + doğru boyutlar; `POST /add` `files:[0,2]` →
   `totalBytes=400000`; `POST /torrent/files {id,files:[1]}` → `totalBytes=200000`,
   `a.bin:false, b.bin:true, c.bin:false`. Kayıt silindi, artık bırakılmadı.
-- **Windows bildirimi bu makinede görünmüyor (açık uç).** Kod tarafı tamam: `notify-rust`
-  ile gönderim, AUMID kaydı (`HKCU\Software\Classes\AppUserModelId\com.hydradl.app`,
-  DisplayName + IconUri yazıldı), `show()` hata döndürürse arayüzde gösteriliyor.
-  **Teşhis (2026-10-28)**: PowerShell'in kendi toast'u da doğrulanamıyor —
-  `ToastNotificationManager.History.GetHistory()` her AUMID için `0x80070490`
-  (ERROR_NOT_FOUND) döndürüyor. Yani bu makinede bildirim **geçmişi** API'si çalışmıyor;
-  programatik doğrulama mümkün değil, **görsel teyit gerekiyor**. Kullanıcıya sorulacak:
-  biten bir indirmede toast görünüyor mu? Görünmüyorsa sıradaki adım kısayola
-  `System.AppUserModel.ID` yazmak (IPropertyStore) veya Windows Ayarlar → Bildirimler'de
-  Hydra DL'in kapalı olup olmadığına bakmak. Bildirim görünmese de indirme akışı bozulmuyor.
+- **Windows bildirimi çalışıyor** (kullanıcı teyit etti, 2026-10-29): biten indirmede toast
+  görünüyor. AUMID kaydı + `notify-rust` yeterliydi. Telefon tarafı kullanıcı tarafından
+  henüz denenmedi (sunucu tarafı test edildi).
 - Avcı modunda ağ isteği dinleme (`webRequest`) yok; HLS/manifest yakalama v0.3'te.
 - Yeniden deneme HTTP indirmesinde **ve** `probe` (HEAD/Range keşfi) aşamasında geçerli.
   `.torrent` çözümleme tek deneme yapar (kullanıcı yeniden basar); medya (yt-dlp) kendi
@@ -100,20 +93,18 @@ yeterli değil.
 
 ## Sıradaki iş
 
-1. **Kullanıcı teyidi:** biten indirmede Windows toast görünüyor mu? (Kod + AUMID hazır;
-   bu makinede bildirim geçmişi API'si çalışmadığı için programatik doğrulanamadı.)
-   Görünmüyorsa: kısayola `System.AppUserModel.ID` yaz (IPropertyStore).
-2. **Telefondan** `http://<LAN-IP>:6790`: torrent dosya seçimi + yt-dlp kur düğmesi
-   gerçek cihazda.
-3. **Dış PR'lar (`smart-screen`, bizim repo değil):** #3 yol enjeksiyonu düzeltmesi
-   **doğru** (ham soketle 10/10 test geçti); #1 (tokio/vite güvenlik) `main`'deki
-   `audit` kırmızısını gideriyor; #2 (#1 ile çakışıyor, lockfile'da alakasız sürüm
-   değişikliği var) kapatılmalı. Kullanıcı onayı bekliyor.
-4. **v0.3 devam:** çerez/oturum aktarımı (eklenti → uygulama), proxy (HTTP/SOCKS5),
-   HLS/DASH'i yt-dlp olmadan indirme.
-5. **CodeQL ilk analizi** bitince açık uyarı var mı diye bak (`gh api .../code-scanning/alerts`).
-6. `ringbuf` muafiyeti: `librqbit-utp` 0.4.9+/0.5.2+ çıkınca `src-tauri/.cargo/audit.toml`
+1. **Telefon testi** (kullanıcı): `http://<LAN-IP>:6790` — torrent dosya seçimi, yt-dlp
+   düğmesi, proxy alanı. Sunucu tarafı doğrulandı, cihazda denenmedi.
+2. **Dış PR'lar (`smart-screen`, bizim repo değil):** #3 yol enjeksiyonu **doğru** (ham
+   soketle 10/10); #1 `audit` kırmızısını gideriyor; #2 çakışıyor ve lockfile'da alakasız
+   sürüm değişikliği var. Kullanıcı onayı bekliyor.
+3. **Kalan güvenlik sertleştirmesi:** auth hatalarında hız sınırı (token kaba kuvveti),
+   sabit zamanlı token karşılaştırması, isteğe bağlı HTTPS.
+4. **v0.3 devam:** çerez/oturum aktarımı (eklenti → uygulama), yt-dlp'siz HLS/DASH,
+   tray simgesi, web arayüzünde torrent ekleme, geçmiş arama/sıralama.
+5. `ringbuf` muafiyeti: `librqbit-utp` 0.4.9+/0.5.2+ çıkınca `src-tauri/.cargo/audit.toml`
    istisnasını kaldır.
+6. Torrent proxy desteği: librqbit sürümü proxy kazanırsa `proxyUrl` oraya da bağlanır.
 
 ## Oturum kesilirse ilk komut
 

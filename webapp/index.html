@@ -264,6 +264,20 @@
               </span>
               <input id="setNotify" class="switch" type="checkbox" role="switch" />
             </label>
+
+            <label class="field">
+              <span class="field-label" for="setProxy">Proxy (isteğe bağlı)</span>
+              <input
+                id="setProxy"
+                class="input"
+                type="text"
+                inputmode="url"
+                autocapitalize="off"
+                spellcheck="false"
+                placeholder="http://127.0.0.1:8080 veya socks5://127.0.0.1:1080"
+              />
+              <span class="field-help">Boş = proxy yok. HTTP, HTTPS ve SOCKS5 desteklenir.</span>
+            </label>
           </section>
 
           <section class="panel">

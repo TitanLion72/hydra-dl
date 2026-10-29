@@ -119,14 +119,54 @@ impl HttpError {
 
 impl std::error::Error for HttpError {}
 
+/// Testlerde ve varsayılan kurulumda kullanılan proxysiz istemci.
+#[cfg(test)]
 pub fn build_client() -> Client {
-    Client::builder()
+    build_client_with_proxy("")
+}
+
+/// Proxy destekli HTTP istemcisi.
+///
+/// `proxy` boşsa sistem varsayılanı (env değişkenleri) kullanılır. Kabul edilen
+/// biçimler: `http://host:port`, `https://host:port`, `socks5://host:port`,
+/// `socks5h://host:port`. Geçersiz değer **sessizce yok sayılmaz**: istemci
+/// proxysiz kurulur ve `proxy_problem` ile neden bildirilir.
+pub fn build_client_with_proxy(proxy: &str) -> Client {
+    let mut builder = Client::builder()
         .user_agent(DEFAULT_UA)
         .connect_timeout(std::time::Duration::from_secs(20))
         .pool_max_idle_per_host(20)
-        .redirect(reqwest::redirect::Policy::limited(10))
-        .build()
-        .expect("reqwest client olusturulamadi")
+        .redirect(reqwest::redirect::Policy::limited(10));
+    if !proxy.trim().is_empty() {
+        let url = proxy.trim();
+        if let Ok(parsed) = reqwest::Proxy::all(url) {
+            builder = builder.proxy(parsed);
+        } else {
+            eprintln!("[hydra] geçersiz proxy adresi yok sayıldı: {url}");
+        }
+    }
+    builder.build().expect("reqwest client olusturulamadi")
+}
+
+/// Proxy adresi geçerli mi? (ayar kaydında kullanıcıya geri bildirim için)
+pub fn proxy_problem(proxy: &str) -> Option<String> {
+    let trimmed = proxy.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    let ok_scheme = ["http://", "https://", "socks5://", "socks5h://"]
+        .iter()
+        .any(|scheme| lower.starts_with(scheme));
+    if !ok_scheme {
+        return Some(
+            "Proxy adresi http://, https://, socks5:// veya socks5h:// ile başlamalı".into(),
+        );
+    }
+    if reqwest::Proxy::all(trimmed).is_err() {
+        return Some("Proxy adresi çözümlenemedi (host:port biçimini kontrol et)".into());
+    }
+    None
 }
 
 fn parse_content_range(value: &str) -> Option<u64> {
@@ -1054,6 +1094,42 @@ mod tests {
             .map(|m| m.len())
             .unwrap_or(0);
         assert!(written < data.len() as u64, "yazilan: {written}");
+    }
+
+    #[test]
+    fn proxy_adresi_dogrulanir() {
+        // Gecerli bicimler.
+        for iyi in [
+            "http://127.0.0.1:8080",
+            "https://proxy.example:3128",
+            "socks5://127.0.0.1:1080",
+            "socks5h://proxy.local:1080",
+            "http://kullanici:sifre@proxy:8080",
+        ] {
+            assert!(proxy_problem(iyi).is_none(), "kabul edilmeli: {iyi}");
+        }
+        // Bos: sorun yok (proxy kullanilmaz).
+        assert!(proxy_problem("").is_none());
+        assert!(proxy_problem("   ").is_none());
+
+        // Gecersiz semalar reddedilir.
+        for kotu in [
+            "127.0.0.1:8080",
+            "ftp://x:1",
+            "socks4://x:1",
+            "javascript:alert(1)",
+        ] {
+            assert!(proxy_problem(kotu).is_some(), "reddedilmeli: {kotu}");
+        }
+    }
+
+    #[test]
+    fn proxy_istemcisi_kurulabilir() {
+        // Gecerli proxy ile istemci olusur (gercek baglanti yok).
+        let _ = build_client_with_proxy("http://127.0.0.1:9");
+        // Gecersiz proxy: panik yok, proxysiz istemci.
+        let _ = build_client_with_proxy("saçma değer");
+        let _ = build_client_with_proxy("");
     }
 
     #[test]

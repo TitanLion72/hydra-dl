@@ -66,7 +66,7 @@ pub async fn list_torrent_files(
     }
     state
         .torrent
-        .list(state.http(), &source, &settings.download_dir)
+        .list(&state.http(), &source, &settings.download_dir)
         .await
 }
 
@@ -90,7 +90,7 @@ pub async fn probe_url(
 ) -> Result<ProbeResult, String> {
     let settings = state.settings();
     let ytdlp = ytdlp::resolve(&state.app, &settings.ytdlp_path);
-    crate::extract::probe(state.http(), ytdlp.as_deref(), &url, media).await
+    crate::extract::probe(&state.http(), ytdlp.as_deref(), &url, media).await
 }
 
 #[tauri::command]
@@ -195,7 +195,7 @@ pub async fn install_ytdlp(state: St<'_>) -> Result<YtdlpStatus, String> {
     use tauri::Emitter;
 
     let app = state.app.clone();
-    let client = state.http().clone();
+    let client = state.http();
     let emitted_app = app.clone();
     let result = ytdlp::install(&app, &client, move |progress| {
         let _ = emitted_app.emit("ytdlp:install", progress);

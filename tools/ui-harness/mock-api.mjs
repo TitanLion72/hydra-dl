@@ -27,6 +27,7 @@ const SETTINGS = {
   webToken: "ev2026",
   torrentEnabled: true,
   notifyOnFinish: true,
+  proxyUrl: "",
 };
 
 const APP_INFO = {

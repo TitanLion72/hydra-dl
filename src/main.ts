@@ -942,6 +942,7 @@ const setConnections = $<HTMLInputElement>("#set-connections");
 const setSpeed = $<HTMLInputElement>("#set-speed");
 const setAutoResume = $<HTMLInputElement>("#set-autoresume");
 const setNotify = $<HTMLInputElement>("#set-notify");
+const setProxy = $<HTMLInputElement>("#set-proxy");
 const setCapture = $<HTMLInputElement>("#set-capture");
 const setCapturePort = $<HTMLInputElement>("#set-capture-port");
 const captureUrl = $<HTMLInputElement>("#capture-url");
@@ -969,6 +970,7 @@ function bindSettingsForm(source: Settings, appInfo: AppInfo | null) {
   setSpeed.value = String(source.speedLimitKbps);
   setAutoResume.checked = source.autoResume;
   setNotify.checked = source.notifyOnFinish;
+  setProxy.value = source.proxyUrl ?? "";
   setCapture.checked = source.captureEnabled;
   setCapturePort.value = String(source.capturePort);
   captureUrl.value =
@@ -1039,6 +1041,7 @@ async function saveSettings() {
     speedLimitKbps: clampNumber(setSpeed.value, 0, 10_000_000, 0),
     autoResume: setAutoResume.checked,
     notifyOnFinish: setNotify.checked,
+    proxyUrl: setProxy.value.trim(),
     captureEnabled: setCapture.checked,
     capturePort: clampNumber(setCapturePort.value, 1024, 65535, 6712),
     ytdlpPath: setYtdlp.value.trim(),

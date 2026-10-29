@@ -38,6 +38,8 @@ pub struct Settings {
     pub torrent_enabled: bool,
     /// Indirme bitince/hata olunca isletim sistemi bildirimi goster.
     pub notify_on_finish: bool,
+    /// HTTP/SOCKS5 proxy (`http://host:port`, `socks5://host:port`). Bos = yok.
+    pub proxy_url: String,
 }
 
 impl Default for Settings {
@@ -59,6 +61,7 @@ impl Default for Settings {
             web_token: String::new(),
             torrent_enabled: true,
             notify_on_finish: true,
+            proxy_url: String::new(),
         }
     }
 }
@@ -85,6 +88,13 @@ impl Settings {
         // 10 GB/s ustu anlamsiz; yanlis girisi sinirsiz say.
         if self.speed_limit_kbps > 10_000_000 {
             self.speed_limit_kbps = 0;
+        }
+        // Proxy: yalniz taninan semalar; gecersiz deger temizlenir.
+        self.proxy_url = self.proxy_url.trim().to_string();
+        if !self.proxy_url.is_empty()
+            && crate::engine::http::proxy_problem(&self.proxy_url).is_some()
+        {
+            self.proxy_url.clear();
         }
     }
 
