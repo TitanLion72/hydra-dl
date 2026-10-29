@@ -166,7 +166,12 @@ function renderPreview(probe) {
     const video = document.createElement("video");
     video.controls = true;
     video.preload = "metadata";
-    video.src = safeVideoSource;
+    // Atama noktasinda acik sema kontrolu: CodeQL bunu "sanitizer" olarak tanir
+    // ve ileride baska bir yoldan gelen deger de ayni kontrolden gecer.
+    const parsed = new URL(safeVideoSource, location.href);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      video.src = parsed.href;
+    }
     if (state.referer) video.setAttribute("data-referer", state.referer);
 
     const hint = document.createElement("div");

@@ -80,6 +80,21 @@ Bu kurallar `AGENTS.md`'de bağlayıcıdır; ihlal eden PR birleştirilmez.
 
 Kırmızı kontrol **birleştirmeyi engeller**. "Sonra düzeltirim" yok.
 
+## CodeQL bulguları — kabul edilen riskler
+
+CodeQL `security-and-quality` ile taranıyor. Aşağıdaki bulgular **tasarım gereği** kabul
+edilir; gizlenmez, gerekçesi burada durur. Kural: yeni bir `error` seviye bulgu ya düzeltilir
+ya buraya **gerekçesiyle** yazılır (aksi halde CodeQL yeşil sayılmaz).
+
+| Kural | Yer | Neden kabul |
+|---|---|---|
+| `rust/request-forgery` (SSRF) | `engine/http.rs`, `extract.rs`, `torrent.rs` | Ürünün tanımı **kullanıcının verdiği URL'i indirmek**. SSRF'i engellemek (özel IP/loopback yasağı) LAN'daki NAS'tan indirmeyi de kırardı. Risk, web API'sine erişebilen kişiyle sınırlı: token zorunlu, Origin korumalı. |
+| `rust/path-injection` | `manager.rs` (`download_dir`) | Kullanıcı indirme klasörünü **seçebilmeli** (IDM'de de böyle). Dosya adları `sanitize_filename` + `unique_path` ile üretilir; var olan dosyanın üstüne yazılmaz. |
+| `js/xss`, `js/client-side-unvalidated-url-redirection` | `extension/panel.js` | Sayfadan gelen `probe` verisi şema doğrulamasından geçiyor (`safeMediaUrl` + atama noktasında `new URL` protokol kontrolü, yalnız `http:`/`https:`). |
+
+Düzeltilenler (artık burada değil): `rust/command-line-injection` (`yt-dlp`'ye `--` ayırıcı +
+`safe_format`), `rust/path-injection` yerel `.torrent` okuması (bencode + 32 MB sınırı).
+
 ## Bilinen sınırlar (kabul edilmiş risk)
 
 - Web sunucusu LAN'a açılabilir; **token boşsa ağdaki herkes erişir**. Bu bilinçli bir

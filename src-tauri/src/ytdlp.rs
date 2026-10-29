@@ -331,6 +331,8 @@ pub async fn list_formats(binary: &std::path::Path, url: &str) -> Result<YtdlpIn
         "--no-playlist",
         "--skip-download",
         "--no-check-certificates",
+        // URL pozisyonel: `--` olmadan `-` ile baslayan deger secenek sayilirdi.
+        END_OF_OPTIONS,
         url,
     ])
     .stdin(Stdio::null())
@@ -416,6 +418,33 @@ fn network_args(speed_limit_bps: u64) -> Vec<String> {
     args
 }
 
+/// Seçenek ayrıştırmasını kapatan ayırıcı.
+///
+/// Kullanıcı URL'i yt-dlp'ye **pozisyonel** argüman olarak gider. `--` konmazsa
+/// `-` ile başlayan bir "URL" seçenek sayılır: `--exec=calc.exe` gibi bir değer
+/// yt-dlp'de komut çalıştırır (CodeQL: `rust/command-line-injection`). Bu yüzden
+/// URL'den önce her zaman `--` gönderilir.
+const END_OF_OPTIONS: &str = "--";
+
+/// yt-dlp `-f` değeri yalnız format seçici karakterleri içerebilir.
+///
+/// `-f` değeri kullanıcıdan gelir; `-` ile başlarsa veya alışılmadık karakter
+/// içerirse reddedilir (seçenek kaçırma girişimi).
+pub fn safe_format(value: &str) -> Option<&str> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed.starts_with('-') {
+        return None;
+    }
+    let allowed = trimmed.chars().all(|c| {
+        c.is_ascii_alphanumeric()
+            || matches!(
+                c,
+                '+' | '_' | '.' | '/' | '*' | '<' | '>' | '=' | ':' | ',' | '[' | ']' | '-'
+            )
+    });
+    allowed.then_some(trimmed)
+}
+
 fn build_args(
     url: &str,
     dir: &Path,
@@ -446,6 +475,7 @@ fn build_args(
     if let Some(format) = format.filter(|f| !f.is_empty()) {
         if format.starts_with("http://") || format.starts_with("https://") {
             args.push("--no-check-certificates".into());
+            args.push(END_OF_OPTIONS.into());
             args.push(format.to_string());
             args.push("-P".into());
             args.push(dir.to_string_lossy().to_string());
@@ -453,16 +483,21 @@ fn build_args(
             args.push(SAFE_OUTPUT_TEMPLATE.into());
             return args;
         }
-        args.push("-f".into());
-        args.push(format.to_string());
-        // Ses+video ayriysa tek dosyada birlestir.
-        args.push("--merge-output-format".into());
-        args.push("mp4".into());
+        // Guvenli olmayan format kimligi sessizce yok sayilir (en iyi kalite).
+        if let Some(format) = safe_format(format) {
+            args.push("-f".into());
+            args.push(format.to_string());
+            // Ses+video ayriysa tek dosyada birlestir.
+            args.push("--merge-output-format".into());
+            args.push("mp4".into());
+        }
     }
     args.push("-P".into());
     args.push(dir.to_string_lossy().to_string());
     args.push("-o".into());
     args.push(SAFE_OUTPUT_TEMPLATE.into());
+    // `--` olmadan `-` ile baslayan URL secenek sayilir (arguman enjeksiyonu).
+    args.push(END_OF_OPTIONS.into());
     args.push(url.into());
     args
 }
@@ -781,6 +816,59 @@ mod tests {
         assert!(args.contains(&"C:/out".to_string()));
         assert_eq!(args.last().unwrap(), "https://x/y");
         assert!(args.iter().any(|a| a.contains(PROGRESS_PREFIX)));
+        // URL'den hemen once `--` olmali, yoksa `--exec=...` gibi bir "URL"
+        // yt-dlp tarafindan secenek sayilir (arguman enjeksiyonu).
+        let url_index = args.len() - 1;
+        assert_eq!(args[url_index - 1], END_OF_OPTIONS);
+    }
+
+    #[test]
+    fn secenek_gibi_gorunen_url_enjekte_edilemez() {
+        // Saldirgan "URL" olarak yt-dlp secenegi verirse `--` bunu pozisyonel yapar.
+        let args = build_args(
+            "--exec=calc.exe",
+            Path::new("C:/out"),
+            Path::new("C:/tmp/p.txt"),
+            Path::new("C:/tmp/t.txt"),
+            None,
+        );
+        let pos = args
+            .iter()
+            .position(|a| a == END_OF_OPTIONS)
+            .expect("`--` yok");
+        assert_eq!(
+            args[pos + 1],
+            "--exec=calc.exe",
+            "deger `--` sonrasinda pozisyonel olmali"
+        );
+    }
+
+    #[test]
+    fn guvensiz_format_kimligi_reddedilir() {
+        // Secenek kaçirma denemeleri.
+        for kotu in ["--exec=calc", "-f", "--config-location=x", "", "  "] {
+            assert_eq!(safe_format(kotu), None, "reddedilmeli: {kotu}");
+        }
+        // Gercek format secicileri gecer.
+        for iyi in ["137+140", "bestvideo+bestaudio/best", "hls-720", "22"] {
+            assert_eq!(safe_format(iyi), Some(iyi), "kabul edilmeli: {iyi}");
+        }
+    }
+
+    #[test]
+    fn guvensiz_format_args_a_girmez() {
+        let args = build_args(
+            "https://x/y",
+            Path::new("C:/out"),
+            Path::new("C:/tmp/p.txt"),
+            Path::new("C:/tmp/t.txt"),
+            Some("--exec=calc"),
+        );
+        assert!(
+            !args.iter().any(|a| a == "--exec=calc"),
+            "kotu format args'a girmemeli: {args:?}"
+        );
+        assert!(!args.contains(&"-f".to_string()), "-f hic eklenmemeli");
     }
 
     #[test]

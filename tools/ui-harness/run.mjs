@@ -373,11 +373,12 @@ async function main() {
   return 0;
 }
 
-let code = 1;
+// Cikis kodu: main() 0/1 doner; hata olursa 1.
+let code;
 try {
   code = await main();
 } catch (err) {
   console.error(`FAIL ${err instanceof Error ? err.message : String(err)}`);
   code = 1;
 }
-process.exit(code);
+process.exit(code ?? 1);

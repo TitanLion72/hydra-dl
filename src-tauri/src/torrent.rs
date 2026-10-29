@@ -518,10 +518,14 @@ pub enum TorrentSource {
     Bytes(Vec<u8>),
 }
 
-/// Kullanici kaynagini motora verilecek hale getirir.
+/// Yerel `.torrent` dosyası için üst sınır: gerçek torrent dosyaları birkaç MB'ı
+/// geçmez; 32 MB keyfi dosya okumayı engeller (CodeQL: `rust/path-injection`).
+const MAX_LOCAL_TORRENT: u64 = 32 * 1024 * 1024;
+
+/// Kullanıcı kaynağını motora verilecek hale getirir.
 ///
 /// - `magnet:` ve 40 karakterlik info-hash → dogrudan motor (indirme yok)
-/// - diskte var olan yol → dosya okunur
+/// - diskte var olan yol → dosya okunur (bencode + boyut doğrulanır)
 /// - `http(s)` → `fetch_torrent_source` (cerez/UA/sayfa takibi)
 pub async fn resolve_add_source(
     client: &reqwest::Client,
@@ -531,13 +535,34 @@ pub async fn resolve_add_source(
     if trimmed.starts_with("magnet:") || is_info_hash(trimmed) {
         return Ok(TorrentSource::Url(trimmed.to_string()));
     }
-    if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
-        let bytes = tokio::fs::read(trimmed)
-            .await
-            .map_err(|e| format!("Torrent dosyası okunamadı: {e}"))?;
-        return Ok(TorrentSource::Bytes(bytes));
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        return fetch_torrent_source(client, trimmed).await;
     }
-    fetch_torrent_source(client, trimmed).await
+
+    // Yerel yol: yalnız gerçek bir .torrent dosyası kabul edilir. Bu doğrulama
+    // olmadan API'ye erişen biri rastgele bir dosyayı "torrent" diye okutup
+    // hata mesajlarından varlığını/içeriğini sızdırabilirdi.
+    let meta = tokio::fs::metadata(trimmed)
+        .await
+        .map_err(|_| "Torrent dosyası bulunamadı".to_string())?;
+    if !meta.is_file() {
+        return Err("Torrent kaynağı bir dosya olmalı".into());
+    }
+    if meta.len() > MAX_LOCAL_TORRENT {
+        return Err(format!(
+            "Torrent dosyası çok büyük ({} MB); en fazla {} MB olabilir",
+            meta.len() / (1024 * 1024),
+            MAX_LOCAL_TORRENT / (1024 * 1024)
+        ));
+    }
+    let bytes = tokio::fs::read(trimmed)
+        .await
+        .map_err(|_| "Torrent dosyası okunamadı".to_string())?;
+    if !looks_like_torrent(&bytes) {
+        // İçerik hakkında bilgi sızdırma: "bu bir torrent değil" yeter.
+        return Err("Bu dosya geçerli bir .torrent değil".into());
+    }
+    Ok(TorrentSource::Bytes(bytes))
 }
 
 /// 40 karakterlik hex info-hash (magnet yerine kabul edilir).
@@ -856,6 +881,52 @@ mod tests {
         apply_selection(&mut subset, &[1]).unwrap();
         assert_eq!(selected_total(&subset), Some(4096));
         assert!(!subset[0].included && subset[1].included && !subset[2].included);
+    }
+
+    #[tokio::test]
+    async fn yerel_dosya_torrent_degilse_reddedilir() {
+        let dir = tempfile::tempdir().unwrap();
+        let client = crate::engine::http::build_client();
+
+        // HTML/rastgele dosya: "bu bir torrent degil" (icerik sizdirmaz).
+        let html = dir.path().join("sayfa.html");
+        std::fs::write(&html, b"<!DOCTYPE html><html>gizli</html>").unwrap();
+        let err = resolve_add_source(&client, html.to_str().unwrap())
+            .await
+            .unwrap_err();
+        assert!(err.contains("geçerli bir .torrent değil"), "hata: {err}");
+        assert!(
+            !err.contains("gizli"),
+            "dosya icerigi hata mesajina sizmamali"
+        );
+
+        // Olmayan yol: genel mesaj (yolun varligi hakkinda bilgi vermez).
+        let yok = dir.path().join("olmayan.torrent");
+        let err = resolve_add_source(&client, yok.to_str().unwrap())
+            .await
+            .unwrap_err();
+        assert_eq!(err, "Torrent dosyası bulunamadı");
+
+        // Dizin: dosya olmali.
+        let err = resolve_add_source(&client, dir.path().to_str().unwrap())
+            .await
+            .unwrap_err();
+        assert!(err.contains("bir dosya olmalı"), "hata: {err}");
+    }
+
+    #[tokio::test]
+    async fn yerel_dosya_boyut_siniri() {
+        // 32 MB'tan buyuk dosya reddedilir (okumadan once metadata kontrolu).
+        let dir = tempfile::tempdir().unwrap();
+        let buyuk = dir.path().join("buyuk.torrent");
+        let file = std::fs::File::create(&buyuk).unwrap();
+        file.set_len(MAX_LOCAL_TORRENT + 1024).unwrap();
+        drop(file);
+        let client = crate::engine::http::build_client();
+        let err = resolve_add_source(&client, buyuk.to_str().unwrap())
+            .await
+            .unwrap_err();
+        assert!(err.contains("çok büyük"), "hata: {err}");
     }
 
     #[test]

@@ -120,6 +120,7 @@ for (const file of files) {
   lines.forEach((line, index) => {
     if (!/(\.src|\.href)\s*=\s*[a-zA-Z_$]/.test(line)) return;
     if (/safe[A-Z]/.test(line)) return;
+    if (/parsed\.href/.test(line)) return;
     bad(`${file}:${index + 1}: .src/.href doğrulanmamış değişkenle atanıyor`);
   });
 }
