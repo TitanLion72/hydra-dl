@@ -432,6 +432,31 @@ async function main() {
     await page.waitForFunction(() => Boolean(window.__hydraCalls), null, { timeout: 20_000 });
     ok("varsayilan siralama 'Yeni -> eski' geri secildi");
 
+    // --- 6e. Ayarlar aninda acilir (yavas appInfo arayuzu kilitlemez) -------
+    await page.evaluate(() => {
+      window.__hydraMock.delayMs = { appInfo: 1500 };
+    });
+    const openedAt = Date.now();
+    await page.click("#settings-btn");
+    await page.waitForSelector("#settings-drawer:not([hidden])", { timeout: 5000 });
+    const openMs = Date.now() - openedAt;
+    check(openMs < 500, `ayarlar ${openMs} ms'de acildi (1,5 sn'lik yavas api'ye ragmen)`);
+    check(await page.locator("#save-settings").isDisabled(), "veri gelmeden kaydet dugmesi kilitli");
+    await page.waitForFunction(
+      () => {
+        const input = document.querySelector("#set-dir");
+        return input instanceof HTMLInputElement && input.value.trim().length > 0;
+      },
+      null,
+      { timeout: 10_000 },
+    );
+    check(await page.locator("#save-settings").isEnabled(), "veri gelince kaydet dugmesi acildi");
+    await page.evaluate(() => {
+      window.__hydraMock.delayMs = null;
+    });
+    await page.keyboard.press("Escape");
+    await page.waitForSelector("#settings-drawer", { state: "hidden", timeout: 5000 });
+
     // --- 7. Konsol ---------------------------------------------------------
     if (consoleErrors.length === 0) {
       ok("konsol hatasi yok");

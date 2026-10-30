@@ -5,13 +5,50 @@ use crate::manager::AppState;
 use crate::model::Status;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, SystemTime};
 use tauri::{AppHandle, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 const PROGRESS_PREFIX: &str = "__HYDRA__|";
 const WINDOWS_NO_WINDOW: u32 = 0x0800_0000;
+
+/// `yt-dlp --version` her çağrıda yeni süreç başlatıyor ve Windows'ta ~2 saniye
+/// sürüyor (PyInstaller tek dosya). Bu yüzden sürüm sonucu yol başına saklanır.
+/// TTL kısa tutuldu: yt-dlp kendini güncellerse sürüm en geç 5 dakikada tazelenir.
+const VERSION_TTL: Duration = Duration::from_secs(300);
+
+/// (yol, sürüm, zaman). `None` sürüm = yol var ama `--version` başarısız.
+static VERSION_CACHE: Mutex<Option<(String, Option<String>, SystemTime)>> = Mutex::new(None);
+
+fn cached_version(path: &Path) -> Option<Option<String>> {
+    let guard = VERSION_CACHE.lock().ok()?;
+    let (cached_path, version, at) = guard.as_ref()?;
+    if cached_path != &path.to_string_lossy().to_string() {
+        return None;
+    }
+    if at.elapsed().map(|age| age > VERSION_TTL).unwrap_or(true) {
+        return None;
+    }
+    Some(version.clone())
+}
+
+fn store_version(path: &Path, version: Option<String>) {
+    if let Ok(mut guard) = VERSION_CACHE.lock() {
+        *guard = Some((
+            path.to_string_lossy().to_string(),
+            version,
+            SystemTime::now(),
+        ));
+    }
+}
+
+/// Kurulumdan sonra çağrılır: eski sürüm önbellekte kalmasın.
+pub fn invalidate_version_cache() {
+    if let Ok(mut guard) = VERSION_CACHE.lock() {
+        *guard = None;
+    }
+}
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -204,6 +241,15 @@ pub async fn status(app: &AppHandle, setting: &str) -> YtdlpStatus {
             version: None,
         };
     };
+    let path_text = path.to_string_lossy().to_string();
+    // Önbellek: ayarlar her açıldığında 2 saniyelik süreç başlatmayı önler.
+    if let Some(version) = cached_version(&path) {
+        return YtdlpStatus {
+            available: true,
+            path: Some(path_text),
+            version,
+        };
+    }
     let mut cmd = tokio::process::Command::new(&path);
     cmd.arg("--version");
     cmd.stdin(Stdio::null());
@@ -219,9 +265,10 @@ pub async fn status(app: &AppHandle, setting: &str) -> YtdlpStatus {
         }
         _ => None,
     };
+    store_version(&path, version.clone());
     YtdlpStatus {
         available: true,
-        path: Some(path.to_string_lossy().to_string()),
+        path: Some(path_text),
         version,
     }
 }
@@ -801,6 +848,32 @@ fn newest_file_in(dir: &Path, since: std::time::SystemTime) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn surum_onbellegi_yola_gore_calisir() {
+        let bir = Path::new("C:/ornek/yt-dlp.exe");
+        let iki = Path::new("C:/ornek/baska.exe");
+        invalidate_version_cache();
+        assert!(cached_version(bir).is_none(), "bos önbellek None döner");
+
+        store_version(bir, Some("2026.10.21".into()));
+        assert_eq!(
+            cached_version(bir),
+            Some(Some("2026.10.21".to_string())),
+            "kaydedilen sürüm geri döner"
+        );
+        assert!(
+            cached_version(iki).is_none(),
+            "başka yol için önbellek kullanılmaz"
+        );
+
+        // Başarısız `--version` de önbelleğe girer (tekrar tekrar süreç açılmasın).
+        store_version(bir, None);
+        assert_eq!(cached_version(bir), Some(None));
+
+        invalidate_version_cache();
+        assert!(cached_version(bir).is_none(), "temizleme sonrası boş");
+    }
 
     #[test]
     fn ilerleme_satiri_cozulur() {

@@ -206,6 +206,8 @@ pub async fn install_ytdlp(state: St<'_>) -> Result<YtdlpStatus, String> {
 
     match result {
         Ok(path) => {
+            // Yeni ikili geldi: önbellekteki eski sürüm metni kullanılmasın.
+            ytdlp::invalidate_version_cache();
             let version = ytdlp::status(&app, "").await.version;
             Ok(YtdlpStatus {
                 available: true,

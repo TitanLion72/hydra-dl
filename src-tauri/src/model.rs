@@ -32,6 +32,8 @@ pub enum Kind {
     Http,
     /// yt-dlp uzerinden medya indirmesi.
     Media,
+    /// HLS (`.m3u8`) akisi: segmentler tek tek indirilip birlestirilir.
+    Hls,
     /// BitTorrent (magnet veya .torrent).
     Torrent,
 }
@@ -41,6 +43,12 @@ impl Kind {
     #[allow(dead_code)] // torrent/medya ayrimi UI tarafinda kullaniliyor.
     pub fn is_http(self) -> bool {
         matches!(self, Kind::Http)
+    }
+
+    /// HLS: segmentler ayri isteklerle cekilir (Range bolme yok).
+    #[allow(dead_code)] // arayüz tarafında tür ayrımı için.
+    pub fn is_hls(self) -> bool {
+        matches!(self, Kind::Hls)
     }
 }
 

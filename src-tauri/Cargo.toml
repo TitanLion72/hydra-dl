@@ -1,6 +1,6 @@
 [package]
 name = "hydra-dl"
-version = "0.3.1"
+version = "0.3.3"
 description = "Cok baglantili, devam ettirilebilir indirme yoneticisi"
 authors = ["TitanLion72"]
 license = "AGPL-3.0-or-later"
@@ -37,6 +37,9 @@ qrcode = "0.14"
 base64 = "0.22"
 async-stream = "0.3"
 mime_guess = "2"
+# HLS AES-128 sifre cozumu (DRM degil; standart HLS sifrelemesi).
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

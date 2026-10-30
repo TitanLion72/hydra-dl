@@ -360,6 +360,9 @@ export const api = {
   appInfo: async () => {
     calls.appInfo += 1;
     await wait();
+    // Gecikme taklidi: `window.__hydraMock.delayMs.appInfo` (arayüz bloklamamalı).
+    const extra = window.__hydraMock?.delayMs?.appInfo ?? 0;
+    if (extra > 0) await new Promise((resolve) => setTimeout(resolve, extra));
     return { ...APP_INFO };
   },
   captureStatus: async () => {

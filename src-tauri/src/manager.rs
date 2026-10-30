@@ -280,6 +280,7 @@ fn spawn_worker(state: Arc<AppState>, id: String) {
             Some(Kind::Media) => {
                 crate::ytdlp::run(worker_state.clone(), task_id.clone(), worker_cancel).await
             }
+            Some(Kind::Hls) => run_hls(worker_state.clone(), task_id.clone(), worker_cancel).await,
             // Torrent'ler kendi motorunda calisir; kuyruga girmez.
             Some(Kind::Torrent) | None => {}
         }
@@ -454,6 +455,123 @@ async fn run_http(state: Arc<AppState>, id: String, cancel: Arc<CancelToken>) {
 
 fn new_atomics(segments: &[crate::model::Segment]) -> Vec<AtomicU64> {
     segments.iter().map(|s| AtomicU64::new(s.done)).collect()
+}
+
+/// HLS indirmesini yurutur: segmentleri paralel ceker, birlestirir, atomik tasir.
+async fn run_hls(state: Arc<AppState>, id: String, cancel: Arc<CancelToken>) {
+    let Some(mut local) = state.item(&id) else {
+        return;
+    };
+    if local.status != Status::Downloading {
+        return;
+    }
+    let parts_dir = state.parts_dir(&id);
+    let _ = tokio::fs::create_dir_all(&parts_dir).await;
+
+    state.update_item(&id, |item| {
+        item.status = Status::Downloading;
+        item.retry = None;
+    });
+    state.persist();
+    state.emit_downloads();
+
+    // İlerleme bildirimi: tamamlanan segment sayısı → yüzde, bayt → hız.
+    let progress_state = state.clone();
+    let progress_id = id.clone();
+    let on_progress = move |done: usize, total: usize, bytes: u64| {
+        let ratio = if total == 0 {
+            0.0
+        } else {
+            done as f64 / total as f64
+        };
+        progress_state.update_item(&progress_id, |item| {
+            item.progress = Some(ratio.min(1.0));
+            item.downloaded_bytes = bytes;
+            item.retry = None;
+        });
+        progress_state.emit_downloads();
+    };
+
+    let result = crate::engine::hls::download_playlist(
+        &state.http(),
+        &local.url,
+        http::RequestHeaders::new(local.referer.as_deref(), local.cookie.as_deref()),
+        &parts_dir,
+        &cancel,
+        state.limiter(),
+        on_progress,
+    )
+    .await;
+
+    match result {
+        Ok(total_written) => {
+            let source = parts_dir.join("hls.part");
+            let target = util::unique_path(&local.dir, &local.filename);
+            match tokio::fs::rename(&source, &target).await {
+                Ok(()) => {
+                    http::remove_dir(&parts_dir).await;
+                    let filename = target
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or(&local.filename)
+                        .to_string();
+                    local.filename = filename;
+                    local.status = Status::Completed;
+                    local.downloaded_bytes = total_written;
+                    local.total_bytes = Some(total_written);
+                    local.progress = Some(1.0);
+                    local.speed_bps = 0;
+                    local.error = None;
+                    local.finished_at = Some(now_ts());
+                    local.file_path = Some(target);
+                    state.update_item(&id, |item| *item = local.clone());
+                    state.persist();
+                    state.emit_downloads();
+                    state.notice(format!("Tamamlandı: {}", local.filename), "success");
+                    state.notify("İndirme tamamlandı", &notify_body(&local.filename, None));
+                }
+                Err(err) => {
+                    fail_hls(&state, &id, &format!("dosya taşınamadı: {err}"));
+                }
+            }
+        }
+        Err(crate::engine::hls::HlsError::Cancelled) => {
+            // Duraklatma: segmentler diskte kalır, devam eder.
+            let mut store = state.store.lock().unwrap();
+            if let Some(item) = store.find_mut(&id) {
+                if item.status == Status::Downloading {
+                    item.status = Status::Paused;
+                }
+                item.speed_bps = 0;
+            }
+            let _ = store.save();
+            drop(store);
+            state.emit_downloads();
+        }
+        Err(err) => {
+            if cancel.is_cancelled() {
+                return;
+            }
+            fail_hls(&state, &id, &err.to_string());
+        }
+    }
+}
+
+fn fail_hls(state: &Arc<AppState>, id: &str, message: &str) {
+    state.update_item(id, |item| {
+        item.status = Status::Failed;
+        item.speed_bps = 0;
+        item.error = Some(message.to_string());
+        item.finished_at = Some(now_ts());
+    });
+    if let Some(item) = state.item(id) {
+        state.notify(
+            "İndirme başarısız",
+            &notify_body(&item.filename, item.error.as_deref()),
+        );
+    }
+    state.persist();
+    state.emit_downloads();
 }
 
 async fn finish_completed(
@@ -650,16 +768,49 @@ pub async fn add(
     // Format secildiyse medya yolu zorunlu (yt-dlp format kimligi).
     // Torrent ve bilinen medya siteleri extract::kind_for_source'dan gelir.
     let hinted = crate::extract::kind_for_source(url, options.media);
-    let use_media = hinted == Kind::Media || options.format.is_some();
-    if use_media
-        && crate::ytdlp::resolve(&state.app, &settings.ytdlp_path).is_none()
-        && options.format.is_some()
-    {
+    // Doğrudan HLS playlist'i ve format seçilmemişse yt-dlp'ye gerek yok:
+    // segmentleri kendimiz indirip birleştiririz. Bu kontrol medya tahmininden
+    // **önce** gelir; yoksa `.m3u8` yt-dlp'ye gidip boş dosya hatası verir.
+    let headers = http::RequestHeaders::new(options.referer.as_deref(), options.cookie.as_deref());
+    let use_hls =
+        options.media != Some(true) && options.format.is_none() && crate::extract::is_hls(url);
+    let wants_media = !use_hls && (hinted == Kind::Media || options.format.is_some());
+    let ytdlp_path = crate::ytdlp::resolve(&state.app, &settings.ytdlp_path);
+    if wants_media && ytdlp_path.is_none() && options.format.is_some() {
         return Err("Bu format yt-dlp gerektiriyor. Ayarlardan yt-dlp.exe yolunu gösterin.".into());
     }
-    let use_media = use_media && crate::ytdlp::resolve(&state.app, &settings.ytdlp_path).is_some();
+    let use_media = wants_media && ytdlp_path.is_some();
 
-    let (filename, total_bytes, resumable, mime, kind) = if use_media {
+    let (filename, total_bytes, resumable, mime, kind) = if use_hls {
+        let probe = crate::engine::hls::probe_playlist(&state.http(), url, headers).await?;
+        if probe.live {
+            return Err(
+                "Bu bir canlı akış (#EXT-X-ENDLIST yok). Canlı yayın kaydı henüz desteklenmiyor."
+                    .into(),
+            );
+        }
+        let base = options
+            .filename
+            .clone()
+            .or_else(|| util::filename_from_url(url))
+            .unwrap_or_else(|| "video.m3u8".into());
+        // `.m3u8` → `.ts`/`.mp4`: birleşmiş dosya oynatılabilir olsun.
+        let stem = base
+            .rsplit_once('.')
+            .map(|(stem, _)| stem.to_string())
+            .unwrap_or(base);
+        (
+            format!("{stem}.{}", probe.ext),
+            None,
+            true,
+            Some(if probe.ext == "mp4" {
+                "video/mp4".to_string()
+            } else {
+                "video/mp2t".to_string()
+            }),
+            Kind::Hls,
+        )
+    } else if use_media {
         let guessed = options
             .filename
             .clone()
@@ -702,6 +853,8 @@ pub async fn add(
 
     let connections = if kind == Kind::Http {
         settings.connections
+    } else if kind == Kind::Hls {
+        crate::engine::hls::SEGMENT_CONCURRENCY
     } else {
         1
     };

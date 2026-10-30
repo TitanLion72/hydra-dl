@@ -225,7 +225,13 @@ function updateRow(refs: RowRefs, item: Download) {
   refs.name.title = item.filename;
 
   const mime =
-    item.kind === "torrent" ? "torrent" : item.kind === "media" ? "media" : item.mime ?? "file";
+    item.kind === "torrent"
+      ? "torrent"
+      : item.kind === "media"
+        ? "media"
+        : item.kind === "hls"
+          ? "video"
+          : item.mime ?? "file";
   const iconKey = ICONS[mime] ? mime : mime.split("/")[0];
   refs.icon.innerHTML = `<svg viewBox="0 0 24 24">${ICONS[iconKey] ?? ICONS.file}</svg>`;
   refs.icon.dataset.kind = iconKey;
@@ -268,6 +274,11 @@ function updateRow(refs: RowRefs, item: Download) {
     refs.segInfo.hidden = false;
   } else if (item.kind === "media" && item.status === "completed") {
     refs.segInfo.textContent = "· yt-dlp";
+    refs.segInfo.hidden = false;
+  } else if (item.kind === "hls") {
+    const pct = Math.round(frac * 100);
+    refs.segInfo.textContent =
+      item.status === "downloading" ? `· HLS · %${pct}` : "· HLS (birleştirildi)";
     refs.segInfo.hidden = false;
   } else {
     refs.segInfo.hidden = true;
@@ -1053,6 +1064,7 @@ const ytdlpStatus = $("#ytdlp-status");
 const ytdlpInstallStatus = $("#ytdlp-install-status");
 const installYtdlpBtn = $<HTMLButtonElement>("#install-ytdlp");
 const notifyTestBtn = $<HTMLButtonElement>("#notify-test");
+const saveSettingsBtn = $<HTMLButtonElement>("#save-settings");
 const aboutInfo = $("#about-info");
 const stateInfo = $("#state-info");
 
@@ -1102,17 +1114,30 @@ function formatUptime(seconds: number): string {
 }
 
 async function openSettings() {
+  // Çekmece **hemen** açılır; alanlar veri gelince dolar. Böylece yavaş bir
+  // arka uç çağrısı (ör. yt-dlp sürüm kontrolü) arayüzü kilitlemez.
+  const hadData = Boolean(settings && info);
+  if (hadData) {
+    bindSettingsForm(settings!, info!);
+    updateCapture(info!);
+  }
+  overlay.hidden = false;
+  drawer.hidden = false;
+  requestAnimationFrame(() => drawer.classList.add("open"));
+
+  saveSettingsBtn.disabled = true;
   try {
     const [loaded, loadedInfo] = await Promise.all([api.getSettings(), api.appInfo()]);
     settings = loaded;
     info = loadedInfo;
     bindSettingsForm(loaded, loadedInfo);
     updateCapture(loadedInfo);
-    overlay.hidden = false;
-    drawer.hidden = false;
-    requestAnimationFrame(() => drawer.classList.add("open"));
+    footerInfo.textContent = `Hydra DL v${loadedInfo.version} · ${loadedInfo.downloadDir}`;
   } catch (err) {
     toast(String(err), "error");
+    if (!hadData) closeSettings();
+  } finally {
+    saveSettingsBtn.disabled = false;
   }
 }
 
@@ -1167,7 +1192,7 @@ capturePill.addEventListener("click", () => void openSettings());
 $("#settings-close").addEventListener("click", closeSettings);
 $("#cancel-settings").addEventListener("click", closeSettings);
 overlay.addEventListener("click", closeSettings);
-$("#save-settings").addEventListener("click", () => void saveSettings());
+saveSettingsBtn.addEventListener("click", () => void saveSettings());
 
 $("#gen-token").addEventListener("click", () => {
   const bytes = new Uint8Array(6);

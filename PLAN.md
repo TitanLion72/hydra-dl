@@ -30,7 +30,10 @@ v0.2 = "IDM'den iyi" temeli. Sıra bağımlılığa göre; üstteki bitmeden alt
       `Cookie` başlığı + yt-dlp `--add-header`; CRLF/8 KB doğrulaması
 - [x] `Retry-After` + üstel geri çekilme (segment başına 5 deneme, `Download.retry`)
 - [x] **Proxy** (HTTP/HTTPS/SOCKS5): tek ayar, HTTP + probe + yt-dlp; torrent hariç
-- [ ] HLS/DASH'i yt-dlp olmadan indirme (segment birleştirme)
+- [x] **HLS indirme (yt-dlp olmadan)**: `.m3u8` → segmentler paralel çekilir,
+      AES-128 şifre çözme, master playlist'te en yüksek varyant, fMP4 `EXT-X-MAP`,
+      duraklat/devam; DRM (`SAMPLE-AES` vb.) **reddedilir**
+- [ ] DASH (`.mpd`) indirme (yt-dlp olmadan)
 - [ ] Avcı modunda ağ isteği dinleme (`webRequest`) ile blob/manifest yakalama
 - [x] Bildirimler (tamamlandı/hata) — `notify-rust` + AUMID, kullanıcı teyit etti
 - [x] **Tray simgesi**: menü (Göster/Gizle, Tümünü duraklat/devam, Çıkış), sol tık

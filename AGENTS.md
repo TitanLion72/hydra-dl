@@ -31,6 +31,7 @@ node tools/ui-harness/run.mjs                                        # masaüst�
 | `src-tauri/src/model.rs` | `Download`, `Segment`, `Status`, `Kind`; **segment planlama saf fonksiyonu** |
 | `src-tauri/src/store.rs` | `downloads.json`, `Settings`, kuyruk seçimi |
 | `src-tauri/src/engine/http.rs` | probe, Range indirme, parça birleştirme |
+| `src-tauri/src/engine/hls.rs` | **HLS indirme**: playlist çözümü, paralel segment, AES-128, DRM reddi |
 | `src-tauri/src/extract.rs` | **akıllı kaynak bulucu**: HTML/JSON-LD/meta/video tarama, HLS varyantları, yt-dlp format listesi |
 | `src-tauri/src/ytdlp.rs` | yt-dlp bulma, `-J` format listesi, süreç + ilerleme |
 | `src-tauri/src/torrent.rs` | librqbit motoru: magnet/.torrent, pause/resume, swarm, **dosya listesi/seçimi** |

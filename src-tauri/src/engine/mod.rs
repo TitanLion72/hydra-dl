@@ -1,5 +1,6 @@
 //! Indirme motoru: iptal sinyali, global hiz limiti ve HTTP indirici.
 
+pub mod hls;
 pub mod http;
 
 use std::sync::atomic::{AtomicU64, Ordering};

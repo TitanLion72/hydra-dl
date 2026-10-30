@@ -30,11 +30,13 @@ yerel web arayüzüyle birlikte gelir. Arayüz Türkçe ve koyu temalıdır.
 
 ### Medya ve kaynak bulma
 
-- **yt-dlp entegrasyonu** — YouTube, Instagram, TikTok, X, Vimeo, Twitch, Dailymotion,
-  SoundCloud ve yt-dlp'nin desteklediği diğer siteler; kalite/format seçimi, ilerleme ve
+- **yt-dlp entegrasyonu** — YouTube, Instagram, TikTok, X, Vimeo, Twitch, Dailymotion,  SoundCloud ve yt-dlp'nin desteklediği diğer siteler; kalite/format seçimi, ilerleme ve
   iptal desteklenir.
 - **Akıllı kaynak bulucu** — reklam ve ara sayfaları atlayıp gerçek medya kaynağını
   çıkarır: `og:video`, JSON-LD, `<video>` / `<source>` etiketleri ve HLS/DASH manifestleri.
+- **HLS indirme (yt-dlp olmadan)** — `.m3u8` akışları doğrudan indirilir: segmentler
+  paralel çekilip birleştirilir, master playlist'te en yüksek kalite seçilir,
+  `AES-128` şifrelemesi çözülür ve duraklat/devam çalışır. **DRM reddedilir.**
 
 ### P2P
 
@@ -213,8 +215,10 @@ Yerel HTTP sözleşmesi: [`docs/API.md`](docs/API.md).
 
 ## Bilinen sınırlar
 
-- Kimlik doğrulamalı / çerez gerektiren indirmeler henüz yok; çerez aktarımı yol
-  haritasında (`PLAN.md`).
+- Kimlik doğrulamalı / çerez gerektiren indirmeler eklentiyle aktarılabilir (çerez
+  `Cookie` başlığı olarak gider); HLS'te de kullanılır.
+- HLS'te canlı akış (`#EXT-X-ENDLIST` yok) ve `EXT-X-BYTERANGE` henüz desteklenmez;
+  DASH (`.mpd`) için yt-dlp gerekir.
 - Yakalama sunucusu yalnız `127.0.0.1` dinler ve CORS'a açıktır; yerel makinedeki herhangi
   bir sayfa indirme ekleyebilir. Güvenilmeyen makinelerde ayarlardan kapatın.
 - Hız limiti kaba bir global bütçedir; bağlantı başına adil paylaşım yapmaz.
