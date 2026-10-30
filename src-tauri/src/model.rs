@@ -34,6 +34,8 @@ pub enum Kind {
     Media,
     /// HLS (`.m3u8`) akisi: segmentler tek tek indirilip birlestirilir.
     Hls,
+    /// DASH (`.mpd`) akisi: manifest cozulup segmentler indirilir.
+    Dash,
     /// BitTorrent (magnet veya .torrent).
     Torrent,
 }
@@ -49,6 +51,12 @@ impl Kind {
     #[allow(dead_code)] // arayüz tarafında tür ayrımı için.
     pub fn is_hls(self) -> bool {
         matches!(self, Kind::Hls)
+    }
+
+    /// DASH: manifest + segmentler (Range bolme yok).
+    #[allow(dead_code)] // arayüz tarafında tür ayrımı için.
+    pub fn is_dash(self) -> bool {
+        matches!(self, Kind::Dash)
     }
 }
 

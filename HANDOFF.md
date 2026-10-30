@@ -2,7 +2,7 @@
 
 > Yeni oturum: **önce bu dosyayı oku**, sonra `git status`. Bitirdiğin dilimi en alta 10 satır yaz.
 
-**Son güncelleme:** 2026-10-30 · v0.3.3 · AGPL-3.0-or-later
+**Son güncelleme:** 2026-10-31 · v0.3.4 · AGPL-3.0-or-later
 
 ---
 
@@ -14,15 +14,15 @@ telefon için web arayüzü, tarayıcı eklentisi (panel + avcı modu).
 
 **Repo public:** <https://github.com/TitanLion72/hydra-dl> (AGPL-3.0, ilk commit `9495fd4`).
 
-**Kurulu sürüm:** v0.3.3, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
+**Kurulu sürüm:** v0.3.4, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
 girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
-`src-tauri\target\release\bundle\nsis\Hydra DL_0.3.3_x64-setup.exe`.
+`src-tauri\target\release\bundle\nsis\Hydra DL_0.3.4_x64-setup.exe`.
 
 ## Doğrulanmış (bu oturum, kanıt var)
 
 | Ne | Kanıt |
 |---|---|
-| Rust testleri | `cargo test` → **115 passed** (1 ağ testi `#[ignore]`) |
+| Rust testleri | `cargo test` → **127 passed** (1 ağ testi `#[ignore]`) |
 | Clippy | `cargo clippy --all-targets -- -D warnings` → 0 uyarı |
 | Arayüz derlemesi | `npm run build` → 21.84 kB JS |
 | Segmentli indirme | `node tools/e2e.mjs` → 16 MB, sha256 eşleşti |
@@ -49,6 +49,8 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
 | **Ayarlar hızı (0.3.2)** | yt-dlp `--version` her açılışta 2,2 sn sürüyordu → 5 dk TTL önbellek + çekmece anında açılıyor: `ui-harness` 1,5 sn gecikmeli API'de **58 ms** |
 | **HLS (0.3.3)** | `cargo test` → 13 HLS testi (master/varyant, AES-128 NIST vektörü, DRM reddi, EXT-X-MAP, BYTERANGE reddi) |
 | **HLS canlı (kurulu 0.3.3)** | yerel test sunucusu: şifresiz akış 3×64 KB sha256 ✓, AES-128 çözüldü sha256 ✓, DRM (`SAMPLE-AES`) → 400 "DRM indirmez", duraklat→paused (bayt artmadı)→devam→completed sha256 ✓ |
+| **DASH (0.3.4)** | `cargo test` → 9 MPD testi (SegmentTemplate/Timeline/List, BaseURL zinciri, `$Number%05d$`, DRM reddi) + motor testi |
+| **Depo sağlığı (0.3.4)** | `node tools/hygiene.mjs` → temiz ağaç, .git 2,8 MB, izlenen büyük dosya yok, disk eşiği |
 
 ## Bu oturumda düzeltilen gerçek hatalar
 
@@ -92,7 +94,14 @@ Bu oturumun öne çıkanları:
   Windows'ta tray simgesi gizli simge kutusunda olabilir (Ayarlar → Görev çubuğu).
 - **HLS (`.m3u8`) yt-dlp olmadan**: segmentler paralel indirilir, AES-128 çözülür,
   master playlist'te en yüksek varyant seçilir, duraklat/devam çalışır; DRM reddedilir.
-- Avcı modunda ağ isteği dinleme (`webRequest`) yok; sayfa içi manifest yakalama
+- **DASH (`.mpd`) yt-dlp olmadan**: `SegmentTemplate` (süre/sayı ve `SegmentTimeline`),
+  `SegmentList`, tek dosyalı `SegmentBase`, `BaseURL` zinciri. Ses ayrı akıştaysa
+  **iki dosya** üretilir (`film.mp4` + `film.ses.m4a`); birleştirme ffmpeg gerektirir.
+  DASH'te duraklatma dosyayı **saklamaz** (segmentler sıralı yazıldığı için yarım dosya
+  anlamsız), devam ederken baştan indirir. Canlı akış ve `EXT-X-BYTERANGE` desteklenmez.
+- **Depo sağlığı**: `node tools/hygiene.mjs` — git durumu, izlenen büyük dosya, `.git`
+  boyutu, `target/` şişmesi, geçici klasörler, disk eşiği, güvenlik taraması. `--clean`
+  geçici `hydra-*` klasörlerini siler. CI'da değil; elle/haftalık koşulur.- Avcı modunda ağ isteği dinleme (`webRequest`) yok; sayfa içi manifest yakalama
   (avcı modunda blob/manifest) henüz yok.
 - Yeniden deneme HTTP indirmesinde **ve** `probe` (HEAD/Range keşfi) aşamasında geçerli.
   `.torrent` çözümleme tek deneme yapar (kullanıcı yeniden basar); medya (yt-dlp) kendi
@@ -117,8 +126,9 @@ yeterli değil.
    sürüm değişikliği var. Kullanıcı onayı bekliyor.
 3. **Kalan güvenlik sertleştirmesi:** isteğe bağlı HTTPS (yerel ağda self-signed) —
    token düz metin gitmesin. (Sabit zamanlı token + hız sınırı 0.2.8'de bitti.)
-4. **v0.3 devam:** DASH (`.mpd`) indirme, web arayüzünde torrent ekleme, avcı modunda
-   manifest yakalama. (Çerez 0.2.9, tray 0.3.0, arama/sıralama 0.3.1, HLS 0.3.3'te bitti.)
+4. **v0.3 devam:** web arayüzünde torrent ekleme, avcı modunda manifest yakalama,
+   DASH'te kaldığı yerden devam (segment dosyalarını saklayarak). (Çerez 0.2.9,
+   tray 0.3.0, arama/sıralama 0.3.1, HLS 0.3.3, DASH 0.3.4'te bitti.)
 5. `ringbuf` muafiyeti: `librqbit-utp` 0.4.9+/0.5.2+ çıkınca `src-tauri/.cargo/audit.toml`
    istisnasını kaldır.
 6. Torrent proxy desteği: librqbit sürümü proxy kazanırsa `proxyUrl` oraya da bağlanır.

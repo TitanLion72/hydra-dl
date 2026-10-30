@@ -1,5 +1,7 @@
 //! Indirme motoru: iptal sinyali, global hiz limiti ve HTTP indirici.
 
+pub mod dash;
+pub mod fetch;
 pub mod hls;
 pub mod http;
 

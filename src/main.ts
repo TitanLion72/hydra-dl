@@ -231,7 +231,9 @@ function updateRow(refs: RowRefs, item: Download) {
         ? "media"
         : item.kind === "hls"
           ? "video"
-          : item.mime ?? "file";
+          : item.kind === "dash"
+            ? "video"
+            : item.mime ?? "file";
   const iconKey = ICONS[mime] ? mime : mime.split("/")[0];
   refs.icon.innerHTML = `<svg viewBox="0 0 24 24">${ICONS[iconKey] ?? ICONS.file}</svg>`;
   refs.icon.dataset.kind = iconKey;
@@ -279,6 +281,11 @@ function updateRow(refs: RowRefs, item: Download) {
     const pct = Math.round(frac * 100);
     refs.segInfo.textContent =
       item.status === "downloading" ? `· HLS · %${pct}` : "· HLS (birleştirildi)";
+    refs.segInfo.hidden = false;
+  } else if (item.kind === "dash") {
+    const pct = Math.round(frac * 100);
+    refs.segInfo.textContent =
+      item.status === "downloading" ? `· DASH · %${pct}` : "· DASH";
     refs.segInfo.hidden = false;
   } else {
     refs.segInfo.hidden = true;
@@ -766,10 +773,15 @@ $("#probe-download").addEventListener("click", async () => {
     await api.add({
       url: probeState.url,
       filename: probeFilename.value.trim() || undefined,
-      media: probeState.kind === "media" || probeState.kind === "hls" || probeState.kind === "dash"
-        ? true
-        : undefined,
-      format: format && format !== "direct" ? format : undefined,
+      // HLS/DASH kendi motorumuzla indirilir: en iyi varyantı motor seçer,
+      // bu yüzden `media`/`format` gönderilmez (yt-dlp yoluna sapmasın).
+      media: probeState.kind === "media" ? true : undefined,
+      format:
+        probeState.kind === "hls" || probeState.kind === "dash"
+          ? undefined
+          : format && format !== "direct"
+            ? format
+            : undefined,
       files,
     });
     toast(files ? `${files.length} dosya indirilecek` : "Kuyruğa eklendi", "success");

@@ -9,7 +9,7 @@ export type Status =
   | "failed"
   | "cancelled";
 
-export type Kind = "http" | "media" | "hls" | "torrent";
+export type Kind = "http" | "media" | "hls" | "dash" | "torrent";
 
 export interface Segment {
   index: number;

@@ -1,5 +1,6 @@
 mod capture;
 mod commands;
+mod dash;
 mod engine;
 mod extract;
 mod manager;

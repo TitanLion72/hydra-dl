@@ -11,10 +11,10 @@
 //! Her segment `parts/<id>/seg-00001.part` olarak yazılır. Dosya varsa segment
 //! bitmiş sayılır: duraklatma/devam ve süreç yeniden başlaması bu sayede çalışır.
 
+use super::fetch::fetch_bytes;
 use super::http::RequestHeaders;
 use super::{CancelToken, RateLimiter};
 use futures_util::StreamExt;
-use reqwest::header::{ACCEPT_ENCODING, REFERER};
 use reqwest::Client;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -282,41 +282,6 @@ struct SegmentJob {
     segment: HlsSegment,
     /// Bu segmentte kullanılacak IV (açık IV yoksa sıra numarası).
     iv: [u8; 16],
-}
-
-async fn fetch_bytes(
-    client: &Client,
-    url: &str,
-    headers: RequestHeaders<'_>,
-    limit: Option<u64>,
-) -> Result<Vec<u8>, String> {
-    let mut request = client.get(url).header(ACCEPT_ENCODING, "identity");
-    if let Some(referer) = RequestHeaders::safe_value(headers.referer.unwrap_or("")) {
-        request = request.header(REFERER, referer);
-    }
-    if let Some(cookie) = RequestHeaders::safe_value(headers.cookie.unwrap_or("")) {
-        request = request.header(reqwest::header::COOKIE, cookie);
-    }
-    let response = request
-        .send()
-        .await
-        .map_err(|e| format!("bağlantı hatası: {e}"))?;
-    if !response.status().is_success() {
-        return Err(format!("HTTP {}", response.status()));
-    }
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| format!("gövde okunamadı: {e}"))?;
-    if let Some(limit) = limit {
-        if bytes.len() as u64 > limit {
-            return Err(format!(
-                "segment beklenenden büyük: {} > {limit} bayt",
-                bytes.len()
-            ));
-        }
-    }
-    Ok(bytes.to_vec())
 }
 
 /// Playlist ön kontrolü: indirme eklerken segment sayısını ve türünü öğrenmek için.

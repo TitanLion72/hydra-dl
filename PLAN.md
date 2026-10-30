@@ -33,7 +33,10 @@ v0.2 = "IDM'den iyi" temeli. Sıra bağımlılığa göre; üstteki bitmeden alt
 - [x] **HLS indirme (yt-dlp olmadan)**: `.m3u8` → segmentler paralel çekilir,
       AES-128 şifre çözme, master playlist'te en yüksek varyant, fMP4 `EXT-X-MAP`,
       duraklat/devam; DRM (`SAMPLE-AES` vb.) **reddedilir**
-- [ ] DASH (`.mpd`) indirme (yt-dlp olmadan)
+- [x] **DASH indirme (yt-dlp olmadan)**: `.mpd` → `SegmentTemplate` (süre/sayı ve
+      `SegmentTimeline`), `SegmentList`, tek dosyalı `SegmentBase`, `BaseURL` zinciri,
+      en yüksek varyant; `ContentProtection` (DRM) **reddedilir**. Ses ayrı akıştaysa
+      ikinci dosya üretilir (birleştirme ffmpeg ile).
 - [ ] Avcı modunda ağ isteği dinleme (`webRequest`) ile blob/manifest yakalama
 - [x] Bildirimler (tamamlandı/hata) — `notify-rust` + AUMID, kullanıcı teyit etti
 - [x] **Tray simgesi**: menü (Göster/Gizle, Tümünü duraklat/devam, Çıkış), sol tık

@@ -98,9 +98,12 @@ check("API yoksa HX tanımlanmaz", () => {
 // ---------------------------------------------------------------- manifest
 
 const manifest = await readJson(path.join(ext, "manifest.json"));
-check("kaynak manifest MV3 ve sürüm 0.2.x", () => {
+checkAsync("kaynak manifest MV3 ve sürüm package.json ile aynı", async () => {
   assert.equal(manifest.manifest_version, 3);
-  assert.match(manifest.version, /^0\.2\./);
+  // Sürüm package.json ile birlikte ilerler; sabit bir seriye kilitlemeyelim.
+  const pkg = await readJson(path.join(ext, "..", "package.json"));
+  assert.equal(manifest.version, pkg.version, "manifest sürümü package.json ile aynı");
+  assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
 });
 
 check("kaynak manifest: compat.js content script'lerin ilk elemanı", () => {

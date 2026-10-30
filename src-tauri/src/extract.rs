@@ -151,7 +151,7 @@ fn is_manifest(url: &str) -> bool {
     lower.contains(".m3u8") || lower.contains(".mpd")
 }
 
-/// Doğrudan HLS playlist adresi mi? (`.m3u8`, sorgu dizesiyle birlikte)
+/// Dogrudan HLS playlist adresi mi? (`.m3u8`)
 pub fn is_hls(url: &str) -> bool {
     Url::parse(url)
         .ok()
@@ -164,8 +164,17 @@ pub fn is_hls(url: &str) -> bool {
         .unwrap_or_else(|| url.to_ascii_lowercase().contains(".m3u8"))
 }
 
-fn is_dash(url: &str) -> bool {
-    url.to_ascii_lowercase().contains(".mpd")
+/// Doğrudan DASH manifest adresi mi? (`.mpd`)
+pub fn is_dash(url: &str) -> bool {
+    Url::parse(url)
+        .ok()
+        .and_then(|u| {
+            u.path()
+                .rsplit('/')
+                .next()
+                .map(|name| name.to_ascii_lowercase().ends_with(".mpd"))
+        })
+        .unwrap_or_else(|| url.to_ascii_lowercase().contains(".mpd"))
 }
 
 /// Bir URL'nin medya olup olmadigini uzantidan tahmin et.

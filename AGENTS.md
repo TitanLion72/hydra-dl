@@ -16,6 +16,7 @@ node tools/e2e.mjs --capture-port 6712 --dir "$env:TEMP\hydra-e2e"   # uygulama 
 node tools/web-smoke.mjs --port 6790                                 # web API'si (opsiyonel)
 node tools/web-ui-check.mjs                                          # web (telefon) arayüzü (mock API)
 node tools/security-check.mjs                                        # sır/yol/XSS taraması
+node tools/hygiene.mjs                                               # depo/disk sağlığı (uyarı varsa 1)
 node tools/build-extension.mjs                                       # eklenti paketleri
 node tools/ui-harness/run.mjs                                        # masaüstü UI (mock API)
 ```
@@ -32,6 +33,9 @@ node tools/ui-harness/run.mjs                                        # masaüst�
 | `src-tauri/src/store.rs` | `downloads.json`, `Settings`, kuyruk seçimi |
 | `src-tauri/src/engine/http.rs` | probe, Range indirme, parça birleştirme |
 | `src-tauri/src/engine/hls.rs` | **HLS indirme**: playlist çözümü, paralel segment, AES-128, DRM reddi |
+| `src-tauri/src/engine/dash.rs` | **DASH indirme**: manifest → sıralı birleştirme, ses/video ayrımı |
+| `src-tauri/src/engine/fetch.rs` | HLS/DASH ortak segment indirme (Range + başlıklar) |
+| `src-tauri/src/dash.rs` | **MPD çözümü (saf)**: SegmentTemplate/List/Base, BaseURL zinciri, DRM reddi |
 | `src-tauri/src/extract.rs` | **akıllı kaynak bulucu**: HTML/JSON-LD/meta/video tarama, HLS varyantları, yt-dlp format listesi |
 | `src-tauri/src/ytdlp.rs` | yt-dlp bulma, `-J` format listesi, süreç + ilerleme |
 | `src-tauri/src/torrent.rs` | librqbit motoru: magnet/.torrent, pause/resume, swarm, **dosya listesi/seçimi** |

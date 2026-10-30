@@ -281,6 +281,9 @@ fn spawn_worker(state: Arc<AppState>, id: String) {
                 crate::ytdlp::run(worker_state.clone(), task_id.clone(), worker_cancel).await
             }
             Some(Kind::Hls) => run_hls(worker_state.clone(), task_id.clone(), worker_cancel).await,
+            Some(Kind::Dash) => {
+                run_dash(worker_state.clone(), task_id.clone(), worker_cancel).await
+            }
             // Torrent'ler kendi motorunda calisir; kuyruga girmez.
             Some(Kind::Torrent) | None => {}
         }
@@ -557,6 +560,125 @@ async fn run_hls(state: Arc<AppState>, id: String, cancel: Arc<CancelToken>) {
     }
 }
 
+/// DASH indirmesini yurutur: manifesti cozer, en iyi video (+ varsa ses) akisini indirir.
+async fn run_dash(state: Arc<AppState>, id: String, cancel: Arc<CancelToken>) {
+    let Some(mut local) = state.item(&id) else {
+        return;
+    };
+    if local.status != Status::Downloading {
+        return;
+    }
+    let dir = local.dir.clone();
+    // Aynı ada sahip mevcut dosya ezilmesin: diğer indirme yollarıyla aynı
+    // `unique_path` kuralını uygula, sonra kök adı çıkar.
+    let target = util::unique_path(&dir, &local.filename);
+    let resolved_name = target
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(&local.filename)
+        .to_string();
+    // Dosya adi kokü: `film.mp4` → `film` (`download` uzantiyi kendisi ekler).
+    let stem = resolved_name
+        .rsplit_once('.')
+        .map(|(stem, _)| stem.to_string())
+        .unwrap_or_else(|| resolved_name.clone());
+
+    state.update_item(&id, |item| {
+        item.status = Status::Downloading;
+        item.retry = None;
+    });
+    state.persist();
+    state.emit_downloads();
+
+    let progress_state = state.clone();
+    let progress_id = id.clone();
+    let on_progress = move |done: usize, total: usize, bytes: u64| {
+        let ratio = if total == 0 {
+            0.0
+        } else {
+            (done as f64 / total as f64).min(1.0)
+        };
+        progress_state.update_item(&progress_id, |item| {
+            item.progress = Some(ratio);
+            item.downloaded_bytes = bytes;
+        });
+        progress_state.emit_downloads();
+    };
+
+    let result = crate::engine::dash::download(
+        &state.http(),
+        &local.url,
+        http::RequestHeaders::new(local.referer.as_deref(), local.cookie.as_deref()),
+        &dir,
+        &stem,
+        &cancel,
+        state.limiter(),
+        on_progress,
+    )
+    .await;
+
+    match result {
+        Ok(output) => {
+            let total = output.video_bytes + output.audio_bytes;
+            local.status = Status::Completed;
+            local.downloaded_bytes = total;
+            local.total_bytes = Some(total);
+            local.progress = Some(1.0);
+            local.speed_bps = 0;
+            local.error = None;
+            local.finished_at = Some(now_ts());
+            local.file_path = output.video.clone().or(output.audio.clone());
+            if let Some(video) = &output.video {
+                if let Some(name) = video.file_name().and_then(|n| n.to_str()) {
+                    local.filename = name.to_string();
+                }
+            }
+            // Ses ayri akistaysa kullaniciya acikca soyle: birlestirme disarida.
+            if output.audio.is_some() {
+                let audio_name = output
+                    .audio
+                    .as_ref()
+                    .and_then(|path| path.file_name().and_then(|n| n.to_str()))
+                    .unwrap_or("ses");
+                local.error = None;
+                state.notice(
+                    format!(
+                        "Ses ayrı indirildi ({audio_name}). Tek dosya için ffmpeg ile birleştir: \
+                         ffmpeg -i video.mp4 -i ses.m4a -c copy çıktı.mp4"
+                    ),
+                    "info",
+                );
+            }
+            state.update_item(&id, |item| *item = local.clone());
+            state.persist();
+            state.emit_downloads();
+            state.notice(format!("Tamamlandı: {}", local.filename), "success");
+            state.notify("İndirme tamamlandı", &notify_body(&local.filename, None));
+        }
+        Err(crate::engine::dash::DashError::Cancelled) => {
+            // Duraklatma: indirilen gecici dosya korunmaz (segmentler sirali
+            // yazildigi icin yarim dosya anlamli degil); bastan denenir.
+            let _ = tokio::fs::remove_file(dir.join(format!("{stem}.part"))).await;
+            let mut store = state.store.lock().unwrap();
+            if let Some(item) = store.find_mut(&id) {
+                if item.status == Status::Downloading {
+                    item.status = Status::Paused;
+                }
+                item.speed_bps = 0;
+            }
+            let _ = store.save();
+            drop(store);
+            state.emit_downloads();
+        }
+        Err(err) => {
+            if cancel.is_cancelled() {
+                return;
+            }
+            fail_hls(&state, &id, &err.to_string());
+        }
+    }
+}
+
 fn fail_hls(state: &Arc<AppState>, id: &str, message: &str) {
     state.update_item(id, |item| {
         item.status = Status::Failed;
@@ -774,7 +896,11 @@ pub async fn add(
     let headers = http::RequestHeaders::new(options.referer.as_deref(), options.cookie.as_deref());
     let use_hls =
         options.media != Some(true) && options.format.is_none() && crate::extract::is_hls(url);
-    let wants_media = !use_hls && (hinted == Kind::Media || options.format.is_some());
+    let use_dash = !use_hls
+        && options.media != Some(true)
+        && options.format.is_none()
+        && crate::extract::is_dash(url);
+    let wants_media = !use_hls && !use_dash && (hinted == Kind::Media || options.format.is_some());
     let ytdlp_path = crate::ytdlp::resolve(&state.app, &settings.ytdlp_path);
     if wants_media && ytdlp_path.is_none() && options.format.is_some() {
         return Err("Bu format yt-dlp gerektiriyor. Ayarlardan yt-dlp.exe yolunu gösterin.".into());
@@ -809,6 +935,26 @@ pub async fn add(
                 "video/mp2t".to_string()
             }),
             Kind::Hls,
+        )
+    } else if use_dash {
+        let _probe = crate::engine::dash::probe(&state.http(), url, headers).await?;
+        let base = options
+            .filename
+            .clone()
+            .or_else(|| util::filename_from_url(url))
+            .unwrap_or_else(|| "video.mpd".into());
+        let stem = base
+            .rsplit_once('.')
+            .map(|(stem, _)| stem.to_string())
+            .unwrap_or(base);
+        (
+            // Ses ayrı akıştaysa `download` ikinci bir `.ses.m4a` dosyası üretir;
+            // ana dosya adı videoyu temsil eder.
+            format!("{stem}.mp4"),
+            None,
+            true,
+            Some("video/mp4".to_string()),
+            Kind::Dash,
         )
     } else if use_media {
         let guessed = options
