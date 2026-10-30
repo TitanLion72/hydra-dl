@@ -134,6 +134,30 @@ async function mockApi(
           source: null,
           retry: { attempt: 2, max: 5, waitMs: 2000 },
         },
+        {
+          id: "dl-eski-2",
+          url: "https://cdn.example.com/belgesel-4k.mp4",
+          filename: "belgesel-4k.mp4",
+          dir: "C:\\Users\\test\\Downloads",
+          kind: "http",
+          status: "completed",
+          totalBytes: 734003200,
+          downloadedBytes: 734003200,
+          segments: [],
+          resumable: true,
+          speedBps: 0,
+          progress: 1,
+          error: null,
+          createdAt: Date.now() - 3600000,
+          finishedAt: Date.now() - 3000000,
+          connections: 8,
+          referer: null,
+          mime: "video/mp4",
+          filePath: "C:\\Users\\test\\Downloads\\belgesel-4k.mp4",
+          format: null,
+          swarm: null,
+          source: "extension",
+        },
       ]),
     }),
   );
@@ -405,6 +429,46 @@ try {
     check((cls || "").includes("is-retry"), "telefonda retry vurgusu");
     check(errors.length === 0, `konsol hatası yok (${errors.join(" | ")})`);
     await page.screenshot({ path: path.join(SHOTS, "hydra-webui-retry.png") });
+    await page.close();
+  }
+
+  // 5) Arama: sayaçlar daralır, eşleşmeyen aramada bilgi metni çıkar.
+  {
+    const page = await browser.newPage();
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(String(error)));
+    await mockApi(page, { available: true });
+    await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+    await page.waitForFunction(
+      () => document.querySelectorAll("#list .card").length === 2,
+      null,
+      { timeout: 15000 },
+    );
+
+    const visibleCount = () =>
+      page.evaluate(
+        () => [...document.querySelectorAll("#list .card")].filter((el) => !el.hidden).length,
+      );
+
+    await page.fill("#searchInput", "belgesel");
+    check((await visibleCount()) === 1, "aramada tek kart kaldı");
+    check(
+      (await page.textContent('[data-count="all"]')).trim() === "1",
+      "arama sayaçları daralttı",
+    );
+
+    await page.fill("#searchInput", "zzzz-yok");
+    check((await visibleCount()) === 0, "eşleşmeyen aramada kart kalmadı");
+    check(await page.locator("#filterEmpty").isVisible(), "eşleşmeyen aramada bilgi metni göründü");
+    check(
+      (await page.textContent("#filterEmpty")).includes("zzzz-yok"),
+      "bilgi metni aramayı gösteriyor",
+    );
+
+    await page.fill("#searchInput", "");
+    check((await visibleCount()) === 2, "arama temizlenince iki kart geri geldi");
+    check(errors.length === 0, `konsol hatası yok (${errors.join(" | ")})`);
+    await page.screenshot({ path: path.join(SHOTS, "hydra-webui-arama.png") });
     await page.close();
   }
 } finally {

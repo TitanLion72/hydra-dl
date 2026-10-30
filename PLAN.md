@@ -37,7 +37,10 @@ v0.2 = "IDM'den iyi" temeli. Sıra bağımlılığa göre; üstteki bitmeden alt
       pencereyi açar, pencere kapatınca tepsiye küçülür, tooltip'te aktif indirme + hız
 - [ ] Web arayüzünde torrent ekleme ve tohum oranı
 - [ ] Toplu içe aktarma: bağlantı listesi, panodan otomatik yakalama (opt-in)
-- [ ] İndirme geçmişinde arama, sıralama, toplu seçim, sanal liste (>200 kayıt)
+- [x] **Geçmişte arama + sıralama**: ad/adres araması (Türkçe/büyük-küçük harf
+      duyarsız), sıralama (tarih/ad/boyut/durum, tercih kalıcı), Ctrl+F ve `/`
+      kısayolları, aramada boş durum metni
+- [ ] Geçmişte toplu seçim, sanal liste (>200 kayıt)
 - [ ] yt-dlp otomatik güncelleme (sürüm kontrolü + tek tık)
 
 ## Güvenlik — tamamlanan (2026-10-28)

@@ -2,7 +2,7 @@
 
 > Yeni oturum: **önce bu dosyayı oku**, sonra `git status`. Bitirdiğin dilimi en alta 10 satır yaz.
 
-**Son güncelleme:** 2026-10-29 · v0.3.0 · AGPL-3.0-or-later
+**Son güncelleme:** 2026-10-30 · v0.3.1 · AGPL-3.0-or-later
 
 ---
 
@@ -14,9 +14,9 @@ telefon için web arayüzü, tarayıcı eklentisi (panel + avcı modu).
 
 **Repo public:** <https://github.com/TitanLion72/hydra-dl> (AGPL-3.0, ilk commit `9495fd4`).
 
-**Kurulu sürüm:** v0.3.0, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
+**Kurulu sürüm:** v0.3.1, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
 girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
-`src-tauri\target\release\bundle\nsis\Hydra DL_0.3.0_x64-setup.exe`.
+`src-tauri\target\release\bundle\nsis\Hydra DL_0.3.1_x64-setup.exe`.
 
 ## Doğrulanmış (bu oturum, kanıt var)
 
@@ -44,6 +44,8 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
 | **cargo audit** | `cd src-tauri && cargo audit` → exit 0 (1 gerekçeli istisna: ringbuf/librqbit-utp) |
 | e2e 503 senaryosu | `tools/e2e.mjs` → 16 MB + 503'lü 2 MB kaynak, iki hash de doğru |
 | **Tray (canlı, kurulu 0.3.0)** | `/health` → `"tray":true`; WM_CLOSE → pencere gizlendi, süreç + API yaşamaya devam etti (indirmeler sürer) |
+| **Geçmişte arama/sıralama (0.3.1)** | `tools/ui-harness` → arama 1 kayda indirdi, `ARSİV` → 2 kayıt (Türkçe/büyük harf), Esc temizledi, boyut/ad sıralaması doğru, tercih yeniden yüklemede korundu |
+| **Telefon araması (0.3.1)** | `node tools/web-ui-check.mjs` → arama 1 karta indirdi, sayaç daraldı, eşleşmeyende bilgi metni, temizleyince 2 kart geri geldi |
 
 ## Bu oturumda düzeltilen gerçek hatalar
 
@@ -109,8 +111,8 @@ yeterli değil.
    sürüm değişikliği var. Kullanıcı onayı bekliyor.
 3. **Kalan güvenlik sertleştirmesi:** isteğe bağlı HTTPS (yerel ağda self-signed) —
    token düz metin gitmesin. (Sabit zamanlı token + hız sınırı 0.2.8'de bitti.)
-4. **v0.3 devam:** yt-dlp'siz HLS/DASH, web arayüzünde torrent ekleme, geçmiş
-   arama/sıralama. (Çerez aktarımı 0.2.9'da, tray 0.3.0'da bitti.)
+4. **v0.3 devam:** yt-dlp'siz HLS/DASH, web arayüzünde torrent ekleme. (Çerez 0.2.9,
+   tray 0.3.0, geçmiş arama/sıralama 0.3.1'de bitti.)
 5. `ringbuf` muafiyeti: `librqbit-utp` 0.4.9+/0.5.2+ çıkınca `src-tauri/.cargo/audit.toml`
    istisnasını kaldır.
 6. Torrent proxy desteği: librqbit sürümü proxy kazanırsa `proxyUrl` oraya da bağlanır.

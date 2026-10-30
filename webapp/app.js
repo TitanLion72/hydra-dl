@@ -31,6 +31,7 @@ const els = {
   pasteUrl: $("#pasteUrl"),
 
   filters: $(".filters"),
+  searchInput: $("#searchInput"),
   list: $("#list"),
   skeleton: $("#listSkeleton"),
   empty: $("#emptyState"),
@@ -112,6 +113,7 @@ const state = {
   items: [],
   rows: new Map(),
   filter: "all",
+  query: "",
   view: "downloads",
   health: null,
   rawSettings: null,
@@ -594,9 +596,18 @@ function matchesFilter(download, filter) {
   }
 }
 
+function matchesQuery(download) {
+  const needle = state.query.trim().toLocaleLowerCase("tr");
+  if (needle.length === 0) return true;
+  const haystack = `${download.filename ?? ""} ${download.url ?? ""}`.toLocaleLowerCase("tr");
+  return haystack.includes(needle);
+}
+
 function refreshCounts() {
-  const counts = { all: state.items.length, active: 0, queued: 0, done: 0, problem: 0 };
-  for (const download of state.items) {
+  // Sayımlar aramayı dikkate alır: arama açıkken "Tümü" daralır.
+  const scoped = state.items.filter(matchesQuery);
+  const counts = { all: scoped.length, active: 0, queued: 0, done: 0, problem: 0 };
+  for (const download of scoped) {
     if (matchesFilter(download, "active")) counts.active += 1;
     if (matchesFilter(download, "queued")) counts.queued += 1;
     if (matchesFilter(download, "done")) counts.done += 1;
@@ -613,10 +624,14 @@ function applyFilter() {
   for (const download of state.items) {
     const row = state.rows.get(download.id);
     if (!row) continue;
-    const show = matchesFilter(download, state.filter);
+    const show = matchesQuery(download) && matchesFilter(download, state.filter);
     row.el.hidden = !show;
     if (show) visible += 1;
   }
+  const filtering = state.query.trim().length > 0;
+  els.filterEmpty.textContent = filtering
+    ? `"${state.query.trim()}" için sonuç yok.`
+    : "Bu filtrede indirme yok.";
   els.filterEmpty.hidden = !(state.loaded && state.items.length > 0 && visible === 0);
   return visible;
 }
@@ -1500,6 +1515,13 @@ function bindFilters() {
       peer.classList.toggle("is-active", active);
       peer.setAttribute("aria-selected", active ? "true" : "false");
     }
+    applyFilter();
+  });
+
+  // Arama: yazdıkça süzer; sayaçlar da aramaya göre daralır.
+  els.searchInput.addEventListener("input", () => {
+    state.query = els.searchInput.value;
+    refreshCounts();
     applyFilter();
   });
 }

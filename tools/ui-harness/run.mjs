@@ -348,6 +348,90 @@ async function main() {
     check(JSON.stringify(setCall.files) === JSON.stringify([0, 1, 2]), `setTorrentFiles tum dosyalari gonderdi (${JSON.stringify(setCall.files)})`);
     await page.waitForSelector("#files-sheet", { state: "hidden", timeout: 10_000 });
 
+    // --- 6c. Gecmiste arama -------------------------------------------------
+    await page.fill("#search-input", "ders");
+    await page.waitForFunction(
+      () => document.querySelectorAll("#list .row").length === 1,
+      null,
+      { timeout: 10_000 },
+    );
+    const searchRow = (await page.locator("#list .row .name").first().textContent()).trim();
+    check(searchRow === "ders-12.mp4", `arama tek kaydi buldu (${searchRow})`);
+    check(
+      (await page.locator("#count-all").textContent()).trim() === "1",
+      "arama acikken 'Tumu' sayaci daraldi",
+    );
+
+    // Buyuk/kucuk harf ve Turkce karakter eslesmeli (dosya adinda 'arsiv' var).
+    await page.fill("#search-input", "ARSİV");
+    await page.waitForFunction(
+      () => document.querySelectorAll("#list .row").length === 2,
+      null,
+      { timeout: 10_000 },
+    );
+    ok("arama buyuk harf/Turkce karakter duyarsiz (ARSİV -> 2 kayit)");
+
+    // Eslesmeyen arama bos durum metnini degistirmeli.
+    await page.fill("#search-input", "zzzz-yok");
+    await page.waitForSelector("#empty:not([hidden])", { timeout: 10_000 });
+    const emptyTitle = (await page.locator("#empty h2").textContent()).trim();
+    check(emptyTitle === "Aramanla eşleşen kayıt yok", `eslesmeyen aramada bos durum metni ('${emptyTitle}')`);
+
+    // Escape aramayi temizler, liste geri gelir.
+    await page.locator("#search-input").focus();
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(
+      () => document.querySelectorAll("#list .row").length === 5,
+      null,
+      { timeout: 10_000 },
+    );
+    check((await page.locator("#search-input").inputValue()) === "", "Esc aramayi temizledi");
+    check(
+      (await page.locator("#count-all").textContent()).trim() === "5",
+      "arama temizlenince sayac 5'e dondu",
+    );
+
+    // --- 6d. Siralama -------------------------------------------------------
+    await page.selectOption("#sort-select", "size");
+    await page.waitForFunction(
+      () =>
+        document.querySelector("#list .row .name")?.textContent?.trim() === "koleksiyon",
+      null,
+      { timeout: 10_000 },
+    );
+    const bySize = await page.evaluate(() =>
+      [...document.querySelectorAll("#list .row .name")].map((el) => el.textContent.trim()),
+    );
+    check(
+      JSON.stringify(bySize) ===
+        JSON.stringify([
+          "koleksiyon",
+          "arsiv-2026.tar.zst",
+          "arsiv.iso",
+          "belgesel-4k.mp4",
+          "ders-12.mp4",
+        ]),
+      `boyut siralamasi dogru (${bySize.join(" > ")})`,
+    );
+
+    await page.selectOption("#sort-select", "name");
+    const firstName = await page.evaluate(
+      () => document.querySelector("#list .row .name")?.textContent?.trim() ?? "",
+    );
+    check(firstName.startsWith("arsiv"), `ad siralamasi ilk kaydi '${firstName}'`);
+    await shot("04b-search-sort.png");
+
+    // Siralama tercihi kalici: yeniden yukleyince korunur.
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => Boolean(window.__hydraCalls), null, { timeout: 20_000 });
+    check(
+      (await page.locator("#sort-select").inputValue()) === "name",
+      "siralama tercihi yeniden yuklemede korundu",
+    );
+    await page.selectOption("#sort-select", "new");
+    await page.waitForFunction(() => Boolean(window.__hydraCalls), null, { timeout: 20_000 });
+    ok("varsayilan siralama 'Yeni -> eski' geri secildi");
+
     // --- 7. Konsol ---------------------------------------------------------
     if (consoleErrors.length === 0) {
       ok("konsol hatasi yok");

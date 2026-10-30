@@ -422,7 +422,65 @@ svg {
 .toolbar-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* Arama kutusu: cam görünümlü, ikon solda. */
+.search-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--muted-2);
+  transition: border-color 0.15s ease, background 0.15s ease;
+  min-width: 0;
+}
+
+.search-field:focus-within {
+  border-color: var(--accent, #38bdf8);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.search-field svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  flex: none;
+}
+
+.search-field input {
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--fg, #e2e8f0);
+  font-size: 12.5px;
+  width: 178px;
+  min-width: 0;
+}
+
+.search-field input::placeholder {
+  color: var(--muted-2);
+}
+
+.search-field input::-webkit-search-cancel-button {
+  cursor: pointer;
+  filter: invert(0.7);
+}
+
+#sort-select {
+  padding: 6px 8px;
+  font-size: 12.5px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--muted);
 }
 
 .throughput {
@@ -1083,6 +1141,9 @@ svg {
   }
   .throughput {
     display: none;
+  }
+  .search-field input {
+    width: 110px;
   }
   .brand-text p {
     display: none;

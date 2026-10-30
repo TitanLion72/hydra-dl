@@ -461,6 +461,49 @@ a {
   display: none;
 }
 
+/* Arama kutusu: filtrelerin hemen altında, tam genişlik. */
+.search-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 10px;
+  padding: 0 12px;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-faint);
+}
+
+.search-field:focus-within {
+  border-color: #3b82f6;
+}
+
+.search-field svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.search-field input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 15px;
+  font-family: inherit;
+}
+
+.search-field input::placeholder {
+  color: var(--text-faint);
+}
+
 .chip {
   display: inline-flex;
   align-items: center;

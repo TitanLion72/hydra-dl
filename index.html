@@ -63,6 +63,17 @@
           <button class="chip" data-filter="failed">Sorunlu <b id="count-failed">0</b></button>
         </div>
         <div class="toolbar-right">
+          <label class="search-field" title="Geçmişte ara (Ctrl+F)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input id="search-input" type="search" placeholder="Ada ya da adrese göre ara" spellcheck="false" />
+          </label>
+          <select id="sort-select" title="Sıralama">
+            <option value="new">Yeni → eski</option>
+            <option value="old">Eski → yeni</option>
+            <option value="name">Ad (A → Z)</option>
+            <option value="size">Boyut (büyük → küçük)</option>
+            <option value="status">Durum</option>
+          </select>
           <span class="throughput" id="throughput"></span>
           <button class="ghost mini" id="clear-btn" title="Tamamlanan, iptal edilen ve hatalı kayıtları listeden temizle">Bitmişleri temizle</button>
         </div>

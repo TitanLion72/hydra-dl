@@ -54,6 +54,8 @@ yerel web arayüzüyle birlikte gelir. Arayüz Türkçe ve koyu temalıdır.
 
 - Türkçe, koyu tema, durum filtreleri, canlı hız / ilerleme / ETA, klasörde göster ve
   dosyayı aç.
+- **Geçmişte arama ve sıralama** — dosya adı ya da adrese göre anında süzme
+  (`Ctrl+F` veya `/`), tarih / ad / boyut / duruma göre sıralama (tercih hatırlanır).
 
 ## IDM'den farkı
 
@@ -164,7 +166,8 @@ yerel ağda sunabilir. Sunucu varsayılan olarak **kapalıdır** ve `6790` portu
    başlığıyla açılmalıdır. Token boşsa aynı ağdaki herkes erişebilir.
 
 Sunucu yalnız yerel ağ arayüzüne (`0.0.0.0:6790`) bağlanır, internete açılmaz. Ağın
-güvenilir olduğundan emin değilseniz sunucuyu kapalı tutun.
+güvenilir olduğundan emin değilseniz sunucuyu kapalı tutun. Telefon arayüzünde de
+**arama** var: ad ya da adrese göre süzme, sayaçlar aramaya göre daralır.
 
 ## yt-dlp
 

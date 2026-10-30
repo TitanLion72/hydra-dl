@@ -18,6 +18,10 @@ import {
 } from "./api";
 
 type Filter = "all" | "active" | "queued" | "done" | "failed";
+type Sort = "new" | "old" | "name" | "size" | "status";
+
+const SORT_KEY = "hydra.sort";
+const SORT_OPTIONS: Sort[] = ["new", "old", "name", "size", "status"];
 
 const $ = <T extends Element = HTMLElement>(selector: string): T => {
   const found = document.querySelector<T>(selector);
@@ -34,6 +38,8 @@ const addBtn = $<HTMLButtonElement>("#add-btn");
 const addHint = $("#add-hint");
 const throughput = $("#throughput");
 const filters = $("#filters");
+const searchInput = $<HTMLInputElement>("#search-input");
+const sortSelect = $<HTMLSelectElement>("#sort-select");
 const capturePill = $<HTMLButtonElement>("#capture-pill");
 const captureDot = $("#capture-dot");
 const captureLabel = $("#capture-label");
@@ -45,6 +51,8 @@ const toasts = $("#toasts");
 
 let downloads: Download[] = [];
 let filter: Filter = "all";
+let query = "";
+let sort: Sort = readSort();
 let settings: Settings | null = null;
 let info: AppInfo | null = null;
 let adding = false;
@@ -300,7 +308,35 @@ function clampFraction(item: Download): number {
   return Math.min(1, Math.max(0, item.progress ?? 0));
 }
 
+function readSort(): Sort {
+  try {
+    const stored = localStorage.getItem(SORT_KEY);
+    if (stored && SORT_OPTIONS.includes(stored as Sort)) return stored as Sort;
+  } catch {
+    // localStorage kapalı olabilir; varsayılana düş.
+  }
+  return "new";
+}
+
+function writeSort(next: Sort) {
+  try {
+    localStorage.setItem(SORT_KEY, next);
+  } catch {
+    // sessiz: tercih kaydedilemezse sıralama yine çalışır
+  }
+}
+
+const normalizeQuery = (value: string) => value.trim().toLocaleLowerCase("tr");
+
+function queryMatches(item: Download): boolean {
+  const needle = normalizeQuery(query);
+  if (needle.length === 0) return true;
+  const haystack = `${item.filename} ${item.url}`.toLocaleLowerCase("tr");
+  return haystack.includes(needle);
+}
+
 function matches(item: Download): boolean {
+  if (!queryMatches(item)) return false;
   switch (filter) {
     case "all":
       return true;
@@ -317,8 +353,39 @@ function matches(item: Download): boolean {
 
 const rows = new Map<string, RowRefs>();
 
+/** Sıralama tercihi; eşitlikte eski kayıt üstte kalsın diye createdAt ikinci anahtar. */
+function sortDownloads(items: Download[]): Download[] {
+  const copy = [...items];
+  const newestFirst = (a: Download, b: Download) => b.createdAt - a.createdAt;
+  switch (sort) {
+    case "old":
+      copy.sort((a, b) => a.createdAt - b.createdAt);
+      break;
+    case "name":
+      copy.sort(
+        (a, b) => a.filename.localeCompare(b.filename, "tr") || newestFirst(a, b),
+      );
+      break;
+    case "size":
+      copy.sort(
+        (a, b) => (b.totalBytes ?? -1) - (a.totalBytes ?? -1) || newestFirst(a, b),
+      );
+      break;
+    case "status":
+      copy.sort(
+        (a, b) => a.status.localeCompare(b.status, "tr") || newestFirst(a, b),
+      );
+      break;
+    case "new":
+    default:
+      copy.sort(newestFirst);
+      break;
+  }
+  return copy;
+}
+
 function render() {
-  const visible = downloads.filter(matches);
+  const visible = sortDownloads(downloads.filter(matches));
   const visibleIds = new Set(visible.map((d) => d.id));
   for (const [id, refs] of rows) {
     if (!visibleIds.has(id)) {
@@ -340,8 +407,15 @@ function render() {
 
   empty.hidden = visible.length > 0;
   if (visible.length === 0 && downloads.length > 0) {
-    empty.querySelector("h2")!.textContent = "Bu filtrede kayıt yok";
-    empty.querySelector("p")!.textContent = "Başka bir sekmeye geçebilir ya da yeni bir bağlantı ekleyebilirsin.";
+    if (normalizeQuery(query).length > 0) {
+      empty.querySelector("h2")!.textContent = "Aramanla eşleşen kayıt yok";
+      const p = empty.querySelector("p")!;
+      p.textContent = `"${query.trim()}" için sonuç bulunamadı. Aramayı temizleyip başka bir şey deneyebilirsin.`;
+    } else {
+      empty.querySelector("h2")!.textContent = "Bu filtrede kayıt yok";
+      empty.querySelector("p")!.textContent =
+        "Başka bir sekmeye geçebilir ya da yeni bir bağlantı ekleyebilirsin.";
+    }
   } else {
     empty.querySelector("h2")!.textContent = "Henüz indirme yok";
     empty.querySelector("p")!.innerHTML =
@@ -354,8 +428,10 @@ function render() {
 }
 
 function updateCounts() {
-  const count = (fn: (d: Download) => boolean) => downloads.filter(fn).length;
-  $("#count-all").textContent = String(downloads.length);
+  // Sayımlar aramayı dikkate alır: arama açıkken "Tümü 1" gibi daralır.
+  const scoped = downloads.filter(queryMatches);
+  const count = (fn: (d: Download) => boolean) => scoped.filter(fn).length;
+  $("#count-all").textContent = String(scoped.length);
   $("#count-active").textContent = String(count((d) => d.status === "downloading"));
   $("#count-queued").textContent = String(
     count((d) => d.status === "queued" || d.status === "paused"),
@@ -871,6 +947,11 @@ list.addEventListener("click", async (event) => {
   }
 });
 
+function resetRows() {
+  for (const refs of rows.values()) refs.root.remove();
+  rows.clear();
+}
+
 filters.addEventListener("click", (event) => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-filter]");
   if (!button) return;
@@ -878,10 +959,22 @@ filters.addEventListener("click", (event) => {
   for (const chip of filters.querySelectorAll("button")) {
     chip.classList.toggle("active", chip === button);
   }
-  for (const refs of rows.values()) {
-    refs.root.remove();
-    rows.delete(refs.root.dataset.id ?? "");
-  }
+  resetRows();
+  render();
+});
+
+// Arama: yazdıkça süzer (kayıt sayısı yüzlerle sınırlı, debounce gereksiz).
+searchInput.addEventListener("input", () => {
+  query = searchInput.value;
+  resetRows();
+  render();
+});
+
+// Sıralama: tercih kalıcı (localStorage), satırlar yeniden dizilir.
+sortSelect.value = sort;
+sortSelect.addEventListener("change", () => {
+  sort = sortSelect.value as Sort;
+  writeSort(sort);
   render();
 });
 
@@ -1199,12 +1292,36 @@ setWebPort.addEventListener("input", () => {
 // ---------------------------------------------------------------------------
 
 window.addEventListener("keydown", (event) => {
+  const target = event.target as HTMLElement | null;
+  const typing =
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target?.isContentEditable === true;
+
   if (event.key === "Escape") {
     if (!probeSheet.hidden) {
       closeProbe();
       return;
     }
     if (!drawer.hidden) closeSettings();
+    if (document.activeElement === searchInput && searchInput.value.length > 0) {
+      searchInput.value = "";
+      query = "";
+      resetRows();
+      render();
+    }
+  }
+  // Ctrl+F ya da tek başına "/" → geçmişte arama kutusuna git.
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+    event.preventDefault();
+    searchInput.focus();
+    searchInput.select();
+    return;
+  }
+  if (event.key === "/" && !typing) {
+    event.preventDefault();
+    searchInput.focus();
+    return;
   }
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
     event.preventDefault();
