@@ -166,7 +166,7 @@ fn attr_value(event: &quick_xml::events::BytesStart<'_>, name: &[u8]) -> Option<
     for attribute in event.attributes().flatten() {
         if attribute.key.as_ref() == name {
             return attribute
-                .unescape_value()
+                .normalized_value(quick_xml::XmlVersion::Implicit1_0)
                 .ok()
                 .map(|value| value.into_owned());
         }
@@ -434,7 +434,25 @@ pub fn parse_mpd(xml: &str, mpd_url: &str) -> Result<DashManifest, String> {
             }
             Event::Text(ref text) => {
                 if base_url_target.is_some() {
-                    base_url_text.push_str(&text.unescape().unwrap_or_default());
+                    base_url_text.push_str(&text.xml10_content().unwrap_or_default());
+                }
+            }
+            // quick-xml 0.38+ emits entity references (`&amp;`, `&#38;`) as
+            // separate events instead of unescaping them inside Text.
+            Event::GeneralRef(ref reference) => {
+                if base_url_target.is_some() {
+                    if let Ok(Some(ch)) = reference.resolve_char_ref() {
+                        base_url_text.push(ch);
+                    } else if let Ok(name) = reference.decode() {
+                        match name.as_ref() {
+                            "amp" => base_url_text.push('&'),
+                            "lt" => base_url_text.push('<'),
+                            "gt" => base_url_text.push('>'),
+                            "quot" => base_url_text.push('"'),
+                            "apos" => base_url_text.push('\''),
+                            _ => {}
+                        }
+                    }
                 }
             }
             Event::End(ref end) => match end.name().as_ref() {
@@ -910,5 +928,18 @@ mod tests {
         assert_eq!(parse_range("bytes=0-1023"), Some((0, Some(1024))));
         assert_eq!(parse_range("bytes=2048-"), Some((2048, None)));
         assert_eq!(parse_range("0-10"), None, "bytes= öneki gerekli");
+    }
+}
+
+#[cfg(test)]
+mod entity_tests {
+    use super::*;
+
+    #[test]
+    fn baseurl_entity_references_are_resolved() {
+        let xml = r#"<?xml version="1.0"?><MPD mediaPresentationDuration="PT10S"><BaseURL>https://cdn.example.com/a/</BaseURL><Period><AdaptationSet mimeType="video/mp4"><Representation id="v" bandwidth="1000" width="10" height="10"><BaseURL>v.mp4?x=1&amp;y=&#50;</BaseURL></Representation></AdaptationSet></Period></MPD>"#;
+        let manifest = parse_mpd(xml, "https://e.com/m.mpd").unwrap();
+        let dbg = format!("{:?}", manifest);
+        assert!(dbg.contains("https://cdn.example.com/a/v.mp4?x=1&y=2"), "{dbg}");
     }
 }
