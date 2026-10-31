@@ -38,7 +38,7 @@ base64 = "0.22"
 async-stream = "0.3"
 mime_guess = "2"
 # DASH (.mpd) manifest çözümü.
-quick-xml = "0.37"
+quick-xml = "0.41"
 # HLS AES-128 sifre cozumu (DRM degil; standart HLS sifrelemesi).
 aes = "0.8"
 cbc = { version = "0.1", features = ["alloc"] }
