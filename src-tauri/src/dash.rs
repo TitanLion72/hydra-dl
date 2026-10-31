@@ -940,6 +940,9 @@ mod entity_tests {
         let xml = r#"<?xml version="1.0"?><MPD mediaPresentationDuration="PT10S"><BaseURL>https://cdn.example.com/a/</BaseURL><Period><AdaptationSet mimeType="video/mp4"><Representation id="v" bandwidth="1000" width="10" height="10"><BaseURL>v.mp4?x=1&amp;y=&#50;</BaseURL></Representation></AdaptationSet></Period></MPD>"#;
         let manifest = parse_mpd(xml, "https://e.com/m.mpd").unwrap();
         let dbg = format!("{:?}", manifest);
-        assert!(dbg.contains("https://cdn.example.com/a/v.mp4?x=1&y=2"), "{dbg}");
+        assert!(
+            dbg.contains("https://cdn.example.com/a/v.mp4?x=1&y=2"),
+            "{dbg}"
+        );
     }
 }
