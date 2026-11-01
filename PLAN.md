@@ -60,9 +60,10 @@ v0.2 = "IDM'den iyi" temeli. Sıra bağımlılığa göre; üstteki bitmeden alt
 - [x] `SECURITY.md` tehdit modeli + 10 bağlayıcı kural; AGENTS'te "Güvenlik değişmezleri"
 - [x] CI: **CodeQL** (Rust + JS/TS), `cargo audit`, `npm audit`,
       `node tools/security-check.mjs`
-- [ ] CodeQL ilk analiz sonuçlarını gözden geçir
-- [ ] Rate limit (dakikada N istek) — token kaba kuvvetine karşı
-- [ ] Token karşılaştırmasını sabit zamanlı yap (`subtle::ConstantTimeEq`)
+- [x] CodeQL analizi yapıldı; bulgular ya düzeltildi ya `SECURITY.md`'de gerekçeyle
+      kabul edildi (SSRF, download_dir)
+- [x] Rate limit (10 dk / 20 hatalı token → 429) — `AuthLimiter` (0.2.8)
+- [x] Token karşılaştırmasını sabit zamanlı yap (`subtle`/elle) — `token_matches` (0.2.8)
 - [ ] İsteğe bağlı HTTPS (yerel ağda self-signed) — token düz metin gitmesin
 
 ## v1.0 — dağıtım
