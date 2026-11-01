@@ -144,6 +144,7 @@ devam eder, yeni indirmeler proxy'yi kullanır. Torrent (P2P) trafiği proxy'den
 | GET | `/torrents` | `{ "ok": true, "torrents": [{ "id", "filename", "status", "downloadedBytes", "totalBytes", "speedBps", "peers", "error", "filePath" }] }` |
 | POST | `/torrent/files` | `{ "source": "magnet:..." }` → dosya listesi (indirme **başlamaz**) |
 | POST | `/torrent/files` | `{ "id": "uuid", "files": [0, 2] }` → eklenmiş torrent'in seçimini değiştirir |
+| POST | `/torrent/upload` | `{ "filename": "x.torrent", "data": "<base64>" }` → telefondan `.torrent` yükler |
 
 ```json
 { "name": "arsiv", "infoHash": "0123...", "totalBytes": 3145728000,
@@ -162,6 +163,34 @@ Dosya seçimi:
 
 Torrent'ler `/downloads` listesinde `kind: "torrent"` olarak da görünür.
 `filePath` tek dosyalı torrentte dosyanın kendisi, çok dosyalıda **indirme klasörüdür**.
+
+### Telefondan `.torrent` yükleme
+
+Telefon masaüstünün dosya sistemine erişemez, bu yüzden dosya içeriği base64 ile gönderilir:
+
+```json
+POST /torrent/upload
+{ "filename": "arsiv-2026.torrent", "data": "<base64>", "files": [0, 2] }
+```
+
+- `data`: `.torrent` içeriği base64; `data:...;base64,` öneki de kabul edilir.
+- Sunucu dosyayı **kalıcı** klasöre yazar (`<app_data>/torrents/<uuid>.torrent`) — kayıt
+  `downloads.json`'a girdiği için uygulama yeniden açıldığında torrent kaybolmaz.
+- `filename` **yalnız görünen ad** içindir; dosya yolunda istemci adı **kullanılmaz**
+  (UUID üretilir) — yol enjeksiyonu riski yok.
+- Sınırlar: 32 MB, bencode doğrulaması zorunlu; değilse `400`
+  ("Bu dosya geçerli bir .torrent değil"). Boş/bozuk base64 → `400`, aşırı büyük → `413`.
+- Yanıt: `{ "ok": true, "id": "uuid", "filename": "arsiv-2026", "torrent": true }`.
+  Torrent motoru kapalıysa `400`.
+
+Tohum oranı `/downloads` kaydındaki `swarm` alanında taşınır:
+
+```json
+"swarm": { "peers": 12, "seeders": 12, "uploaded": 524288000, "downloaded": 1048576000 }
+```
+
+Oran = `uploaded / downloaded`; `downloaded == 0` iken oran **tanımsızdır** (arayüz `↑`
+göstergesini gizler). Eski kayıtlarda bu iki alan yoktur → `0` varsayılır.
 
 `/add` ve `/torrents` kaynağı şu biçimlerde kabul eder:
 

@@ -332,6 +332,8 @@ async function main() {
     const torrentRow = page.locator('#list .row[data-id="dl-torrent-4"]');
     const torrentMeta = (await torrentRow.locator(".seg-info").textContent()).trim();
     check(torrentMeta.includes("2/3"), `satir '2/3 dosya' gosteriyor ('${torrentMeta}')`);
+    // Tohum orani: uploaded/downloaded = 1.00
+    check(torrentMeta.includes("↑ 1.00"), `tohum orani gosterildi ('${torrentMeta}')`);
 
     await torrentRow.locator('button[data-action="files"]').click();
     await page.waitForSelector("#files-sheet:not([hidden])", { timeout: 10_000 });

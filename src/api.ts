@@ -21,6 +21,23 @@ export interface Segment {
 export interface Swarm {
   peers: number;
   seeders: number;
+  /** Toplam gönderilen bayt (tohumlama). Eski kayıtlarda 0. */
+  uploaded?: number;
+  /** İndirilen bayt; oranın paydası. Eski kayıtlarda 0. */
+  downloaded?: number;
+}
+
+/** Tohum oranı: gönderilen / indirilen. İndirilen 0 ise `null` (bilinmiyor). */
+export function seedRatio(swarm: Swarm | null | undefined): number | null {
+  const downloaded = swarm?.downloaded ?? 0;
+  if (!swarm || downloaded <= 0) return null;
+  return (swarm.uploaded ?? 0) / downloaded;
+}
+
+/** Oranı `↑ 1.25` biçiminde gösterir; bilinmiyorsa boş dize. */
+export function seedRatioLabel(swarm: Swarm | null | undefined): string {
+  const ratio = seedRatio(swarm);
+  return ratio === null ? "" : `↑ ${ratio.toFixed(2)}`;
 }
 
 /** Geçici hatadan sonra yeniden deneme durumu. */

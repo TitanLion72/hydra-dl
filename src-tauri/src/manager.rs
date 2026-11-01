@@ -87,6 +87,10 @@ impl AppState {
         self.store.lock().unwrap().parts_dir(id)
     }
 
+    pub fn torrents_root(&self) -> PathBuf {
+        self.store.lock().unwrap().torrents_root()
+    }
+
     pub fn settings(&self) -> Settings {
         self.store.lock().unwrap().settings.clone()
     }
@@ -1259,8 +1263,37 @@ pub async fn remove(state: &Arc<AppState>, id: &str, delete_file: bool) -> Resul
             .unwrap_or_else(|| item.dir.join(&item.filename));
         let _ = tokio::fs::remove_file(path).await;
     }
+    // Telefondan yüklenen `.torrent` kopyası: kayıt gidince dosya da gitsin.
+    // Aksi hâlde `torrents/` klasörü her silinen torrent için bir dosya biriktirir.
+    remove_uploaded_torrent(state, &item).await;
     state.emit_downloads();
     Ok(())
+}
+
+/// Yüklenen `.torrent` kopyasını siler — **yalnız** `torrents/` klasöründeyse.
+///
+/// Kullanıcının kendi `.torrent` dosyasını (başka bir klasörde) asla silmeyiz;
+/// kaynak yolu uygulamanın kendi klasörüne ait değilse dokunmayız.
+async fn remove_uploaded_torrent(state: &Arc<AppState>, item: &Download) {
+    if item.kind != Kind::Torrent {
+        return;
+    }
+    let Some(source) = item.source.as_deref() else {
+        return;
+    };
+    let path = PathBuf::from(source);
+    let root = state.torrents_root();
+    // Klasör karşılaştırması: `canonicalize` ile sembolik bağlantı/`..` kaçışı elenir.
+    let (Ok(file), Ok(root)) = (
+        tokio::fs::canonicalize(&path).await,
+        tokio::fs::canonicalize(&root).await,
+    ) else {
+        return;
+    };
+    if !file.starts_with(&root) || file.extension().and_then(|e| e.to_str()) != Some("torrent") {
+        return;
+    }
+    let _ = tokio::fs::remove_file(&file).await;
 }
 
 pub fn clear_finished(state: &Arc<AppState>, delete_file: bool) {
@@ -1277,14 +1310,22 @@ pub fn clear_finished(state: &Arc<AppState>, delete_file: bool) {
         let _ = store.save();
         finished
     };
-    if delete_file {
-        for item in removed {
-            let path = item
-                .file_path
-                .clone()
-                .unwrap_or_else(|| item.dir.join(&item.filename));
-            let _ = std::fs::remove_file(path);
-        }
+    // Yüklenen `.torrent` kopyaları: kayıt silinince dosya da gitsin.
+    // `delete_file` false olsa bile bu kopya uygulamanın kendi deposudur.
+    if !removed.is_empty() {
+        let state = state.clone();
+        tauri::async_runtime::spawn(async move {
+            for item in removed {
+                if delete_file {
+                    let path = item
+                        .file_path
+                        .clone()
+                        .unwrap_or_else(|| item.dir.join(&item.filename));
+                    let _ = tokio::fs::remove_file(path).await;
+                }
+                remove_uploaded_torrent(&state, &item).await;
+            }
+        });
     }
     state.emit_downloads();
 }

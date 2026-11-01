@@ -433,6 +433,8 @@ impl TorrentEngine {
                     item.swarm = Some(Swarm {
                         peers,
                         seeders: peers,
+                        uploaded: stats.uploaded_bytes,
+                        downloaded: progress,
                     });
                     if let Some(err) = &error {
                         // Ayni hatayi her ticker turunda bildirmemek icin yalniz geciste.
@@ -520,7 +522,7 @@ pub enum TorrentSource {
 
 /// Yerel `.torrent` dosyası için üst sınır: gerçek torrent dosyaları birkaç MB'ı
 /// geçmez; 32 MB keyfi dosya okumayı engeller (CodeQL: `rust/path-injection`).
-const MAX_LOCAL_TORRENT: u64 = 32 * 1024 * 1024;
+pub const MAX_LOCAL_TORRENT: u64 = 32 * 1024 * 1024;
 
 /// Kullanıcı kaynağını motora verilecek hale getirir.
 ///

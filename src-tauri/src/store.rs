@@ -168,6 +168,14 @@ impl Store {
         self.parts_root().join(id)
     }
 
+    /// Telefondan yüklenen `.torrent` dosyalarının kalıcı klasörü.
+    ///
+    /// Kalıcı olmalı: `source` alanı `downloads.json`'a yazılıyor ve uygulama
+    /// yeniden açıldığında torrent bu yoldan yeniden yükleniyor.
+    pub fn torrents_root(&self) -> PathBuf {
+        self.base_dir.join("torrents")
+    }
+
     pub fn save(&self) -> std::io::Result<()> {
         let payload = Persisted {
             version: STATE_VERSION,

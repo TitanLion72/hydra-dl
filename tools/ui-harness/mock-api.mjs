@@ -157,7 +157,7 @@ const DOWNLOADS = [
     mime: null,
     filePath: null,
     format: null,
-    swarm: { peers: 12, seeders: 12 },
+    swarm: { peers: 12, seeders: 12, uploaded: 943718400, downloaded: 943718400 },
     source: "magnet",
     torrentFiles: [
       { index: 0, path: "bolum-01.mkv", length: 1572864000, included: true },
@@ -387,6 +387,14 @@ export const api = {
     calls.notifyTest = (calls.notifyTest ?? 0) + 1;
   },
 };
+
+/** `src/api.ts` ile aynı yardımcı: tohum oranı etiketi. */
+export function seedRatioLabel(swarm) {
+  const downloaded = swarm?.downloaded ?? 0;
+  if (!swarm || downloaded <= 0) return "";
+  const ratio = (swarm.uploaded ?? 0) / downloaded;
+  return `↑ ${ratio.toFixed(2)}`;
+}
 
 export function onDownloads(handler) {
   listHandler = handler;

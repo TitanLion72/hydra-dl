@@ -16,6 +16,7 @@ const ENDPOINTS = {
   ytdlp: "./ytdlp",
   ytdlpInstall: "./ytdlp/install",
   torrentFiles: "./torrent/files",
+  torrentUpload: "./torrent/upload",
 };
 
 /* ---------------- Kısayollar ---------------- */
@@ -32,6 +33,9 @@ const els = {
 
   filters: $(".filters"),
   searchInput: $("#searchInput"),
+  torrentInput: $("#torrentInput"),
+  torrentUploadText: $("#torrentUploadText"),
+  torrentUploadHint: $("#torrentUploadHint"),
   list: $("#list"),
   skeleton: $("#listSkeleton"),
   empty: $("#emptyState"),
@@ -1505,6 +1509,71 @@ function bindQuickForm() {
   });
 }
 
+/** Dosyayı base64'e çevirir (`FileReader` + `btoa`). */
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Dosya okunamadı"));
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const comma = result.indexOf(",");
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Telefondan seçilen `.torrent` dosyasını sunucuya yükler.
+ *
+ * Neden base64: telefon masaüstünün dosya sistemine erişemez, yolu gösteremez.
+ * Sunucu dosyayı **kalıcı** klasöre yazar (yeniden başlatmada torrent kaybolmasın).
+ */
+async function uploadTorrentFile(file) {
+  if (!file) return;
+  if (file.size > 32 * 1024 * 1024) {
+    showTorrentHint("Dosya çok büyük (en fazla 32 MB).", true);
+    return;
+  }
+  const original = els.torrentUploadText.textContent;
+  els.torrentUploadText.textContent = "Yükleniyor…";
+  showTorrentHint(`${file.name} gönderiliyor…`);
+  try {
+    const data = await fileToBase64(file);
+    const result = await api(ENDPOINTS.torrentUpload, {
+      method: "POST",
+      body: { filename: file.name, data },
+      timeout: 90_000,
+    });
+    const name = (result && result.filename) || file.name.replace(/\.torrent$/i, "");
+    showTorrentHint(`Eklendi: ${name}`, false, true);
+    // Listeyi tazele (SSE gecikirse diye).
+    void loadDownloads();
+  } catch (error) {
+    showTorrentHint(`Yüklenemedi: ${error.message || "bilinmeyen hata"}`, true);
+  } finally {
+    els.torrentUploadText.textContent = original;
+    // Aynı dosyayı tekrar seçebilmek için girdiyi sıfırla.
+    els.torrentInput.value = "";
+  }
+}
+
+/** Yükleme ipucu satırını gösterir/gizler. */
+function showTorrentHint(text, isError = false, isSuccess = false) {
+  if (!els.torrentUploadHint) return;
+  els.torrentUploadHint.textContent = text;
+  els.torrentUploadHint.hidden = !text;
+  els.torrentUploadHint.classList.toggle("is-error", isError);
+  els.torrentUploadHint.classList.toggle("is-success", isSuccess);
+}
+
+function bindTorrentUpload() {
+  if (!els.torrentInput) return;
+  els.torrentInput.addEventListener("change", () => {
+    const file = els.torrentInput.files && els.torrentInput.files[0];
+    if (file) void uploadTorrentFile(file);
+  });
+}
 function bindFilters() {
   els.filters.addEventListener("click", (event) => {
     const chip = event.target.closest(".chip");
@@ -1694,6 +1763,7 @@ function registerServiceWorker() {
 async function boot() {
   state.token = readToken();
   bindQuickForm();
+  bindTorrentUpload();
   bindFilters();
   bindList();
   bindNewForm();

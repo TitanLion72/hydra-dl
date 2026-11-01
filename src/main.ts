@@ -6,6 +6,7 @@ import {
   onDownloads,
   onNotice,
   onYtdlpInstall,
+  seedRatioLabel,
   type AppInfo,
   type Download,
   type InstallProgress,
@@ -262,14 +263,17 @@ function updateRow(refs: RowRefs, item: Download) {
     const files = item.torrentFiles;
     const picked = files.filter((f) => f.included).length;
     const peers = item.swarm?.peers ?? 0;
+    const ratio = seedRatioLabel(item.swarm);
+    const tail = `· ${peers} peer${ratio ? ` · ${ratio}` : ""}`;
     refs.segInfo.textContent =
       picked === files.length
-        ? `· ${files.length} dosya · ${peers} peer`
-        : `· ${picked}/${files.length} dosya · ${peers} peer`;
+        ? `· ${files.length} dosya ${tail}`
+        : `· ${picked}/${files.length} dosya ${tail}`;
     refs.segInfo.hidden = false;
   } else if (item.kind === "torrent" && item.status === "downloading") {
     const peers = item.swarm?.peers ?? 0;
-    refs.segInfo.textContent = `· ${peers} peer`;
+    const ratio = seedRatioLabel(item.swarm);
+    refs.segInfo.textContent = `· ${peers} peer${ratio ? ` · ${ratio}` : ""}`;
     refs.segInfo.hidden = false;
   } else if (item.status === "downloading" && segCount > 1) {
     refs.segInfo.textContent = `· ${segCount} bağlantı`;

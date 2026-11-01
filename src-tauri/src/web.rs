@@ -130,6 +130,19 @@ pub struct TorrentFilesBody {
     pub files: Option<Vec<usize>>,
 }
 
+/// `POST /torrent/upload`: telefondan `.torrent` yükleme gövdesi.
+#[derive(Debug, Deserialize)]
+pub struct TorrentUploadBody {
+    /// Yalnız **görünen ad** için; dosya yolunda kullanılmaz.
+    #[serde(default)]
+    pub filename: Option<String>,
+    /// `.torrent` içeriği, base64 (`data:...;base64,` öneki de kabul edilir).
+    pub data: String,
+    /// İndirilecek dosya indeksleri; boş/`None` → hepsi.
+    #[serde(default)]
+    pub files: Option<Vec<usize>>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct DeleteQuery {
     #[serde(default, rename = "deleteFile")]
@@ -409,6 +422,123 @@ async fn notify_test(State(state): State<Arc<AppState>>) -> Response {
     }
 }
 
+/// `POST /torrent/upload` — telefondan `.torrent` dosyası yükleme.
+///
+/// Gövde: `{ "filename": "ornek.torrent", "data": "<base64>" }`
+///
+/// Neden bu uç var: telefon masaüstündeki dosya yolunu gösteremez, bu yüzden
+/// `.torrent` içeriğini base64 olarak gönderir. Dosya **kalıcı** klasöre yazılır
+/// (`<app_data>/torrents/`), çünkü `source` alanı `downloads.json`'a girer ve
+/// uygulama yeniden açıldığında torrent bu yoldan yeniden yüklenir.
+///
+/// Güvenlik: boyut sınırı + bencode doğrulaması + sanitize edilmiş ad.
+/// Yol adı **istemciden gelmez**; dahili bir UUID kullanılır.
+async fn torrent_upload(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<TorrentUploadBody>,
+) -> Response {
+    if !state.settings().torrent_enabled {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "Torrent motoru kapalı. Ayarlardan açabilirsiniz.",
+        );
+    }
+    let encoded = body.data.trim();
+    if encoded.is_empty() {
+        return error_response(StatusCode::BAD_REQUEST, "data gerekli");
+    }
+    // base64 ~4/3 şişer; sınırı çözmeden önce uygula (bellek şişmesin).
+    let max_encoded = (crate::torrent::MAX_LOCAL_TORRENT as usize) / 3 * 4 + 1024;
+    if encoded.len() > max_encoded {
+        return error_response(StatusCode::PAYLOAD_TOO_LARGE, "Torrent dosyası çok büyük");
+    }
+    let bytes = match crate::web::decode_base64(encoded) {
+        Ok(bytes) => bytes,
+        Err(err) => return error_response(StatusCode::BAD_REQUEST, err),
+    };
+    if bytes.len() as u64 > crate::torrent::MAX_LOCAL_TORRENT {
+        return error_response(StatusCode::PAYLOAD_TOO_LARGE, "Torrent dosyası çok büyük");
+    }
+    if !crate::torrent::looks_like_torrent(&bytes) {
+        // İçerik hakkında ipucu verme: "geçerli bir .torrent değil" yeter.
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "Bu dosya geçerli bir .torrent değil",
+        );
+    }
+    // Kalıcı yol: istemci dosya adı **kullanılmaz** (yol enjeksiyonu riski).
+    let root = state.torrents_root();
+    if let Err(err) = std::fs::create_dir_all(&root) {
+        return error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Klasör oluşturulamadı: {err}"),
+        );
+    }
+    let path = root.join(format!("{}.torrent", uuid::Uuid::new_v4()));
+    if let Err(err) = std::fs::write(&path, &bytes) {
+        return error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Dosya yazılamadı: {err}"),
+        );
+    }
+    // Görünen ad: istemciden gelen ad sanitize edilir (yalnız etiket).
+    let label = body
+        .filename
+        .as_deref()
+        .map(crate::util::sanitize_filename)
+        .filter(|name| !name.trim().is_empty())
+        .map(|name| {
+            name.trim_end_matches(".torrent")
+                .trim_end_matches(".TORRENT")
+                .to_string()
+        });
+    let options = AddOptions {
+        dir: None,
+        filename: label,
+        referer: None,
+        cookie: None,
+        media: None,
+        format: None,
+        files: body.files,
+    };
+    match manager::add(&state, &path.to_string_lossy(), options).await {
+        Ok(item) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "ok": true,
+                "id": item.id,
+                "filename": item.filename,
+                "torrent": true,
+            })),
+        )
+            .into_response(),
+        Err(err) => {
+            // Başarısızsa yüklenen dosya diskte kalmasın.
+            let _ = std::fs::remove_file(&path);
+            error_response(StatusCode::BAD_REQUEST, err)
+        }
+    }
+}
+
+/// base64 çözümü (`data:` öneki de kabul edilir).
+pub fn decode_base64(value: &str) -> Result<Vec<u8>, String> {
+    use base64::Engine;
+    let payload = value
+        .split_once(",")
+        .map(|(prefix, rest)| {
+            if prefix.contains("base64") {
+                rest
+            } else {
+                value
+            }
+        })
+        .unwrap_or(value)
+        .trim();
+    base64::engine::general_purpose::STANDARD
+        .decode(payload)
+        .map_err(|_| "data geçerli base64 değil".to_string())
+}
+
 /// `POST /torrent/files`
 /// - `{ "source": "magnet:..." }` → torrent dosya listesi (indirme baslamaz).
 /// - `{ "id": "...", "files": [0,2] }` → eklenmis torrent'in secimini degistirir.
@@ -606,6 +736,7 @@ pub fn api_router(state: Arc<AppState>) -> Router {
         .route("/settings", get(get_settings).put(put_settings))
         .route("/torrents", post(add_torrent).get(list_torrents))
         .route("/torrent/files", post(torrent_files))
+        .route("/torrent/upload", post(torrent_upload))
         .route("/notify/test", post(notify_test))
         .route("/ytdlp", get(ytdlp_status))
         .route("/ytdlp/install", post(install_ytdlp))
@@ -1110,6 +1241,7 @@ mod tests {
             "/add",
             "/torrents",
             "/torrent/files",
+            "/torrent/upload",
             "/notify/test",
             "/ytdlp",
             "/ytdlp/install",

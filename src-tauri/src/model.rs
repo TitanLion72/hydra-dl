@@ -67,6 +67,33 @@ pub struct Swarm {
     pub peers: usize,
     #[serde(default)]
     pub seeders: usize,
+    /// Toplam gonderilen bayt (tohumlama).
+    #[serde(default)]
+    pub uploaded: u64,
+    /// Bu torrent icin indirilen bayt (oranin paydasi).
+    #[serde(default)]
+    pub downloaded: u64,
+}
+
+/// Tohum orani = gonderilen / indirilen.
+///
+/// Indirilen 0 ise oran tanimsizdir (`None`): "1.00" gibi yaniltici bir deger
+/// gostermek yerine arayuz "—" yazar.
+pub fn seed_ratio(uploaded: u64, downloaded: u64) -> Option<f64> {
+    if downloaded == 0 {
+        return None;
+    }
+    Some(uploaded as f64 / downloaded as f64)
+}
+
+/// Orani arayuzde gosterilecek bicime cevirir ("1.25", "0.00", "—").
+/// Arayüz kendi `seedRatioLabel`'ını kullanır; bu yardımcı Rust tarafı/testler için.
+#[allow(dead_code)]
+pub fn ratio_label(uploaded: u64, downloaded: u64) -> String {
+    match seed_ratio(uploaded, downloaded) {
+        Some(ratio) => format!("{ratio:.2}"),
+        None => "—".to_string(),
+    }
 }
 
 /// Gecici hatadan sonra yapilan tekrar deneme durumu.
@@ -302,6 +329,31 @@ pub fn segments_len(segments: &[Segment]) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tohum_orani_hesaplanir() {
+        assert_eq!(seed_ratio(0, 0), None, "indirilen yoksa oran tanimsiz");
+        assert_eq!(seed_ratio(500, 0), None);
+        assert_eq!(seed_ratio(0, 1000), Some(0.0));
+        assert_eq!(seed_ratio(1000, 1000), Some(1.0));
+        assert_eq!(seed_ratio(2500, 1000), Some(2.5));
+        // Etiket: iki ondalik, tanimsizda tire.
+        assert_eq!(ratio_label(1250, 1000), "1.25");
+        assert_eq!(ratio_label(0, 0), "—");
+        assert_eq!(ratio_label(10, 100), "0.10");
+    }
+
+    #[test]
+    fn eski_suru_kaydinda_swarm_alani_uyumlu() {
+        // v0.3.4 oncesi kayitlarda uploaded/downloaded yok: varsayilan 0 olmali.
+        let json = r#"{"peers":3,"seeders":2}"#;
+        let swarm: Swarm = serde_json::from_str(json).unwrap();
+        assert_eq!(swarm.peers, 3);
+        assert_eq!(swarm.uploaded, 0);
+        assert_eq!(swarm.downloaded, 0);
+        // Ve oran tanimsiz kalir (yaniltici "1.00" yok).
+        assert_eq!(seed_ratio(swarm.uploaded, swarm.downloaded), None);
+    }
 
     #[test]
     fn bilinmeyen_boyut_tek_akis_olur() {

@@ -63,8 +63,8 @@ node tools/ui-harness/run.mjs                                        # masaüst�
 6. **Durum şeması**: `downloads.json` alanları `#[serde(default)]` ile geriye uyumlu;
    alan sil/yeniden adlandır → `STATE_VERSION` + migrasyon.
 7. **API sözleşmesi** (`docs/API.md`): `/probe`, `/add`, `/downloads/{id}/...`,
-   `/events`, `/settings`, `/torrents`, `/torrent/files`. Masaüstü, web ve eklenti aynı
-   sözleşmeyi kullanır.
+   `/events`, `/settings`, `/torrents`, `/torrent/files`, `/torrent/upload`. Masaüstü, web
+   ve eklenti aynı sözleşmeyi kullanır.
 8. **Tauri argümanları** JS'ten camelCase (`deleteFile`, `format`, `media`).
 9. **Torrent kuyruğu ayrı**: torrent'ler `take_queued`'ya girmez, kendi motorunda sürer.
 10. **Web sunucusu LAN'a açılır**: `0.0.0.0` + token opsiyonu. Token boşsa uyarı metni

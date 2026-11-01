@@ -90,7 +90,8 @@ async function mockApi(
   const torrentSources = [];
   const setTorrentFilesCalls = [];
   const addCalls = [];
-  page.__calls = { torrentSources, setTorrentFilesCalls, addCalls };
+  const torrentUploads = [];
+  page.__calls = { torrentSources, setTorrentFilesCalls, addCalls, torrentUploads };
   await page.route("**/events", (route) =>
     route.fulfill({ status: 200, contentType: "text/event-stream", body: ": mock\n\n" }),
   );
@@ -185,7 +186,30 @@ async function mockApi(
       ...JSON_OK,
       body: JSON.stringify({ ok: true, id: "dl-yeni", filename: "arsiv-2026" }),
     });
-  });  await page.route("**/torrent/files", async (route) => {
+  });
+  await page.route("**/torrent/upload", async (route) => {
+    const body = JSON.parse(route.request().postData() || "{}");
+    torrentUploads.push({ filename: body.filename, size: (body.data || "").length });
+    // Gerçek .torrent doğrulaması sunucuda; burada yalnız akışı taklit ediyoruz.
+    if (!body.data || body.data.length < 16) {
+      await route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: false, error: "data gerekli" }),
+      });
+      return;
+    }
+    await route.fulfill({
+      ...JSON_OK,
+      body: JSON.stringify({
+        ok: true,
+        id: "dl-torrent-yeni",
+        filename: "arsiv-2026",
+        torrent: true,
+      }),
+    });
+  });
+  await page.route("**/torrent/files", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 250)); // metadata taklidi
     const body = JSON.parse(route.request().postData() || "{}");
     if (body.files) {
@@ -469,6 +493,54 @@ try {
     check((await visibleCount()) === 2, "arama temizlenince iki kart geri geldi");
     check(errors.length === 0, `konsol hatası yok (${errors.join(" | ")})`);
     await page.screenshot({ path: path.join(SHOTS, "hydra-webui-arama.png") });
+    await page.close();
+  }
+
+  // 6) Telefondan .torrent yükleme
+  {
+    const page = await browser.newPage();
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(String(error)));
+    await mockApi(page, { available: true });
+    await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector("#torrentInput", { state: "attached", timeout: 15000 });
+
+    // Dosya seçicisini programla doldur (gerçek kullanıcı akışıyla aynı olay).
+    await page.setInputFiles("#torrentInput", {
+      name: "arsiv-2026.torrent",
+      mimeType: "application/x-bittorrent",
+      buffer: Buffer.from("d4:infod4:name7:arsiv-2026ee", "utf8"),
+    });
+
+    // Yükleme isteği Node tarafındaki mock kaydına düşer.
+    let upload = null;
+    for (let i = 0; i < 60 && !upload; i += 1) {
+      await page.waitForTimeout(100);
+      upload = page.__calls?.torrentUploads?.[0] ?? null;
+    }
+    check(!!upload, "POST /torrent/upload çağrısı gitti");
+    check(upload?.filename === "arsiv-2026.torrent", `dosya adı gönderildi (${upload?.filename})`);
+    check(
+      typeof upload?.size === "number" && upload.size > 16,
+      `base64 veri gönderildi (${upload?.size} karakter)`,
+    );
+
+    await page.waitForFunction(
+      () => {
+        const hint = document.querySelector("#torrentUploadHint");
+        return hint && !hint.hidden && /Eklendi/.test(hint.textContent || "");
+      },
+      null,
+      { timeout: 10000 },
+    );
+    const hint = (await page.textContent("#torrentUploadHint")).trim();
+    check(hint.includes("arsiv-2026"), `başarı ipucu gösterildi ('${hint}')`);
+    check(
+      (await page.getAttribute("#torrentUploadHint", "class"))?.includes("is-success"),
+      "ipucu başarı stilinde",
+    );
+    check(errors.length === 0, `konsol hatası yok (${errors.join(" | ")})`);
+    await page.screenshot({ path: path.join(SHOTS, "hydra-webui-torrent-yukle.png") });
     await page.close();
   }
 } finally {
