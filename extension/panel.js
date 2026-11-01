@@ -25,6 +25,8 @@ const state = {
   url: params.get("url") || "",
   referer: params.get("referer") || "",
   pageTitle: params.get("title") || "",
+  tabId: Number(params.get("tab")),
+  net: [],
   probe: null,
   fallback: false,
   blob: false,
@@ -48,6 +50,10 @@ const el = {
   candidatesBox: document.getElementById("candidates-box"),
   candidateCount: document.getElementById("candidate-count"),
   candidates: document.getElementById("candidates"),
+  netBox: document.getElementById("net-box"),
+  netList: document.getElementById("net-list"),
+  netCount: document.getElementById("net-count"),
+  netClear: document.getElementById("net-clear"),
   ytdlpNote: document.getElementById("ytdlp-note"),
   fallbackNote: document.getElementById("fallback-note"),
   warnings: document.getElementById("warnings"),
@@ -338,6 +344,89 @@ function renderCandidates(probe) {
   el.candidatesBox.hidden = false;
 }
 
+/**
+ * Ağdan yakalanan medyaları çizer (IDM tarzı).
+ *
+ * Kayıtlar arka planda `webRequest` ile toplanır; burada yalnız gösterilir.
+ * Her satır tıklanınca o adres panele yüklenir (HLS/DASH ise motor kendisi indirir).
+ */
+function renderNet(entries, enabled) {
+  const list = Array.isArray(entries) ? entries : [];
+  state.net = list;
+  if (!list.length) {
+    el.netBox.hidden = !enabled;
+    if (enabled) {
+      el.netList.textContent = "";
+      const empty = document.createElement("div");
+      empty.className = "candidate";
+      const info = document.createElement("div");
+      info.className = "info-text";
+      const label = document.createElement("span");
+      label.className = "label";
+      label.textContent = "Henüz medya yakalanmadı";
+      const hint = document.createElement("span");
+      hint.className = "url";
+      hint.textContent =
+        "Videoyu sayfada oynat, sonra bu paneli yenile. (Ağ yakalama ayarlardan açık olmalı.)";
+      info.append(label, hint);
+      empty.append(info);
+      el.netList.appendChild(empty);
+      el.netCount.textContent = "0";
+    }
+    return;
+  }
+
+  el.netBox.hidden = false;
+  el.netList.textContent = "";
+  const netlog = self.HydraNetlog;
+  list.forEach((entry, index) => {
+    const row = document.createElement("div");
+    row.className = "candidate";
+
+    const info = document.createElement("div");
+    info.className = "info-text";
+    const label = document.createElement("span");
+    label.className = "label";
+    label.textContent = netlog ? netlog.netEntryLabel(entry) : entry.kind || "medya";
+    const url = document.createElement("span");
+    url.className = "url";
+    url.textContent = netlog ? netlog.netEntryName(entry) : entry.url;
+    url.title = entry.url;
+    info.append(label, url);
+
+    const size = document.createElement("span");
+    size.className = "size";
+    size.textContent = netlog ? netlog.netEntrySize(entry) : "";
+
+    const use = document.createElement("button");
+    use.type = "button";
+    use.className = "mini";
+    use.textContent = "Bunu indir";
+    use.dataset.netIndex = String(index);
+
+    row.append(info, size, use);
+    el.netList.appendChild(row);
+  });
+  el.netCount.textContent = String(list.length);
+}
+
+/** Arka plandan bu sekmenin yakalananlarını ister. */
+async function loadNet() {
+  if (!Number.isInteger(state.tabId) || state.tabId < 0) {
+    el.netBox.hidden = true;
+    return;
+  }
+  try {
+    const response = await HX.api.runtime.sendMessage({
+      type: "net-media",
+      tabId: state.tabId,
+    });
+    if (response && response.ok) renderNet(response.entries, response.enabled);
+  } catch (_err) {
+    el.netBox.hidden = true;
+  }
+}
+
 function renderMeta(probe) {
   const titleText =
     (probe && probe.title) || state.pageTitle || (probe && probe.filename) || H.guessFilename(state.url);
@@ -438,8 +527,7 @@ async function load(targetUrl) {
   showLoading(true);
   state.filenameDirty = false;
   state.added = false;
-  el.cancel.textContent = "İptal";
-  setBusy(false);
+  el.cancel.textContent = "İptal";  setBusy(false);
   state.probe = null;
   state.fallback = false;
   state.blob = /^blob:/i.test(targetUrl);
@@ -552,6 +640,25 @@ el.candidates.addEventListener("click", (event) => {
   void load(candidate.url);
 });
 
+// Ağdan yakalananlar: satıra tıklayınca o adres panele yüklenir.
+el.netList.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-net-index]");
+  if (!button) return;
+  const entry = state.net[Number(button.dataset.netIndex)];
+  if (!entry || !entry.url) return;
+  void load(entry.url);
+});
+
+el.netClear.addEventListener("click", async () => {
+  if (!Number.isInteger(state.tabId)) return;
+  try {
+    await HX.api.runtime.sendMessage({ type: "net-clear", tabId: state.tabId });
+  } catch (_err) {
+    // yut
+  }
+  void loadNet();
+});
+
 el.download.addEventListener("click", () => void submit());
 
 el.cancel.addEventListener("click", () => closeTab());
@@ -591,6 +698,10 @@ function init() {
   el.version.textContent = `Hydra DL eklentisi v${HX.api.runtime.getManifest().version}`;
   void loadSettings();
   void load(state.url);
+  // Ağdan yakalananlar: panel açılırken ve birkaç kez sonra tazelenir
+  // (video sayfada oynatılırken yeni manifest gelebilir).
+  void loadNet();
+  setInterval(() => void loadNet(), 3000);
 }
 
 init();

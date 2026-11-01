@@ -48,6 +48,10 @@ yerel web arayüzüyle birlikte gelir. Arayüz Türkçe ve koyu temalıdır.
 - **Chrome / Edge (MV3) eklentisi** — bağlantıya, videoya veya sayfaya sağ tık →
   “Hydra DL ile indir”; araç çubuğunda IDM tarzı indirme paneli.
 - **Avcı modu** — sayfadaki videoyu/dosyayı tıklayarak seçip indirmeye gönderme.
+- **Ağdan medya yakalama (IDM tarzı)** — tarayıcının gerçekten istediği
+  `m3u8` / `mpd` / `mp4` adreslerini görür; medyayı sayfada hiç göstermeyen sitelerde
+  bile **site fark etmeksizin** indirme mümkün olur. Varsayılan kapalı; açıkken yalnız
+  medya istekleri saklanır, sekme kapanınca silinir.
   İstenirse panel tamamen kapatılabilir.
 - **Telefon / tablet arayüzü** — yerel ağda çalışan web arayüzü (`webapp/`), QR kodla
   eşleşme; aynı listeyi, kuyruğu ve ayarları telefondan yönetme.
@@ -151,6 +155,11 @@ Kullanım:
 - Bağlantı / video / görsel üzerine sağ tık → **Hydra DL ile indir**.
 - Sayfa üzerine sağ tık → **Bu sayfayı Hydra DL ile indir**.
 - Araç çubuğu düğmesi: o anki sekmeyi veya elle yapıştırılan bağlantıyı gönderir.
+- **Ağdan medya yakalama** (ayarlardan açılır, varsayılan kapalı): tarayıcının
+  gerçekten istediği `m3u8` / `mpd` / `mp4` / ses adresleri panelde listelenir.
+  Medyayı sayfada hiç göstermeyen sitelerde bile indirme mümkün olur; HLS/DASH
+  parçaları (`ts`, `m4s`) bilinçli olarak listeye alınmaz. Kayıtlar sekmeye özeldir,
+  sekme kapanınca silinir.
 - **Avcı modu**: sayfadaki öğeyi tıklayarak seçin; adres, sayfa `Referer` bilgisiyle
   birlikte uygulamaya iletilir.
 

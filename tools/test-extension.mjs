@@ -95,6 +95,107 @@ check("API yoksa HX tanımlanmaz", () => {
   assert.equal(loadCompat({}), undefined);
 });
 
+// ---------------------------------------------------------------- netlog.js
+//
+// Ağdan medya yakalama sınıflandırıcısı. "Site fark etmeksizin" çalışması bu
+// fonksiyona bağlı: yanlış tararsa ya hiçbir şey yakalanmaz ya da panel çöple dolar.
+
+const netlogSrc = await readFile(path.join(ext, "netlog.js"), "utf8");
+const netlog = (() => {
+  // `URL` tarayıcıda global; vm bağlamına açıkça veriyoruz.
+  const ctx = vm.createContext({ URL });
+  vm.runInContext(netlogSrc, ctx);
+  return ctx.HydraNetlog;
+})();
+
+check("netlog: HLS/DASH manifestleri yakalanır", () => {
+  const hls = netlog.classifyMediaRequest("https://cdn.example.com/v/master.m3u8?tok=1");
+  assert.equal(hls.kind, "hls");
+  const dash = netlog.classifyMediaRequest("https://cdn.example.com/v/manifest.mpd");
+  assert.equal(dash.kind, "dash");
+});
+
+check("netlog: doğrudan video/ses dosyaları yakalanır", () => {
+  assert.equal(netlog.classifyMediaRequest("https://x/a.mp4").kind, "video");
+  assert.equal(netlog.classifyMediaRequest("https://x/a.webm?x=1").kind, "video");
+  assert.equal(netlog.classifyMediaRequest("https://x/a.mp3").kind, "audio");
+  assert.equal(netlog.classifyMediaRequest("https://x/a.flac").kind, "audio");
+});
+
+check("netlog: HLS parçaları listeye girmez (panel çöplüğe dönmesin)", () => {
+  assert.equal(netlog.classifyMediaRequest("https://x/seg-1.ts"), null);
+  assert.equal(netlog.classifyMediaRequest("https://x/chunk.m4s?i=2"), null);
+  assert.equal(netlog.classifyMediaRequest("https://x/sub.vtt"), null);
+});
+
+check("netlog: medya olmayan istekler yok sayılır", () => {
+  assert.equal(netlog.classifyMediaRequest("https://x/style.css"), null);
+  assert.equal(netlog.classifyMediaRequest("https://x/app.js"), null);
+  assert.equal(netlog.classifyMediaRequest("https://x/logo.png"), null);
+  assert.equal(netlog.classifyMediaRequest("https://x/api/data"), null);
+  assert.equal(netlog.classifyMediaRequest("https://x/a.mp4", "", "image"), null);
+  assert.equal(netlog.classifyMediaRequest("data:video/mp4;base64,AAAA"), null);
+  assert.equal(netlog.classifyMediaRequest("blob:https://x/abc"), null);
+  assert.equal(netlog.classifyMediaRequest("", ""), null);
+});
+
+check("netlog: uzantısız ama content-type medya (CDN)", () => {
+  assert.equal(
+    netlog.classifyMediaRequest("https://cdn.example.com/stream/abc", "video/mp4").kind,
+    "video",
+  );
+  assert.equal(
+    netlog.classifyMediaRequest("https://cdn.example.com/live", "application/vnd.apple.mpegurl").kind,
+    "hls",
+  );
+  assert.equal(
+    netlog.classifyMediaRequest("https://cdn.example.com/live", "application/dash+xml").kind,
+    "dash",
+  );
+});
+
+check("netlog: çok uzun adres reddedilir", () => {
+  const long = `https://x/${"a".repeat(5000)}.mp4`;
+  assert.equal(netlog.classifyMediaRequest(long), null);
+});
+
+check("netlog: pushNetEntry tekrarsız + en yeni başta + sınırlı", () => {
+  let list = [];
+  list = netlog.pushNetEntry(list, { url: "https://x/a.mp4" }, 3);
+  list = netlog.pushNetEntry(list, { url: "https://x/b.mp4" }, 3);
+  assert.equal(list[0].url, "https://x/b.mp4", "en yeni başta");
+  list = netlog.pushNetEntry(list, { url: "https://x/a.mp4" }, 3);
+  assert.equal(list.length, 2, "tekrar eklenmez, taşınır");
+  assert.equal(list[0].url, "https://x/a.mp4");
+  list = netlog.pushNetEntry(list, { url: "https://x/c.mp4" }, 3);
+  list = netlog.pushNetEntry(list, { url: "https://x/d.mp4" }, 3);
+  assert.equal(list.length, 3, "sınır uygulanır");
+  assert.deepEqual(
+    list.map((item) => item.url),
+    ["https://x/d.mp4", "https://x/c.mp4", "https://x/a.mp4"],
+  );
+});
+
+check("netlog: pushNetEntry girdi dizisini değiştirmez", () => {
+  const original = [{ url: "https://x/a.mp4" }];
+  const next = netlog.pushNetEntry(original, { url: "https://x/b.mp4" });
+  assert.equal(original.length, 1, "orijinal dizi korunur");
+  assert.equal(next.length, 2);
+});
+
+check("netlog: etiket ve boyut biçimi", () => {
+  assert.equal(netlog.netEntryLabel({ kind: "hls" }), "HLS akışı");
+  assert.equal(netlog.netEntryLabel({ kind: "dash" }), "DASH akışı");
+  assert.equal(netlog.netEntryLabel({ kind: "video" }), "Video");
+  assert.equal(netlog.netEntrySize({ size: 0 }), "");
+  assert.equal(netlog.netEntrySize({ size: 1536 }), "1,5 KB");
+  assert.equal(netlog.netEntrySize({ size: 5242880 }), "5,0 MB");
+  assert.equal(
+    netlog.netEntryName({ url: "https://cdn.example.com/v/belgesel%204k.mp4" }),
+    "belgesel 4k.mp4",
+  );
+});
+
 // ---------------------------------------------------------------- manifest
 
 const manifest = await readJson(path.join(ext, "manifest.json"));

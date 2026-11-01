@@ -19,6 +19,7 @@ node tools/security-check.mjs                                        # sır/yol/
 node tools/hygiene.mjs                                               # depo/disk sağlığı (uyarı varsa 1)
 node tools/build-extension.mjs                                       # eklenti paketleri
 node tools/ui-harness/run.mjs                                        # masaüstü UI (mock API)
+node tools/net-capture-check.mjs                                     # eklenti ağ yakalama (gerçek tarayıcı)
 ```
 
 **Bitiş tanımı:** `cargo test` + `cargo clippy -D warnings` + `cargo fmt --check` +
@@ -45,7 +46,8 @@ node tools/ui-harness/run.mjs                                        # masaüst�
 | `src-tauri/src/commands.rs` | Tauri komut yüzeyi |
 | `src/` | masaüstü arayüzü (vanilla TS); durum yalnız `downloads:changed` |
 | `webapp/` | telefonda çalışan statik arayüz (derleme yok, SSE) |
-| `extension/` | Chrome/Edge MV3: panel, avcı modu, sağ tık. **Tek kaynak**; `node tools/build-extension.mjs` ile `build/extensions/{chrome,firefox}` üretilir |
+| `extension/` | Chrome/Edge MV3: panel, avcı modu, **ağdan medya yakalama** (`webRequest`), sağ tık. **Tek kaynak**; `node tools/build-extension.mjs` ile `build/extensions/{chrome,firefox}` üretilir |
+| `extension/netlog.js` | **medya isteği sınıflandırıcı** (saf): m3u8/mpd/mp4/ses; segment ve medya-dışı istekleri eler |
 | `tools/build-extension.mjs` | Chrome (service_worker) ve Firefox (background.scripts + gecko id) manifestlerini üretir ve dosya bütünlüğünü doğrular |
 | `tools/` | ikon üretici, e2e, web smoke, web UI kontrolü |
 | `docs/API.md` | **API sözleşmesi — kırıcı değişiklik önce buraya** |
@@ -71,6 +73,9 @@ node tools/ui-harness/run.mjs                                        # masaüst�
     arayüzde kalmalı; varsayılan **kapalı**.
 11. **Avcı modu varsayılan kapalı**: içerik betiği yalnız ayar açıkken etkinleşir
     (kullanıcı rahatsız olmasın diye). Bu varsayılanı değiştirme.
+12. **Ağ yakalama varsayılan kapalı** (`netCapture`): açıkken yalnız medya uzantılı/türlü
+    istekler saklanır, sekme başına tutulur, sekme kapanınca silinir. Kayıt asla dışarı
+    gönderilmez.
 
 ## Güvenlik değişmezleri (ihlal = merge yok)
 

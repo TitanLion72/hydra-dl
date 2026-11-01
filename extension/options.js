@@ -7,6 +7,7 @@ const el = {
   port: document.getElementById("port"),
   showPanel: document.getElementById("show-panel"),
   hunter: document.getElementById("hunter"),
+  netCapture: document.getElementById("net-capture"),
   ask: document.getElementById("ask"),
   save: document.getElementById("save"),
   test: document.getElementById("test"),
@@ -23,6 +24,7 @@ async function load() {
   el.port.value = String(settings.port);
   el.showPanel.checked = settings.showPanel;
   el.hunter.checked = settings.hunterEnabled;
+  el.netCapture.checked = settings.netCapture;
   el.ask.checked = settings.askOnDownload;
 }
 
@@ -37,6 +39,7 @@ function readForm() {
     port,
     showPanel: el.showPanel.checked,
     hunterEnabled: el.hunter.checked,
+    netCapture: el.netCapture.checked,
     askOnDownload: el.ask.checked,
   };
 }

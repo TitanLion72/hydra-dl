@@ -2,7 +2,7 @@
 
 > Yeni oturum: **önce bu dosyayı oku**, sonra `git status`. Bitirdiğin dilimi en alta 10 satır yaz.
 
-**Son güncelleme:** 2026-10-31 · v0.3.5 · AGPL-3.0-or-later
+**Son güncelleme:** 2026-11-01 · v0.3.6 · AGPL-3.0-or-later
 
 ---
 
@@ -14,9 +14,9 @@ telefon için web arayüzü, tarayıcı eklentisi (panel + avcı modu).
 
 **Repo public:** <https://github.com/TitanLion72/hydra-dl> (AGPL-3.0, ilk commit `9495fd4`).
 
-**Kurulu sürüm:** v0.3.5, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
+**Kurulu sürüm:** v0.3.6, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
 girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
-`src-tauri\target\release\bundle\nsis\Hydra DL_0.3.5_x64-setup.exe`.
+`src-tauri\target\release\bundle\nsis\Hydra DL_0.3.6_x64-setup.exe`.
 
 ## Doğrulanmış (bu oturum, kanıt var)
 
@@ -54,18 +54,18 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
 | **Torrent yükleme (0.3.5)** | `node tools/web-ui-check.mjs` → dosya seçici `.torrent` gönderdi, base64 doldu, "Eklendi: arsiv-2026" başarı ipucu |
 | **Tohum oranı (0.3.5)** | `cargo test` → oran hesabı + eski kayıt uyumu (eksik alanlar `0`, oran "—") |
 | **Orphan .torrent (0.3.5)** | Canlı testte bulundu: kayıt silinince yüklenen `.torrent` diskte kalıyordu → `remove_uploaded_torrent` (yalnız `torrents/` altındaysa siler) |
+| **Ağ yakalama (0.3.6)** | `tools/net-capture-check.mjs` gerçek Edge+eklenti: m3u8/mpd/mp4 yakalandı, ts/m4s/css/js/png/json yakalanmadı, **yakalanan HLS Hydra'da completed (256 bayt)** — 16/16 |
+| **Eklenti birim (0.3.6)** | `node tools/test-extension.mjs` → **30 geçti** (9 yeni netlog testi) |
 
 ## Bu oturumda düzeltilen gerçek hatalar
 
 Tam liste ve kök nedenler: [`docs/HISTORY.md`](docs/HISTORY.md) (23 madde).
-Bu oturumun öne çıkanları:
 
 - **Güvenlik**: web sunucusu kök dışını servis ediyordu (`/C:/Windows/win.ini` → 200);
-  token koruması prefix listesi yüzünden 2 ucu atlıyordu; localhost CSRF açıktı. Üçü de
-  kapatıldı + `SECURITY.md` / AGENTS kuralları + CodeQL/audit/security-check CI'da.
+  token koruması prefix listesi yüzünden 2 ucu atlıyordu; localhost CSRF açıktı.
 - Geçici sunucu hatalarında yeniden deneme (429/503 + `Retry-After`).
 - Torrent'te dosya seçimi, bağlantı bütçesi 64, DHT'siz devam.
-- Bitiş/hata bildirimi (notify-rust) — toast görünürlüğü kullanıcı teyidi bekliyor.
+- Ağ yakalama: paralel istekler aynı listeyi ezmesin diye sekme başına yazma kuyruğu.
 
 
 ## Bilinen açık uçlar
@@ -80,10 +80,7 @@ Bu oturumun öne çıkanları:
   olduğu için Chrome yerine Edge kullanıldı; elle yükleme yolu değişmedi.
 - `webapp/` içinde yt-dlp kurulum düğmesi **var** (0.2.3). Telefondan gerçek kurulum
   denenmedi: arayüz mock API ile, sunucu tarafı gerçek istekle doğrulandı.
-- Torrent dosya listesi/seçimi **kurulu uygulamada canlı doğrulandı** (0.2.3, yerel 3 dosyalı
-  `.torrent`): `POST /torrent/files` → 3 dosya + doğru boyutlar; `POST /add` `files:[0,2]` →
-  `totalBytes=400000`; `POST /torrent/files {id,files:[1]}` → `totalBytes=200000`,
-  `a.bin:false, b.bin:true, c.bin:false`. Kayıt silindi, artık bırakılmadı.
+- Torrent dosya seçimi canlı doğrulandı (0.2.3): liste + `files:[0,2]` doğru boyutlar.
 - **Windows bildirimi çalışıyor** (kullanıcı teyit etti, 2026-10-29): biten indirmede toast
   görünüyor. AUMID kaydı + `notify-rust` yeterliydi. Telefon tarafı kullanıcı tarafından
   henüz denenmedi (sunucu tarafı test edildi).
@@ -134,10 +131,10 @@ yeterli değil.
    sürüm değişikliği var. Kullanıcı onayı bekliyor.
 3. **Kalan güvenlik sertleştirmesi:** isteğe bağlı HTTPS (yerel ağda self-signed) —
    token düz metin gitmesin. (Sabit zamanlı token + hız sınırı 0.2.8'de bitti.)
-4. **v0.3 devam:** avcı modunda manifest yakalama, DASH'te kaldığı yerden devam
-   (segment dosyalarını saklayarak), telefon arayüzünde torrent dosya seçimi.
-   (Çerez 0.2.9, tray 0.3.0, arama/sıralama 0.3.1, HLS 0.3.3, DASH 0.3.4,
-   web'den torrent + tohum oranı 0.3.5'te bitti.)
+4. **v0.3 devam:** DASH'te kaldığı yerden devam (segment saklayarak), toplu içe aktarma,
+   sanal liste (>200 kayıt), yt-dlp otomatik güncelleme. (Çerez 0.2.9, tray 0.3.0,
+   arama/sıralama 0.3.1, HLS 0.3.3, DASH 0.3.4, web'den torrent 0.3.5,
+   ağdan medya yakalama 0.3.6'da bitti.)
 5. `ringbuf` muafiyeti: `librqbit-utp` 0.4.9+/0.5.2+ çıkınca `src-tauri/.cargo/audit.toml`
    istisnasını kaldır.
 6. Torrent proxy desteği: librqbit sürümü proxy kazanırsa `proxyUrl` oraya da bağlanır.

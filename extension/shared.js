@@ -7,6 +7,9 @@ const DEFAULT_SETTINGS = {
   askOnDownload: true,
   hunterEnabled: false,
   showPanel: true,
+  // Ağdan medya yakalama: varsayılan KAPALI (gizlilik). Açıkken yalnız
+  // medya uzantılı/türlü istekler saklanır.
+  netCapture: false,
 };
 
 const HYDRA_TIMEOUT_MS = 4000;
@@ -64,6 +67,7 @@ async function getSettings() {
       askOnDownload: stored.askOnDownload !== false,
       hunterEnabled: stored.hunterEnabled === true,
       showPanel: stored.showPanel !== false,
+      netCapture: stored.netCapture === true,
     };
   } catch (_err) {
     return { ...DEFAULT_SETTINGS };
@@ -75,7 +79,7 @@ async function saveSettings(patch) {
   if (patch && patch.port !== undefined) {
     clean.port = normalizePort(patch.port);
   }
-  for (const key of ["askOnDownload", "hunterEnabled", "showPanel"]) {
+  for (const key of ["askOnDownload", "hunterEnabled", "showPanel", "netCapture"]) {
     if (patch && patch[key] !== undefined) clean[key] = patch[key] === true;
   }
   try {

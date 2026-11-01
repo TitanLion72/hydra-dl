@@ -37,7 +37,10 @@ v0.2 = "IDM'den iyi" temeli. Sıra bağımlılığa göre; üstteki bitmeden alt
       `SegmentTimeline`), `SegmentList`, tek dosyalı `SegmentBase`, `BaseURL` zinciri,
       en yüksek varyant; `ContentProtection` (DRM) **reddedilir**. Ses ayrı akıştaysa
       ikinci dosya üretilir (birleştirme ffmpeg ile).
-- [ ] Avcı modunda ağ isteği dinleme (`webRequest`) ile blob/manifest yakalama
+- [x] **Avcı modunda ağ isteği dinleme (`webRequest`) ile blob/manifest yakalama**:
+      `m3u8`/`mpd`/`mp4`/ses istekleri sekme başına yakalanır, panelde listelenir,
+      tek tıkla indirilir; HLS/DASH parçaları listeye alınmaz (gürültü olmasın).
+      Varsayılan **kapalı**, yalnız medya istekleri saklanır.
 - [x] Bildirimler (tamamlandı/hata) — `notify-rust` + AUMID, kullanıcı teyit etti
 - [x] **Tray simgesi**: menü (Göster/Gizle, Tümünü duraklat/devam, Çıkış), sol tık
       pencereyi açar, pencere kapatınca tepsiye küçülür, tooltip'te aktif indirme + hız

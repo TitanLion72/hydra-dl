@@ -472,6 +472,31 @@ button.mini {
   font-size: 11.5px;
 }
 
+/* Ağdan yakalananlar: başlıkta küçük açıklama + temizle düğmesi. */
+.net-hint {
+  font-weight: 400;
+  color: var(--dim);
+  font-size: 11px;
+}
+
+.net-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 2px 2px;
+}
+
+.net-actions button {
+  font-size: 11.5px;
+  padding: 5px 10px;
+}
+
+/* Tohum/kaynak satırı: uzun adresler taşmasın. */
+.candidate .url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 footer {
   margin-top: auto;
   padding-top: 16px;
