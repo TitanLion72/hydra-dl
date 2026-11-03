@@ -17,6 +17,7 @@ import {
   type TorrentFile,
   type TorrentListing,
 } from "./api";
+import { MAX_LINKS, parseLinkList } from "./links";
 
 type Filter = "all" | "active" | "queued" | "done" | "failed";
 type Sort = "new" | "old" | "name" | "size" | "status";
@@ -538,8 +539,143 @@ async function addFromForm() {
 }
 
 // ---------------------------------------------------------------------------
+// Toplu içe aktarma
+// ---------------------------------------------------------------------------
+
+const bulkSheet = $<HTMLElement>("#bulk-sheet");
+const bulkText = $<HTMLTextAreaElement>("#bulk-text");
+const bulkSummary = $("#bulk-summary");
+const bulkRejected = $<HTMLElement>("#bulk-rejected");
+const bulkAddBtn = $<HTMLButtonElement>("#bulk-add");
+
+let bulkCloseTimer: ReturnType<typeof setTimeout> | null = null;
+let bulkAdding = false;
+
+function openBulk(initial = "") {
+  if (initial) bulkText.value = initial;
+  renderBulkPreview();
+  bulkSheet.hidden = false;
+  overlay.hidden = false;
+  if (bulkCloseTimer) {
+    clearTimeout(bulkCloseTimer);
+    bulkCloseTimer = null;
+  }
+  requestAnimationFrame(() => bulkSheet.classList.add("open"));
+  bulkText.focus();
+}
+
+function closeBulk() {
+  if (bulkAdding) return;
+  bulkSheet.classList.remove("open");
+  bulkCloseTimer = setTimeout(() => {
+    bulkSheet.hidden = true;
+    bulkCloseTimer = null;
+  }, 200);
+  overlay.hidden = true;
+}
+
+/** Yapıştırılan metni çözüp sayaçları ve uyarı listesini tazeler. */
+function renderBulkPreview() {
+  const result = parseLinkList(bulkText.value);
+  const count = result.links.length;
+
+  if (count === 0) {
+    bulkSummary.textContent = bulkText.value.trim()
+      ? "Geçerli bağlantı bulunamadı — http:// , https:// veya magnet: gerekli."
+      : "Henüz bağlantı yok.";
+    bulkSummary.className = "hint";
+  } else {
+    const parts: string[] = [`${count} bağlantı hazır`];
+    if (result.duplicates > 0) parts.push(`${result.duplicates} yinelenen atlandı`);
+    if (result.truncated > 0) parts.push(`${result.truncated} tanesi sınır (${MAX_LINKS}) dışında`);
+    bulkSummary.textContent = parts.join(" · ");
+    bulkSummary.className = "hint ok";
+  }
+
+  bulkAddBtn.disabled = count === 0 || bulkAdding;
+  bulkAddBtn.textContent = count > 0 ? `Tümünü ekle (${count})` : "Tümünü ekle";
+
+  const rejected = result.rejected.slice(0, 20);
+  bulkRejected.hidden = rejected.length === 0;
+  if (rejected.length === 0) {
+    bulkRejected.replaceChildren();
+    return;
+  }
+  const title = document.createElement("b");
+  title.textContent = `${result.rejected.length} satır bağlantı değil, atlanacak:`;
+  const fragment = document.createDocumentFragment();
+  fragment.append(title);
+  for (const line of rejected) {
+    const code = document.createElement("code");
+    code.textContent = line;
+    fragment.append(code);
+  }
+  bulkRejected.replaceChildren(fragment);
+}
+
+/** Listeyi sırayla ekler; başarısızları kutuda bırakır ki tekrar denenebilsin. */
+async function addBulk() {
+  if (bulkAdding) return;
+  const result = parseLinkList(bulkText.value);
+  if (result.links.length === 0) return;
+
+  bulkAdding = true;
+  bulkAddBtn.disabled = true;
+  const kind = kindSelect.value;
+  const media = kind === "file" ? false : kind === "media" ? true : undefined;
+  const failed: string[] = [];
+  const total = result.links.length;
+
+  try {
+    for (let index = 0; index < total; index += 1) {
+      const url = result.links[index];
+      bulkAddBtn.textContent = `Ekleniyor ${index + 1}/${total}…`;
+      try {
+        await api.add({ url, ...(media === undefined ? {} : { media }) });
+      } catch {
+        failed.push(url);
+      }
+    }
+  } finally {
+    bulkAdding = false;
+  }
+
+  const added = total - failed.length;
+  if (failed.length === 0) {
+    bulkText.value = "";
+    renderBulkPreview();
+    closeBulk();
+    toast(`${added} bağlantı kuyruğa eklendi`, "success");
+    return;
+  }
+
+  // Kalanları kutuda bırak: kullanıcı düzeltip yeniden deneyebilir.
+  bulkText.value = failed.join("\n");
+  renderBulkPreview();
+  bulkAddBtn.textContent = `Kalanları ekle (${failed.length})`;
+  bulkAddBtn.disabled = false;
+  toast(
+    added > 0
+      ? `${added} eklendi, ${failed.length} eklenemedi`
+      : `${failed.length} bağlantı eklenemedi`,
+    "error",
+  );
+}
+
+$("#bulk-btn").addEventListener("click", () => openBulk());
+$("#bulk-close").addEventListener("click", closeBulk);
+$("#bulk-cancel").addEventListener("click", closeBulk);
+bulkAddBtn.addEventListener("click", () => void addBulk());
+bulkText.addEventListener("input", renderBulkPreview);
+bulkText.addEventListener("paste", () => {
+  // Yapıştırma sonrası metni oku (input olayı da gelir, burada garantiye alıyoruz).
+  setTimeout(renderBulkPreview, 0);
+});
+
+// ---------------------------------------------------------------------------
 // İnceleme paneli (format / kalite seçimi)
 // ---------------------------------------------------------------------------
+
 
 const probeSheet = $<HTMLElement>("#probe-sheet");
 const probeTitle = $("#probe-title");
@@ -1017,10 +1153,18 @@ $("#clear-btn").addEventListener("click", async () => {
 $("#paste-btn").addEventListener("click", async () => {
   try {
     const text = await navigator.clipboard.readText();
-    if (text.trim()) {
-      urlInput.value = text.trim();
+    if (!text.trim()) {
       urlInput.focus();
+      return;
     }
+    // Panoda birden çok bağlantı varsa toplu pencereyi aç (tek tık = liste hazır).
+    const parsed = parseLinkList(text);
+    if (parsed.links.length > 1) {
+      openBulk(text);
+      return;
+    }
+    urlInput.value = text.trim();
+    urlInput.focus();
   } catch {
     urlInput.focus();
     toast("Panoya erişilemedi — Ctrl+V ile yapıştır", "info");
@@ -1344,6 +1488,10 @@ window.addEventListener("keydown", (event) => {
     target?.isContentEditable === true;
 
   if (event.key === "Escape") {
+    if (!bulkSheet.hidden) {
+      closeBulk();
+      return;
+    }
     if (!probeSheet.hidden) {
       closeProbe();
       return;
@@ -1380,6 +1528,19 @@ window.addEventListener("keydown", (event) => {
     event.preventDefault();
     urlInput.focus();
     urlInput.select();
+  }
+  // Toplu içe aktarma: Ctrl+Shift+V (panoda liste varsa pencere hazır gelir).
+  if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "v") {
+    event.preventDefault();
+    void (async () => {
+      let text = "";
+      try {
+        text = await navigator.clipboard.readText();
+      } catch {
+        text = "";
+      }
+      openBulk(text);
+    })();
   }
 });
 

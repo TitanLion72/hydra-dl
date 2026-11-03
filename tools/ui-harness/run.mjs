@@ -233,6 +233,46 @@ async function main() {
     await page.keyboard.press("Escape");
     await page.waitForSelector("#probe-sheet", { state: "hidden", timeout: 10_000 });
 
+    // --- 4b. Toplu ice aktarma --------------------------------------------
+    const beforeBulk = await page.evaluate(() => window.__hydraCalls.add.length);
+    await page.click("#bulk-btn");
+    await page.waitForSelector("#bulk-sheet:not([hidden])", { timeout: 10_000 });
+    ok("toplu pencere acildi");
+
+    await page.fill(
+      "#bulk-text",
+      [
+        "https://ornek.test/a.zip",
+        "<https://ornek.test/b.zip>,",
+        "https://ornek.test/a.zip", // yinelenen
+        "bu satir baglanti degil",
+        "magnet:?xt=urn:btih:abc&dn=ornek",
+      ].join("\n"),
+    );
+    await page.waitForFunction(
+      () => (document.querySelector("#bulk-summary")?.textContent ?? "").includes("3 bağlantı hazır"),
+      null,
+      { timeout: 10_000 },
+    );
+    const bulkSummary = (await page.locator("#bulk-summary").textContent()) ?? "";
+    check(bulkSummary.includes("1 yinelenen atlandı"), `yinelenen sayildi ('${bulkSummary.trim()}')`);
+    check(await page.locator("#bulk-rejected").isVisible(), "baglanti olmayan satir uyarida gorunuyor");
+    await shot("02b-bulk.png");
+
+    await page.click("#bulk-add");
+    await page.waitForFunction(
+      (before) => window.__hydraCalls.add.length === before + 3,
+      beforeBulk,
+      { timeout: 30_000 },
+    );
+    const bulkCalls = await page.evaluate((before) => window.__hydraCalls.add.slice(before), beforeBulk);
+    check(
+      JSON.stringify(bulkCalls.map((call) => call.url)) ===
+        JSON.stringify(["https://ornek.test/a.zip", "https://ornek.test/b.zip", "magnet:?xt=urn:btih:abc&dn=ornek"]),
+      `3 baglanti sirayla mock'a gitti (${bulkCalls.map((c) => c.url).join(", ")})`,
+    );
+    await page.waitForSelector("#bulk-sheet", { state: "hidden", timeout: 10_000 });
+    ok("toplu ekleme sonrasi pencere kapandi");
     // --- 5. Ayarlar --------------------------------------------------------
     await page.click("#settings-btn");
     await page.waitForSelector("#settings-drawer:not([hidden])", { timeout: 20_000 });

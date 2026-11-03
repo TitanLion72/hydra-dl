@@ -3,6 +3,8 @@
  * API sözleşmesi: docs/API.md
  */
 
+import { parseLinkList } from "./links.js";
+
 const TOKEN_KEY = "hydra.token";
 const REQUEST_TIMEOUT = 8000;
 
@@ -30,6 +32,9 @@ const els = {
 
   quickForm: $("#quickForm"),
   pasteUrl: $("#pasteUrl"),
+  bulkText: $("#bulkText"),
+  bulkHint: $("#bulkHint"),
+  bulkAdd: $("#bulkAdd"),
 
   filters: $(".filters"),
   searchInput: $("#searchInput"),
@@ -1509,6 +1514,77 @@ function bindQuickForm() {
   });
 }
 
+/* ---------------- Toplu içe aktarma ---------------- */
+
+/** Metni çözüp sayacı ve "Ekle" düğmesini tazeler. */
+function renderBulkHint() {
+  const result = parseLinkList(els.bulkText.value);
+  const count = result.links.length;
+  const parts = [];
+  if (count === 0) {
+    els.bulkHint.textContent = els.bulkText.value.trim()
+      ? "Geçerli bağlantı yok — http:// , https:// veya magnet: gerekli."
+      : "Henüz bağlantı yok.";
+    els.bulkHint.dataset.state = "empty";
+  } else {
+    parts.push(`${count} bağlantı hazır`);
+    if (result.duplicates > 0) parts.push(`${result.duplicates} yinelenen atlandı`);
+    if (result.truncated > 0) parts.push(`${result.truncated} sınır dışında`);
+    if (result.rejected.length > 0) parts.push(`${result.rejected.length} satır bağlantı değil`);
+    els.bulkHint.textContent = parts.join(" · ");
+    els.bulkHint.dataset.state = "ok";
+  }
+  els.bulkAdd.disabled = count === 0;
+  els.bulkAdd.textContent = count > 0 ? `Tümünü ekle (${count})` : "Tümünü ekle";
+}
+
+/** Listeyi sırayla ekler; başarısızları kutuda bırakır. */
+async function addBulk() {
+  const result = parseLinkList(els.bulkText.value);
+  if (result.links.length === 0) return;
+  const total = result.links.length;
+  const failed = [];
+  els.bulkAdd.disabled = true;
+  try {
+    for (let index = 0; index < total; index += 1) {
+      els.bulkAdd.textContent = `Ekleniyor ${index + 1}/${total}…`;
+      try {
+        // Kısa yoldan ekleme: en iyi kalite. Format seçmek için "İncele" var.
+        await api(ENDPOINTS.add, { method: "POST", body: { url: result.links[index] } });
+      } catch {
+        failed.push(result.links[index]);
+      }
+    }
+  } finally {
+    els.bulkAdd.disabled = false;
+  }
+
+  const added = total - failed.length;
+  if (failed.length === 0) {
+    els.bulkText.value = "";
+    renderBulkHint();
+    showToast(`${added} bağlantı kuyruğa eklendi.`);
+    return;
+  }
+  els.bulkText.value = failed.join("\n");
+  renderBulkHint();
+  showToast(
+    added > 0
+      ? `${added} eklendi, ${failed.length} eklenemedi. Kalanlar kutuda.`
+      : `${failed.length} bağlantı eklenemedi.`,
+    "error",
+  );
+}
+
+function bindBulk() {
+  if (!els.bulkText || !els.bulkAdd) return;
+  els.bulkText.addEventListener("input", renderBulkHint);
+  els.bulkAdd.addEventListener("click", () => {
+    void addBulk();
+  });
+  renderBulkHint();
+}
+
 /** Dosyayı base64'e çevirir (`FileReader` + `btoa`). */
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
@@ -1763,6 +1839,7 @@ function registerServiceWorker() {
 async function boot() {
   state.token = readToken();
   bindQuickForm();
+  bindBulk();
   bindTorrentUpload();
   bindFilters();
   bindList();

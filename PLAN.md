@@ -47,7 +47,10 @@ v0.2 = "IDM'den iyi" temeli. Sıra bağımlılığa göre; üstteki bitmeden alt
 - [x] **Web arayüzünde torrent ekleme**: telefondan `.torrent` yükleme
       (`POST /torrent/upload`, base64 + bencode doğrulama, kalıcı klasör) ve
       tohum oranı (`↑ 1.25`) masaüstü + telefon satırlarında
-- [ ] Toplu içe aktarma: bağlantı listesi, panodan otomatik yakalama (opt-in)
+- [x] Toplu içe aktarma: yapıştırılan listeden bağlantı çıkarma, yinelenen eleme,
+      bağlantı olmayan satırları gösterme, sıralı ekleme + başarısızları kutuda bırakma.
+      Ayrıştırıcı **tek kaynak** (`webapp/links.js`), masaüstü + telefon aynı kodu kullanır.
+      Panoda birden çok bağlantı varsa "Yapıştır" doğrudan toplu pencereyi açar; Ctrl+Shift+V.
 - [x] **Geçmişte arama + sıralama**: ad/adres araması (Türkçe/büyük-küçük harf
       duyarsız), sıralama (tarih/ad/boyut/durum, tercih kalıcı), Ctrl+F ve `/`
       kısayolları, aramada boş durum metni

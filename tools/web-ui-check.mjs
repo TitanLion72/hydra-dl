@@ -544,6 +544,55 @@ try {
     await page.screenshot({ path: path.join(SHOTS, "hydra-webui-torrent-yukle.png") });
     await page.close();
   }
+
+  // 7) Telefonda toplu içe aktarma: sayaç, yinelenen, sıralı /add çağrıları.
+  {
+    const page = await browser.newPage();
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(String(error)));
+    await mockApi(page, { available: true });
+    await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector("#bulkBox", { state: "attached", timeout: 15000 });
+
+    await page.click("#bulkBox summary");
+    await page.fill(
+      "#bulkText",
+      [
+        "https://ornek.test/a.zip",
+        "https://ornek.test/b.zip,",
+        "https://ornek.test/a.zip",
+        "bu satır bağlantı değil",
+      ].join("\n"),
+    );
+
+    await page.waitForFunction(
+      () => (document.querySelector("#bulkHint")?.textContent ?? "").includes("2 bağlantı hazır"),
+      null,
+      { timeout: 10000 },
+    );
+    const hint = (await page.textContent("#bulkHint")).trim();
+    check(hint.includes("1 yinelenen atlandı"), `telefonda yinelenen sayıldı ('${hint}')`);
+    check(hint.includes("1 satır bağlantı değil"), "telefonda bağlantı olmayan satır bildirildi");
+    check(!(await page.locator("#bulkAdd").isDisabled()), "telefonda 'Tümünü ekle' etkinleşti");
+
+    await page.click("#bulkAdd");
+    let bulkCalls = [];
+    for (let i = 0; i < 60; i += 1) {
+      await page.waitForTimeout(100);
+      bulkCalls = page.__calls?.addCalls ?? [];
+      if (bulkCalls.length >= 2) break;
+    }
+    check(bulkCalls.length === 2, `telefonda 2 /add çağrısı gitti (${bulkCalls.length})`);
+    check(
+      JSON.stringify(bulkCalls.map((call) => call.url)) ===
+        JSON.stringify(["https://ornek.test/a.zip", "https://ornek.test/b.zip"]),
+      `telefonda bağlantılar sırayla gönderildi (${bulkCalls.map((c) => c.url).join(", ")})`,
+    );
+    check((await page.locator("#bulkText").inputValue()) === "", "başarıda kutu temizlendi");
+    check(errors.length === 0, `konsol hatası yok (${errors.join(" | ")})`);
+    await page.screenshot({ path: path.join(SHOTS, "hydra-webui-toplu.png") });
+    await page.close();
+  }
 } finally {
   await browser.close();
   server.close();

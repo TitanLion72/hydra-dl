@@ -47,6 +47,10 @@
             <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
             <span>İncele</span>
           </button>
+          <button type="button" class="ghost" id="bulk-btn" title="Birden çok bağlantıyı tek seferde ekle (Ctrl+Shift+V)">
+            <svg viewBox="0 0 24 24"><path d="M8 6h11M8 12h11M8 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01"/></svg>
+            <span>Toplu</span>
+          </button>
           <button type="submit" class="primary" id="add-btn">
             <svg viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg>
             <span>Ekle</span>
@@ -265,6 +269,31 @@
       <footer class="drawer-foot">
         <button class="primary" id="save-settings">Kaydet</button>
         <button class="ghost" id="cancel-settings">Vazgeç</button>
+      </footer>
+    </aside>
+
+    <aside class="sheet" id="bulk-sheet" hidden aria-label="Toplu içe aktarma">
+      <header class="sheet-head">
+        <div class="sheet-title">
+          <h2>Toplu içe aktarma</h2>
+          <p>Her satıra bir bağlantı — virgülle ayrılmış liste de olur.</p>
+        </div>
+        <button class="ghost icon-only" id="bulk-close" title="Kapat">×</button>
+      </header>
+      <div class="sheet-body">
+        <label class="field">
+          <span>Bağlantılar</span>
+          <textarea id="bulk-text" rows="9" spellcheck="false" placeholder="https://ornek.com/dosya1.zip&#10;https://ornek.com/dosya2.zip&#10;magnet:?xt=urn:btih:..."></textarea>
+        </label>
+        <p class="hint" id="bulk-summary">Henüz bağlantı yok.</p>
+        <div class="bulk-rejected" id="bulk-rejected" hidden></div>
+        <p class="hint">
+          Tek tıkla eklenir; kalite/format seçmek istersen tek tek <b>İncele</b> kullan.
+        </p>
+      </div>
+      <footer class="sheet-foot">
+        <button class="primary" id="bulk-add" disabled>Tümünü ekle</button>
+        <button class="ghost" id="bulk-cancel">Vazgeç</button>
       </footer>
     </aside>
 

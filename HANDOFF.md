@@ -2,7 +2,7 @@
 
 > Yeni oturum: **önce bu dosyayı oku**, sonra `git status`. Bitirdiğin dilimi en alta 10 satır yaz.
 
-**Son güncelleme:** 2026-11-03 · v0.3.7 · AGPL-3.0-or-later
+**Son güncelleme:** 2026-11-03 · v0.3.8 · AGPL-3.0-or-later
 
 ---
 
@@ -14,9 +14,9 @@ telefon için web arayüzü, tarayıcı eklentisi (panel + avcı modu).
 
 **Repo public:** <https://github.com/TitanLion72/hydra-dl> (AGPL-3.0, ilk commit `9495fd4`).
 
-**Kurulu sürüm:** v0.3.7, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
+**Kurulu sürüm:** v0.3.8, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
 girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
-`src-tauri\target\release\bundle\nsis\Hydra DL_0.3.7_x64-setup.exe`.
+`src-tauri\target\release\bundle\nsis\Hydra DL_0.3.8_x64-setup.exe`.
 
 ## Doğrulanmış (bu oturum, kanıt var)
 
@@ -34,9 +34,8 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
 | LAN erişimi | `http://192.168.1.106:6790/health` → 200 |
 | Masaüstü UI | `tools/ui-harness` → torrent dosya seçimi dahil, konsol hatası yok |
 | Telefon arayüzü | `node tools/web-ui-check.mjs` → PASS (yt-dlp + torrent dosya seçimi + retry) |
-| **Yeniden deneme** | Yerel axum: 503×2→başarı (2 tekrar), `Retry-After: 1` → 1 sn bekleme, 404 → tekrar yok, 5. denemede vazgeçme |
-| Retry (canlı, kurulu 0.2.4) | probe 2×503 → `add` 2,0 sn sonra başarılı; segment 2×503 → `/downloads` `retry {attempt:2,max:5,waitMs:2000}`, sha256 doğru |
-| **Yol okuma açığı (kapandı)** | Canlı: `GET /C:/Windows/win.ini` → 400, `GET /C:/Users/.../web.rs` → 400, `/..%2f..%2fAGENTS.md` → 400, `GET /app.js` → 200 |
+| **Yeniden deneme** | Yerel axum: 503×2→başarı, `Retry-After` beklendi, 404 → tekrar yok, 5. denemede vazgeçme; canlı kurulu 0.2.4'te de sha256 doğru |
+| **Yol okuma açığı (kapandı)** | Canlı: `GET /C:/Windows/win.ini` → 400, kaynak dosya → 400, `/..%2f..%2fAGENTS.md` → 400, `/app.js` → 200 |
 | **Güvenlik taraması** | `node tools/security-check.mjs` → PASS (koruma regresyonu + sır/yol) |
 | **cargo audit** | `cd src-tauri && cargo audit` → exit 0 (1 gerekçeli istisna: ringbuf/librqbit-utp) |
 | e2e 503 senaryosu | `tools/e2e.mjs` → 16 MB + 503'lü 2 MB kaynak, iki hash de doğru |
@@ -51,10 +50,11 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
 | **Torrent yükleme (0.3.5)** | `web-ui-check.mjs` → dosya seçici `.torrent` gönderdi, "Eklendi: arsiv-2026" ipucu |
 | **Tohum oranı (0.3.5)** | `cargo test` → oran hesabı + eski kayıt uyumu (eksik alanlar `0`, oran "—") |
 | **Orphan .torrent (0.3.5)** | Canlı testte bulundu: kayıt silinince `.torrent` diskte kalıyordu → `remove_uploaded_torrent` (yalnız `torrents/` altı) |
-| **Ağ yakalama (0.3.6)** | `net-capture-check.mjs` gerçek Edge+eklenti: m3u8/mpd/mp4 yakalandı, ts/m4s/css/js/png/json elendi, **yakalanan HLS completed** — 16/16 |
-| **Eklenti birim (0.3.6)** | `node tools/test-extension.mjs` → **30 geçti** (9 yeni netlog testi) |
-| **HTTPS (0.3.7)** | `check-web-tls.mjs` kurulu 0.3.7: HTTP→HTTPS geçişi, SAN `localhost/127.0.0.1/::1/192.168.1.104`, http aynı portta reddedildi, token 401→200, sertifika yeniden başlatmada sabit — **21/21 PASS** |
-| Rust testleri (0.3.7) | `cargo test` → **138 passed** (1 ağ testi `#[ignore]`); 8 TLS testi + `web_restart_needed` regresyonu |
+| **Ağ yakalama (0.3.6)** | `net-capture-check.mjs` gerçek Edge+eklenti: m3u8/mpd/mp4 yakalandı, ts/css/js/png/json elendi, yakalanan HLS completed — 16/16 |
+| **Eklenti birim (0.3.6)** | `test-extension.mjs` → **30 geçti** (9 yeni netlog testi) |
+| **HTTPS (0.3.7)** | `check-web-tls.mjs`: HTTP→HTTPS geçişi, SAN'lar, http reddi, token 401→200, sertifika sabit — **21/21** |
+| **Toplu içe aktarma (0.3.8)** | `test-links.mjs` 27; ui-harness + web-ui-check yeni senaryolar; canlı: 3 dosya indi, sha256 ✓ — **12/12** |
+| Rust testleri | `cargo test` → **138 passed** (1 ağ testi `#[ignore]`); 8 TLS + `web_restart_needed` |
 
 ## Bu oturumda düzeltilen gerçek hatalar
 
@@ -129,15 +129,15 @@ yeterli değil.
 2. **Dış PR'lar (`smart-screen`, bizim repo değil):** #3 yol enjeksiyonu **doğru** (ham
    soketle 10/10); #1 `audit` kırmızısını gideriyor; #2 çakışıyor ve lockfile'da alakasız
    sürüm değişikliği var. Kullanıcı onayı bekliyor.
-3. **HTTPS (0.3.7) — BİTTİ, canlı doğrulandı (21/21).** Yolda iki gerçek hata çıktı
-   (bkz. `docs/HISTORY.md` 24–25): (a) `axum_server::bind_rustls` bind hatasını yutuyordu
-   → `bind_with_retry` bind'i dışarıda yapıyor; `put_settings` yeniden başlatma koşulunda
-   `web_tls` eksikti → saf `web_restart_needed` + test. (b) rustls CryptoProvider
-   seçilemiyordu → `panic=abort` süreci öldürüyordu → `install_crypto_provider` + test.
-   `/health` artık `tls` alanı döndürür.
-4. **v0.3 devam:** DASH'te kaldığı yerden devam (segment saklayarak), toplu içe aktarma,
-   sanal liste (>200 kayıt), yt-dlp otomatik güncelleme. (Çerez 0.2.9, tray 0.3.0,
-   arama/sıralama 0.3.1, HLS 0.3.3, DASH 0.3.4, web'den torrent 0.3.5, yakalama 0.3.6 bitti.)
+3. **Toplu içe aktarma (0.3.8) — BİTTİ (12/12 canlı).** Ayrıştırıcı tek kaynak
+   `webapp/links.js` (masaüstü `src/links.ts` + telefon `app.js` aynı kod): satır/virgül,
+   `<sarmal>`, noktalama, dengeli parantez, `magnet`, yinelenen eleme, 500 sınırı.
+   Arayüz: "Toplu" düğmesi + Ctrl+Shift+V; panoda çok bağlantı varsa "Yapıştır" paneli
+   açar; telefonda katlanır kutu; başarısızlar kutuda kalır.
+4. **v0.3 devam:** tarihte toplu seçim + sanal liste (>200 kayıt), yt-dlp otomatik
+   güncelleme, DASH'te kaldığı yerden devam. (Çerez 0.2.9, tray 0.3.0, arama/sıralama 0.3.1,
+   HLS 0.3.3, DASH 0.3.4, torrent yükleme 0.3.5, yakalama 0.3.6, HTTPS 0.3.7,
+   toplu içe aktarma 0.3.8 bitti.)
 5. Küçükler: `ringbuf` muafiyeti `librqbit-utp` 0.4.9+/0.5.2+ çıkınca kalkar; torrent proxy
    desteği librqbit proxy kazanınca `proxyUrl`'e bağlanır.
 

@@ -478,6 +478,72 @@ a {
   transition: border-color 0.15s ease, color 0.15s ease;
 }
 
+/* Toplu içe aktarma (telefon): katlanır liste kutusu. */
+.bulk {
+  margin: 0 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #0c1524;
+  overflow: hidden;
+}
+
+.bulk summary {
+  padding: 12px 14px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  color: var(--text-dim);
+  font-size: 14px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.bulk summary::-webkit-details-marker {
+  display: none;
+}
+
+.bulk summary::after {
+  content: "▾";
+  margin-left: auto;
+  color: var(--text-faint);
+  transition: transform 0.15s ease;
+}
+
+.bulk[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.bulk[open] summary {
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+}
+
+.bulk-text {
+  display: block;
+  width: calc(100% - 24px);
+  margin: 12px;
+  min-height: 120px;
+  resize: vertical;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.bulk-hint {
+  margin: 0 12px 10px;
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+
+.bulk-hint[data-state="ok"] {
+  color: #5eead4;
+}
+
+.bulk .btn {
+  width: calc(100% - 24px);
+  margin: 0 12px 12px;
+}
+
 .torrent-upload:active {
   border-color: #3b82f6;
   color: var(--text);

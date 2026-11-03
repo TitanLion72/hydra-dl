@@ -98,6 +98,23 @@
           </p>
         </form>
 
+        <!-- Toplu içe aktarma: satır satır bağlantı listesi. -->
+        <details class="bulk" id="bulkBox">
+          <summary>Toplu ekle — birden çok bağlantı</summary>
+          <label class="sr-only" for="bulkText">Bağlantı listesi</label>
+          <textarea
+            id="bulkText"
+            class="input bulk-text"
+            rows="6"
+            spellcheck="false"
+            autocapitalize="off"
+            autocorrect="off"
+            placeholder="Her satıra bir bağlantı&#10;https://ornek.com/a.zip&#10;magnet:?xt=urn:btih:…"
+          ></textarea>
+          <p class="bulk-hint" id="bulkHint">Henüz bağlantı yok.</p>
+          <button id="bulkAdd" class="btn primary" type="button" disabled>Tümünü ekle</button>
+        </details>
+
         <!-- Telefondan .torrent yükleme: masaüstündeki dosya yolunu gösteremeyiz. -->
         <label class="torrent-upload" for="torrentInput" id="torrentUploadLabel">
           <svg viewBox="0 0 24 24" aria-hidden="true">

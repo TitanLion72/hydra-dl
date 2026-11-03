@@ -3,11 +3,12 @@
  * ASLA önbelleğe alınmaz; yalnızca arayüz kabuğu önbellekte tutulur.
  */
 
-const CACHE = "hydra-shell-v1";
+const CACHE = "hydra-shell-v2";
 const SHELL = [
   "./",
   "./index.html",
   "./app.js",
+  "./links.js",
   "./styles.css",
   "./manifest.webmanifest",
   "./icon.svg",

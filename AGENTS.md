@@ -19,6 +19,7 @@ node tools/security-check.mjs                                        # sır/yol/
 node tools/hygiene.mjs                                               # depo/disk sağlığı (uyarı varsa 1)
 node tools/build-extension.mjs                                       # eklenti paketleri
 node tools/ui-harness/run.mjs                                        # masaüstü UI (mock API)
+node tools/test-links.mjs                                           # toplu içe aktarma ayrıştırıcısı
 node tools/net-capture-check.mjs                                     # eklenti ağ yakalama (gerçek tarayıcı)
 ```
 
@@ -47,6 +48,7 @@ node tools/net-capture-check.mjs                                     # eklenti a
 | `src-tauri/src/commands.rs` | Tauri komut yüzeyi |
 | `src/` | masaüstü arayüzü (vanilla TS); durum yalnız `downloads:changed` |
 | `webapp/` | telefonda çalışan statik arayüz (derleme yok, SSE) |
+| `webapp/links.js` | **toplu içe aktarma ayrıştırıcısı** (saf, tek kaynak): satır/virgül/boşluk, `<sarmal>`, noktalama, `magnet`, yinelenen eleme, 500 sınırı |
 | `extension/` | Chrome/Edge MV3: panel, avcı modu, **ağdan medya yakalama** (`webRequest`), sağ tık. **Tek kaynak**; `node tools/build-extension.mjs` ile `build/extensions/{chrome,firefox}` üretilir |
 | `extension/netlog.js` | **medya isteği sınıflandırıcı** (saf): m3u8/mpd/mp4/ses; segment ve medya-dışı istekleri eler |
 | `tools/build-extension.mjs` | Chrome (service_worker) ve Firefox (background.scripts + gecko id) manifestlerini üretir ve dosya bütünlüğünü doğrular |
