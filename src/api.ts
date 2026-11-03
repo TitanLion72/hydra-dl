@@ -104,6 +104,8 @@ export interface Settings {
   webPort: number;
   webBind: string;
   webToken: string;
+  /** Web arayüzü HTTPS (kendinden imzalı) ile servis edilsin mi? */
+  webTls: boolean;
   torrentEnabled: boolean;
   notifyOnFinish: boolean;
   proxyUrl: string;
@@ -124,6 +126,8 @@ export interface WebStatus {
   url: string | null;
   lanUrls: string[];
   tokenRequired: boolean;
+  /** Sunucu HTTPS mi? */
+  tls: boolean;
 }
 
 export interface YtdlpStatus {

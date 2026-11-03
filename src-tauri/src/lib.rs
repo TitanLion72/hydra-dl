@@ -6,6 +6,7 @@ mod extract;
 mod manager;
 mod model;
 mod store;
+mod tls;
 mod torrent;
 mod tray;
 mod util;
@@ -18,6 +19,11 @@ use store::Store;
 use tauri::{Manager, WindowEvent};
 
 pub fn run() {
+    // rustls saglayicisini en basta kur: TLS kullanimi herhangi bir noktadan
+    // baslarsa (web sunucusu acilista) varsayilan hazir olsun. Kurulmazsa rustls
+    // panic atar ve `panic = "abort"` yuzunden surec tamamen olur.
+    tls::install_crypto_provider();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

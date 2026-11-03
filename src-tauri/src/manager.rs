@@ -87,6 +87,17 @@ impl AppState {
         self.store.lock().unwrap().parts_dir(id)
     }
 
+    /// TLS sertifika klasörü: `<app_data>/tls/`.
+    pub fn tls_dir(&self) -> PathBuf {
+        use tauri::Manager;
+        let base = self
+            .app
+            .path()
+            .app_data_dir()
+            .unwrap_or_else(|_| PathBuf::from("."));
+        base.join("tls")
+    }
+
     pub fn torrents_root(&self) -> PathBuf {
         self.store.lock().unwrap().torrents_root()
     }

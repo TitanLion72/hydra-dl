@@ -100,6 +100,13 @@ Düzeltilenler (artık burada değil): `rust/command-line-injection` (`yt-dlp`'y
 
 - Web sunucusu LAN'a açılabilir; **token boşsa ağdaki herkes erişir**. Bu bilinçli bir
   kolaylık tercihidir, arayüz uyarı gösterir ve varsayılan olarak web sunucusu **kapalıdır**.
-- Token URL sorgusunda taşınabilir (QR ile eşleştirme); aynı ağdaki biri HTTP trafiğini
-  izleyebiliyorsa token'ı görebilir. HTTPS yok (yerel ağ); ileride TLS değerlendirilecek.
+- Token URL sorgusunda taşınabilir (QR ile eşleştirme); bu yüzden **HTTPS açık** olması
+  önerilir: ayarlardan açılınca token trafiği şifrelenir.
+- **HTTPS kendinden imzalıdır** (`src-tauri/src/tls.rs`): trafik şifrelenir ama sertifika
+  bir otoriteye imzalatılmadığı için tarayıcı "güvenli değil" uyarısı verir. Aynı ağdaki
+  biri sertifikayı taklit edebilir (MITM) — bu yüzden HTTPS, token'ın düz metin
+  okunmasını engeller, uçtan uca kimlik doğrulaması sağlamaz. Özel anahtar
+  `<app_data>/tls/key.pem` altında, yalnız kullanıcı hesabı erişebilir; repoya girmez.
+- Yakalama sunucusu (`127.0.0.1:6712`) **HTTP kalır**: yalnız loopback'e bağlanır, ağa
+  çıkmaz; eklenti oraya `127.0.0.1` üzerinden erişir.
 - Torrent motoru DHT'ye katılır (P2P doğası gereği). Kullanıcı ayarlardan kapatabilir.

@@ -216,6 +216,17 @@
               <button class="ghost mini" type="button" id="gen-token">Üret</button>
             </div>
           </label>
+          <label class="switch">
+            <input id="set-web-tls" type="checkbox" />
+            <span class="track"></span>
+            <span>
+              HTTPS kullan (kendinden imzalı sertifika)
+              <small>
+                Aynı ağdaki biri trafiği dinlerse token'ı okuyamaz. İlk açılışta tarayıcı
+                "güvenli değil" uyarısı verir; <b>Gelişmiş → devam et</b> yeterli.
+              </small>
+            </span>
+          </label>
           <div class="qr-row" id="qr-row" hidden>
             <img id="web-qr" alt="Web arayüzü QR kodu" />
             <p class="hint">Telefonla okut: uygulama açıkken aynı Wi-Fi'da indirme listene erişirsin.</p>

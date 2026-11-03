@@ -34,6 +34,10 @@ pub struct Settings {
     pub web_bind: String,
     /// Bos degilse web arayuzu token ister.
     pub web_token: String,
+    /// Web arayuzu HTTPS (kendinden imzali sertifika) ile servis edilsin mi?
+    /// Varsayilan kapali; acildiginda LAN'daki token trafigi sifrelenir.
+    #[serde(default)]
+    pub web_tls: bool,
     /// BitTorrent motoru.
     pub torrent_enabled: bool,
     /// Indirme bitince/hata olunca isletim sistemi bildirimi goster.
@@ -59,6 +63,7 @@ impl Default for Settings {
             web_port: 6790,
             web_bind: "0.0.0.0".into(),
             web_token: String::new(),
+            web_tls: false,
             torrent_enabled: true,
             notify_on_finish: true,
             proxy_url: String::new(),

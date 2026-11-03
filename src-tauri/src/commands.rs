@@ -138,11 +138,7 @@ pub async fn save_settings(state: St<'_>, settings: Settings) -> Result<Settings
     {
         capture::restart(state.inner(), saved.capture_enabled, saved.capture_port).await?;
     }
-    if previous.web_enabled != saved.web_enabled
-        || previous.web_port != saved.web_port
-        || previous.web_bind != saved.web_bind
-        || previous.web_token != saved.web_token
-    {
+    if web::web_restart_needed(&previous, &saved) {
         web::restart_web(state.inner(), &saved).await?;
     }
     Ok(saved)

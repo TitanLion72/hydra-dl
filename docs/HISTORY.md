@@ -58,3 +58,17 @@ Numaralar kronolojiktir; yeni hata eklerken en alta ekle.
 23. **GÜVENLİK — localhost CSRF açığı**: rastgele bir web sayfası `127.0.0.1:6712/add`
     çağırabiliyordu → `origin_guard` (aynı köken + eklenti şemaları; `null`/`data:`/`file:`
     reddedilir).
+24. **HTTPS yazıldı ama hiç açılmıyordu** (canlı test): `webTls` açılıyor, ayar
+    kaydediliyor, sunucu düz HTTP servis etmeye devam ediyordu. İki ayrı hata vardı:
+    (a) `axum_server::bind_rustls` kullanılıyordu → bind hatası spawn edilen task içinde
+    yutuluyordu (eski dinleyici portu bırakmadan yenisi deniyordu, sessiz başarısızlık);
+    artık `bind_with_retry` bind'i **dışarıda** yapıyor (30 × 100 ms, `SO_REUSEADDR` yok).
+    (b) `put_settings`/`save_settings` yeniden başlatma koşulunda `web_tls` **yoktu** →
+    ayar değişince sunucu hiç yeniden başlamıyordu; artık tek saf fonksiyon
+    `web::web_restart_needed` + regresyon testi (yeni alan eklemeyi unutmayı yakalar).
+25. **HTTPS açılınca uygulama tamamen kapanıyordu** (canlı test, `0xc0000409`): rustls
+    0.23 süreç düzeyindeki CryptoProvider'ı seçemiyordu (`reqwest` → `aws-lc-rs`,
+    `rcgen` → `ring`, ikisi de açık) → `ServerConfig` kurulurken **panic**; release profili
+    `panic = "abort"` olduğu için süreç öldü. Artık `tls::install_crypto_provider()`
+    açılışta + `rustls_config` içinde açıkça `aws-lc-rs` kuruyor; regresyon testi
+    (`tls_yapilandirmasi_saglayici_kurulunca_olusturulur`) panik'lerse kırmızı olur.

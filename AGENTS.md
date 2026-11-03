@@ -41,7 +41,8 @@ node tools/net-capture-check.mjs                                     # eklenti a
 | `src-tauri/src/ytdlp.rs` | yt-dlp bulma, `-J` format listesi, süreç + ilerleme |
 | `src-tauri/src/torrent.rs` | librqbit motoru: magnet/.torrent, pause/resume, swarm, **dosya listesi/seçimi** |
 | `src-tauri/src/manager.rs` | kuyruk/eşzamanlılık/ticker, HTTP+medya+torrent yönlendirme, olaylar |
-| `src-tauri/src/web.rs` | **tek API yönlendiricisi** + statik `webapp/` servisi + token/CORS |
+| `src-tauri/src/web.rs` | **tek API yönlendiricisi** + statik `webapp/` servisi + token/CORS (+ isteğe bağlı HTTPS) |
+| `src-tauri/src/tls.rs` | **kendinden imzalı TLS**: sertifika üretimi, LAN adlarını kapsama, yeniden kullanım |
 | `src-tauri/src/capture.rs` | aynı yönlendiriciyi `127.0.0.1:6712`'de açar (eklenti) |
 | `src-tauri/src/commands.rs` | Tauri komut yüzeyi |
 | `src/` | masaüstü arayüzü (vanilla TS); durum yalnız `downloads:changed` |

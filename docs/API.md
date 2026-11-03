@@ -224,3 +224,9 @@ Masaüstü ayrıca `ytdlp:install` olayıyla ilerleme yayınlar:
 
 Yakalama sunucusu yalnız `127.0.0.1` dinler, token istemez. Web sunucusu LAN'a açıldığında
 `Settings.webToken` boş değilse `?token=` ya da `X-Hydra-Token` başlığı gerekir.
+
+`Settings.webTls` açıkken web sunucusu **HTTPS** (kendinden imzalı) servis eder; aynı port
+`http://` isteklerini reddeder. Sertifika `<app_data>/tls/cert.pem` + `key.pem`, kapsanan
+adlar `tls.json`; LAN IP'si değişince sertifika yenilenir. `/appinfo` içindeki
+`web.url`, `web.lanUrls` ve `webQr` bu şemaya uyar (`https://…`). Yakalama sunucusu
+(`127.0.0.1:6712`) her durumda HTTP kalır.

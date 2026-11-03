@@ -67,7 +67,9 @@ v0.2 = "IDM'den iyi" temeli. Sıra bağımlılığa göre; üstteki bitmeden alt
       kabul edildi (SSRF, download_dir)
 - [x] Rate limit (10 dk / 20 hatalı token → 429) — `AuthLimiter` (0.2.8)
 - [x] Token karşılaştırmasını sabit zamanlı yap (`subtle`/elle) — `token_matches` (0.2.8)
-- [ ] İsteğe bağlı HTTPS (yerel ağda self-signed) — token düz metin gitmesin
+- [x] İsteğe bağlı HTTPS (yerel ağda self-signed): `tls.rs` — sertifika
+      `<app_data>/tls/` altında, LAN adreslerini kapsar, IP değişince yenilenir;
+      ayarlarda "HTTPS kullan" anahtarı (varsayılan kapalı)
 
 ## v1.0 — dağıtım
 

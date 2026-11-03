@@ -248,6 +248,7 @@ async function mockApi(
         notifyOnFinish: true,
         proxyUrl: "",
         webToken: "",
+        webTls: false,
       }),
     }),
   );

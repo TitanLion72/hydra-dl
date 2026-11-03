@@ -31,6 +31,8 @@ use tokio::sync::oneshot;
 
 pub struct WebHandle {
     pub port: u16,
+    /// `true` ise sunucu HTTPS (kendinden imzalı sertifika) ile servis ediyor.
+    pub tls: bool,
     shutdown: Option<oneshot::Sender<()>>,
     task: tokio::task::JoinHandle<()>,
 }
@@ -54,6 +56,8 @@ pub struct WebStatus {
     pub url: Option<String>,
     pub lan_urls: Vec<String>,
     pub token_required: bool,
+    /// Sunucu HTTPS mi? (kendinden imzalı sertifika)
+    pub tls: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -176,6 +180,8 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         "downloads": items.len(),
         "active": items.iter().filter(|d| d.status.is_running()).count(),
         "tray": tray,
+        // Web sunucusu HTTPS mi? İstemci/telefon doğru şemayı seçebilsin.
+        "tls": state.web.lock().unwrap().as_ref().map(|h| h.tls).unwrap_or(false),
     }))
 }
 
@@ -339,6 +345,19 @@ async fn get_settings(State(state): State<Arc<AppState>>) -> Json<Settings> {
     Json(state.settings())
 }
 
+/// Ayarlar değişince web sunucusunun yeniden başlatılması gerekiyor mu?
+///
+/// **Kritik:** bu listede bir alan eksik olursa o ayar sessizce yok sayılır.
+/// `web_tls` bir kez eksikti: kullanıcı HTTPS'i açıyor, ayar kaydediliyor ama
+/// sunucu yeniden başlamadığı için düz HTTP servis etmeye devam ediyordu.
+pub fn web_restart_needed(previous: &Settings, saved: &Settings) -> bool {
+    previous.web_enabled != saved.web_enabled
+        || previous.web_port != saved.web_port
+        || previous.web_bind != saved.web_bind
+        || previous.web_token != saved.web_token
+        || previous.web_tls != saved.web_tls
+}
+
 async fn put_settings(
     State(state): State<Arc<AppState>>,
     Json(settings): Json<Settings>,
@@ -346,11 +365,7 @@ async fn put_settings(
     let previous = state.settings();
     match manager::save_settings(&state, settings) {
         Ok(saved) => {
-            if previous.web_enabled != saved.web_enabled
-                || previous.web_port != saved.web_port
-                || previous.web_bind != saved.web_bind
-                || previous.web_token != saved.web_token
-            {
+            if web_restart_needed(&previous, &saved) {
                 if let Err(err) = restart_web(&state, &saved).await {
                     return error_response(StatusCode::CONFLICT, err);
                 }
@@ -1007,30 +1022,57 @@ fn add_cors_headers(headers: &mut HeaderMap) {
     );
 }
 
+/// Adrese bağlanır; port yeni bırakılmışsa kısa süre yeniden dener.
+///
+/// Neden: ayarlar değişince (`HTTP → HTTPS`, port değişimi) eski dinleyici
+/// kapanırken Windows portu birkaç yüz ms daha "kullanımda" gösterebiliyor.
+/// Tek denemede başarısız olmak, kullanıcıya "başlatılamadı" hatası olarak
+/// yansıyordu; 3 saniyelik pencere bunu pratikte ortadan kaldırıyor.
+///
+/// `SO_REUSEADDR` **kullanılmıyor**: Windows'ta aynı portu başka bir sürecin
+/// ele geçirmesine izin verir.
+async fn bind_with_retry(addr: SocketAddr) -> Result<std::net::TcpListener, String> {
+    const ATTEMPTS: u32 = 30;
+    let mut last = String::new();
+    for attempt in 0..ATTEMPTS {
+        match std::net::TcpListener::bind(addr) {
+            Ok(listener) => {
+                listener
+                    .set_nonblocking(true)
+                    .map_err(|e| format!("Dinleyici ayarlanamadı: {e}"))?;
+                return Ok(listener);
+            }
+            Err(err) => {
+                last = err.to_string();
+                if attempt + 1 < ATTEMPTS {
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
+            }
+        }
+    }
+    Err(format!(
+        "Sunucu {addr} üzerinde başlatılamadı ({ATTEMPTS} deneme): {last}"
+    ))
+}
+
 async fn serve(
     state: Arc<AppState>,
     bind: String,
     port: u16,
     token: Option<String>,
+    tls: bool,
 ) -> Result<WebHandle, String> {
     let ip: IpAddr = bind
         .parse()
         .map_err(|_| format!("Geçersiz dinleme adresi: {bind}"))?;
     let addr = SocketAddr::new(ip, port);
-    let listener = tokio::net::TcpListener::bind(addr)
-        .await
-        .map_err(|e| format!("Web sunucusu {addr} üzerinde başlatılamadı: {e}"))?;
-    let actual_port = listener
-        .local_addr()
-        .map_err(|e| format!("Adres okunamadı: {e}"))?
-        .port();
 
     // Statik kok: token korumasinin "hangi yol serbest" karari icin gerekli.
     let webapp_root = webapp_dir(&state);
     // Token kaba kuvvetini yavaslat (10 dk / 20 basarisiz deneme).
     let auth_limiter = Arc::new(AuthLimiter::default_policy());
     // Katman sirasi (dis -> ic): origin_guard, cors, auth, router.
-    let mut router = api_router(state).layer(middleware::from_fn(auth_middleware(
+    let mut router = api_router(state.clone()).layer(middleware::from_fn(auth_middleware(
         token.clone().unwrap_or_default(),
         webapp_root,
         auth_limiter,
@@ -1039,6 +1081,57 @@ async fn serve(
     router = with_origin_guard(router);
 
     let (tx, rx) = oneshot::channel::<()>();
+
+    if tls {
+        // Sertifika: `<app_data>/tls/`. LAN adresleri degisirse yenilenir.
+        let store = crate::tls::StoredTls::in_dir(&state.tls_dir());
+        let names = crate::tls::CertNames::local(&crate::web::lan_addresses());
+        let (cert_pem, key_pem, regenerated) = store.ensure(&names)?;
+        if regenerated {
+            eprintln!(
+                "[hydra] TLS sertifikası üretildi: {}",
+                store.cert_path.display()
+            );
+        }
+        let config = crate::tls::rustls_config(&cert_pem, &key_pem).await?;
+        // Bind **burada**: hata olursa çağırana döner. Daha önce `axum_server::bind_rustls`
+        // kullanılıyordu; bind hatası spawn edilen task içinde kalıp yutuluyordu ve
+        // HTTPS sessizce hiç açılmıyordu.
+        let listener = bind_with_retry(addr).await?;
+        let actual_port = listener
+            .local_addr()
+            .map_err(|e| format!("Adres okunamadı: {e}"))?
+            .port();
+        let task = tokio::spawn(async move {
+            let handle = axum_server::Handle::new();
+            let shutdown = handle.clone();
+            tokio::spawn(async move {
+                let _ = rx.await;
+                shutdown.graceful_shutdown(Some(std::time::Duration::from_secs(2)));
+            });
+            let server = axum_server::from_tcp_rustls(listener, config)
+                .handle(handle)
+                .serve(router.into_make_service());
+            if let Err(err) = server.await {
+                eprintln!("[hydra] HTTPS sunucusu durdu: {err}");
+            }
+        });
+        return Ok(WebHandle {
+            port: actual_port,
+            tls: true,
+            shutdown: Some(tx),
+            task,
+        });
+    }
+
+    let listener = bind_with_retry(addr).await?;
+    let listener = tokio::net::TcpListener::from_std(listener)
+        .map_err(|e| format!("Dinleyici hazırlanamadı: {e}"))?;
+    let actual_port = listener
+        .local_addr()
+        .map_err(|e| format!("Adres okunamadı: {e}"))?
+        .port();
+
     let task = tokio::spawn(async move {
         let server = axum::serve(listener, router).with_graceful_shutdown(async {
             let _ = rx.await;
@@ -1049,6 +1142,7 @@ async fn serve(
     });
     Ok(WebHandle {
         port: actual_port,
+        tls: false,
         shutdown: Some(tx),
         task,
     })
@@ -1066,6 +1160,7 @@ pub async fn restart_web(state: &Arc<AppState>, settings: &Settings) -> Result<(
         settings.web_bind.clone(),
         settings.web_port,
         Some(settings.web_token.clone()),
+        settings.web_tls,
     )
     .await?;
     *state.web.lock().unwrap() = Some(handle);
@@ -1094,7 +1189,9 @@ pub fn status(state: &AppState) -> WebStatus {
     let guard = state.web.lock().unwrap();
     let settings = state.settings();
     let running = guard.is_some();
+    let tls = guard.as_ref().map(|h| h.tls).unwrap_or(settings.web_tls);
     let port = guard.as_ref().map(|h| h.port).unwrap_or(settings.web_port);
+    let scheme = if tls { "https" } else { "http" };
     let host = if settings.web_bind == "0.0.0.0" || settings.web_bind.is_empty() {
         lan_addresses()
             .into_iter()
@@ -1103,11 +1200,11 @@ pub fn status(state: &AppState) -> WebStatus {
     } else {
         settings.web_bind.clone()
     };
-    let url = running.then(|| format!("http://{host}:{port}"));
+    let url = running.then(|| format!("{scheme}://{host}:{port}"));
     let lan_urls = if running {
         lan_addresses()
             .into_iter()
-            .map(|ip| format!("http://{ip}:{port}"))
+            .map(|ip| format!("{scheme}://{ip}:{port}"))
             .collect()
     } else {
         Vec::new()
@@ -1120,6 +1217,7 @@ pub fn status(state: &AppState) -> WebStatus {
         url,
         lan_urls,
         token_required: !settings.web_token.is_empty(),
+        tls,
     }
 }
 
@@ -1147,6 +1245,45 @@ mod tests {
         let uri = qr_svg_data_uri("http://192.168.1.20:6790?token=abc").unwrap();
         assert!(uri.starts_with("data:image/svg+xml;base64,"));
         assert!(uri.len() > 500);
+    }
+
+    /// Regresyon: `web_tls` bir kez yeniden başlatma koşulunda eksikti; HTTPS
+    /// açılıyor, ayar kaydediliyor ama sunucu düz HTTP servis etmeye devam ediyordu.
+    #[test]
+    fn web_ayarlarindan_herhangi_biri_degisince_yeniden_baslatilir() {
+        let base = Settings::default();
+        assert!(
+            !web_restart_needed(&base, &base),
+            "degisiklik yoksa yeniden baslatma yok"
+        );
+
+        let mut tls = base.clone();
+        tls.web_tls = true;
+        assert!(
+            web_restart_needed(&base, &tls),
+            "web_tls degisimi yeniden baslatir"
+        );
+
+        let mut port = base.clone();
+        port.web_port = 6791;
+        assert!(web_restart_needed(&base, &port));
+
+        let mut bind = base.clone();
+        bind.web_bind = "127.0.0.1".into();
+        assert!(web_restart_needed(&base, &bind));
+
+        let mut token = base.clone();
+        token.web_token = "abc".into();
+        assert!(web_restart_needed(&base, &token));
+
+        let mut enabled = base.clone();
+        enabled.web_enabled = !base.web_enabled;
+        assert!(web_restart_needed(&base, &enabled));
+
+        // Alakasiz ayar yeniden baslatma tetiklememeli (gereksiz kesinti olmasin).
+        let mut downloads = base.clone();
+        downloads.max_concurrent += 1;
+        assert!(!web_restart_needed(&base, &downloads));
     }
 
     #[test]

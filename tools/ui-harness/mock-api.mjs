@@ -25,6 +25,7 @@ const SETTINGS = {
   webPort: 6790,
   webBind: "0.0.0.0",
   webToken: "ev2026",
+  webTls: false,
   torrentEnabled: true,
   notifyOnFinish: true,
   proxyUrl: "",
@@ -48,6 +49,7 @@ const APP_INFO = {
     url: "http://127.0.0.1:6790",
     lanUrls: ["http://192.168.1.42:6790"],
     tokenRequired: true,
+    tls: false,
   },
   webQr: null,
   ytdlp: {

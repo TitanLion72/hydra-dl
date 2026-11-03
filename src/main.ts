@@ -1072,6 +1072,7 @@ const setHunter = $<HTMLInputElement>("#set-hunter");
 const setWeb = $<HTMLInputElement>("#set-web");
 const setWebPort = $<HTMLInputElement>("#set-web-port");
 const setWebToken = $<HTMLInputElement>("#set-web-token");
+const setWebTls = $<HTMLInputElement>("#set-web-tls");
 const setTorrent = $<HTMLInputElement>("#set-torrent");
 const webUrl = $<HTMLInputElement>("#web-url");
 const qrRow = $("#qr-row");
@@ -1101,9 +1102,11 @@ function bindSettingsForm(source: Settings, appInfo: AppInfo | null) {
   setWeb.checked = source.webEnabled;
   setWebPort.value = String(source.webPort);
   setWebToken.value = source.webToken;
+  setWebTls.checked = source.webTls;
   setTorrent.checked = source.torrentEnabled;
   const web = appInfo?.web;
-  webUrl.value = web?.url ?? `http://127.0.0.1:${source.webPort}`;
+  const scheme = source.webTls ? "https" : "http";
+  webUrl.value = web?.url ?? `${scheme}://127.0.0.1:${source.webPort}`;
   if (appInfo?.webQr) {
     webQr.src = appInfo.webQr;
     qrRow.hidden = false;
@@ -1184,6 +1187,7 @@ async function saveSettings() {
     webEnabled: setWeb.checked,
     webPort: clampNumber(setWebPort.value, 1024, 65535, 6790),
     webToken: setWebToken.value.trim().replace(/[^A-Za-z0-9]/g, ""),
+    webTls: setWebTls.checked,
     torrentEnabled: setTorrent.checked,
   };
   try {
