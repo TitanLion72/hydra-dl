@@ -2,7 +2,7 @@
 
 > Yeni oturum: **önce bu dosyayı oku**, sonra `git status`. Bitirdiğin dilimi en alta 10 satır yaz.
 
-**Son güncelleme:** 2026-11-03 · v0.3.8 · AGPL-3.0-or-later
+**Son güncelleme:** 2026-11-03 · v0.3.9 · AGPL-3.0-or-later
 
 ---
 
@@ -16,7 +16,7 @@ telefon için web arayüzü, tarayıcı eklentisi (panel + avcı modu).
 
 **Kurulu sürüm:** v0.3.8, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
 girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
-`src-tauri\target\release\bundle\nsis\Hydra DL_0.3.8_x64-setup.exe`.
+`src-tauri\target\release\bundle\nsis\Hydra DL_0.3.9_x64-setup.exe`.
 
 ## Doğrulanmış (bu oturum, kanıt var)
 
@@ -54,6 +54,7 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
 | **Eklenti birim (0.3.6)** | `test-extension.mjs` → **30 geçti** (9 yeni netlog testi) |
 | **HTTPS (0.3.7)** | `check-web-tls.mjs`: HTTP→HTTPS geçişi, SAN'lar, http reddi, token 401→200, sertifika sabit — **21/21** |
 | **Toplu içe aktarma (0.3.8)** | `test-links.mjs` 27; ui-harness + web-ui-check yeni senaryolar; canlı: 3 dosya indi, sha256 ✓ — **12/12** |
+| **Sanal liste (0.3.9)** | `test-virtual.mjs` 28; ui-harness: 300 kayıtta DOM'da **14 satır**, sona kaydırma son kaydı çizdi, seçim→duraklat API'ye gitti |
 | Rust testleri | `cargo test` → **138 passed** (1 ağ testi `#[ignore]`); 8 TLS + `web_restart_needed` |
 
 ## Bu oturumda düzeltilen gerçek hatalar
@@ -65,7 +66,6 @@ Tam liste ve kök nedenler: [`docs/HISTORY.md`](docs/HISTORY.md) (25 madde).
 - Geçici sunucu hatalarında yeniden deneme (429/503 + `Retry-After`).
 - Torrent'te dosya seçimi, bağlantı bütçesi 64, DHT'siz devam.
 - Ağ yakalama: paralel istekler aynı listeyi ezmesin diye sekme başına yazma kuyruğu.
-
 
 ## Bilinen açık uçlar
 
@@ -129,16 +129,15 @@ yeterli değil.
 2. **Dış PR'lar (`smart-screen`, bizim repo değil):** #3 yol enjeksiyonu **doğru** (ham
    soketle 10/10); #1 `audit` kırmızısını gideriyor; #2 çakışıyor ve lockfile'da alakasız
    sürüm değişikliği var. Kullanıcı onayı bekliyor.
-3. **Toplu içe aktarma (0.3.8) — BİTTİ (12/12 canlı).** Ayrıştırıcı tek kaynak
-   `webapp/links.js` (masaüstü `src/links.ts` + telefon `app.js` aynı kod): satır/virgül,
-   `<sarmal>`, noktalama, dengeli parantez, `magnet`, yinelenen eleme, 500 sınırı.
-   Arayüz: "Toplu" düğmesi + Ctrl+Shift+V; panoda çok bağlantı varsa "Yapıştır" paneli
-   açar; telefonda katlanır kutu; başarısızlar kutuda kalır.
-4. **v0.3 devam:** tarihte toplu seçim + sanal liste (>200 kayıt), yt-dlp otomatik
-   güncelleme, DASH'te kaldığı yerden devam. (Çerez 0.2.9, tray 0.3.0, arama/sıralama 0.3.1,
-   HLS 0.3.3, DASH 0.3.4, torrent yükleme 0.3.5, yakalama 0.3.6, HTTPS 0.3.7,
-   toplu içe aktarma 0.3.8 bitti.)
-5. Küçükler: `ringbuf` muafiyeti `librqbit-utp` 0.4.9+/0.5.2+ çıkınca kalkar; torrent proxy
+3. **Toplu içe aktarma (0.3.8) — BİTTİ (12/12 canlı).** Tek kaynak `webapp/links.js`:
+   satır/virgül, `<sarmal>`, noktalama, `magnet`, yinelenen eleme, 500 sınırı.
+   "Toplu" düğmesi + Ctrl+Shift+V; telefonda katlanır kutu; başarısızlar kutuda kalır.
+4. **Toplu seçim + sanal liste (0.3.9) — BİTTİ.** Seçim kutuları, seçim çubuğu
+   (duraklat/devam/iptal/çıkar), Ctrl+A. 150+ kayıtta yalnız görünen pencere çizilir
+   (`src/virtual.ts`: değişken yükseklik, overscan, kaydırma kırpma). Kanıt: 300 kayıtta
+   DOM'da 14 satır, sona kaydırma son kaydı çizdi, seçim→duraklat API'ye gitti.
+5. **v0.3 devam:** yt-dlp otomatik güncelleme, DASH'te kaldığı yerden devam.
+6. Küçükler: `ringbuf` muafiyeti `librqbit-utp` 0.4.9+/0.5.2+ çıkınca kalkar; torrent proxy
    desteği librqbit proxy kazanınca `proxyUrl`'e bağlanır.
 
 ## Oturum kesilirse ilk komut

@@ -18,6 +18,13 @@ import {
   type TorrentListing,
 } from "./api";
 import { MAX_LINKS, parseLinkList } from "./links";
+import {
+  buildLayout,
+  clampScroll,
+  visibleRange,
+  VIRTUAL_THRESHOLD,
+  type Layout,
+} from "./virtual";
 
 type Filter = "all" | "active" | "queued" | "done" | "failed";
 type Sort = "new" | "old" | "name" | "size" | "status";
@@ -59,8 +66,18 @@ let settings: Settings | null = null;
 let info: AppInfo | null = null;
 let adding = false;
 
+/** Seçili kayıtlar (toplu işlem için). Kayıt silinirse buradan da düşer. */
+const selection = new Set<string>();
+
+/** Sanal liste: satır yükseklikleri ölçüldükçe burada birikir. */
+const rowHeights = new Map<string, number>();
+const content = document.querySelector<HTMLElement>(".content")!;
+let virtualMode = false;
+let scrollScheduled = false;
+
 interface RowRefs {
   root: HTMLLIElement;
+  pick: HTMLInputElement;
   icon: HTMLDivElement;
   name: HTMLElement;
   badge: HTMLElement;
@@ -172,6 +189,9 @@ function createRow(item: Download): RowRefs {
   root.className = "row";
   root.dataset.id = item.id;
   root.innerHTML = `
+    <label class="pick" title="Seç">
+      <input type="checkbox" aria-label="Kaydı seç" />
+    </label>
     <div class="type-icon"></div>
     <div class="row-main">
       <div class="row-top">
@@ -195,6 +215,7 @@ function createRow(item: Download): RowRefs {
 
   const refs: RowRefs = {
     root,
+    pick: root.querySelector(".pick input") as HTMLInputElement,
     icon: root.querySelector(".type-icon") as HTMLDivElement,
     name: root.querySelector(".name") as HTMLElement,
     badge: root.querySelector(".badge") as HTMLElement,
@@ -223,6 +244,9 @@ function hostOf(url: string): string {
 function updateRow(refs: RowRefs, item: Download) {
   const frac = clampFraction(item);
   refs.root.dataset.status = item.status;
+  const picked = selection.has(item.id);
+  refs.root.classList.toggle("selected", picked);
+  refs.pick.checked = picked;
   refs.name.textContent = item.filename;
   refs.name.title = item.filename;
 
@@ -407,26 +431,210 @@ function sortDownloads(items: Download[]): Download[] {
   return copy;
 }
 
-function render() {
-  const visible = sortDownloads(downloads.filter(matches));
-  const visibleIds = new Set(visible.map((d) => d.id));
+// ---------------------------------------------------------------------------
+// Liste çizimi — sanal pencere (>150 kayıt) + toplu seçim
+// ---------------------------------------------------------------------------
+
+/** Bir satırın üst kenarını mutlak konumla belirler (sanal mod). */
+function positionRow(refs: RowRefs, top: number) {
+  refs.root.style.transform = `translateY(${top}px)`;
+}
+
+/** Sanal modda inline stilleri kurar/temizler. */
+function setVirtualMode(enabled: boolean) {
+  if (enabled === virtualMode) return;
+  virtualMode = enabled;
+  // Mod değişince satırlar yeniden kurulur: eski inline stiller karışmasın.
+  resetRows();
+  list.classList.toggle("virtual", enabled);
+  list.style.height = "";
+}
+
+/**
+ * Görünen kayıtları çizer.
+ *
+ * 150 kayda kadar hepsi DOM'da (basit, animasyonlu akış). Üstünde yalnız
+ * görünen pencere + overscan çizilir; kaydırma `requestAnimationFrame` ile
+ * yeniden pencerelenir. Yükseklikler ölçülüp önbelleğe yazılır.
+ */
+function renderList(visible: Download[]) {
+  const useVirtual = visible.length >= VIRTUAL_THRESHOLD;
+  setVirtualMode(useVirtual);
+
+  const ids = visible.map((item) => item.id);
+  let layout: Layout | null = null;
+  if (useVirtual) {
+    layout = buildLayout(ids, (id) => rowHeights.get(id));
+    // Liste kısaldıysa kaydırma boşluğa düşmesin.
+    const maxScroll = clampScroll(content.scrollTop, layout.total, content.clientHeight);
+    if (Math.abs(maxScroll - content.scrollTop) > 1) content.scrollTop = maxScroll;
+  }
+
+  const range = layout
+    ? visibleRange(layout, content.scrollTop, content.clientHeight)
+    : { start: 0, end: visible.length };
+  const needed = new Set(ids.slice(range.start, range.end));
+
+  // Filtre/sıralama dışında kalanları da, pencereden çıkanları da at.
   for (const [id, refs] of rows) {
-    if (!visibleIds.has(id)) {
+    if (!needed.has(id)) {
       refs.root.remove();
       rows.delete(id);
     }
   }
-  visible.forEach((item, index) => {
+
+  for (let index = range.start; index < range.end; index += 1) {
+    const item = visible[index];
     let refs = rows.get(item.id);
     if (!refs) {
       refs = createRow(item);
       rows.set(item.id, refs);
+      refs.pick.checked = selection.has(item.id);
+      refs.root.classList.toggle("selected", selection.has(item.id));
     } else {
       updateRow(refs, item);
     }
-    const current = list.children[index];
-    if (current !== refs.root) list.insertBefore(refs.root, current ?? null);
+    if (layout) {
+      if (refs.root.parentElement !== list) list.append(refs.root);
+      positionRow(refs, layout.offsets[index]);
+    } else {
+      const current = list.children[index];
+      if (current !== refs.root) list.insertBefore(refs.root, current ?? null);
+    }
+  }
+
+  if (!layout) return;
+
+  list.style.height = `${layout.total}px`;
+
+  // Ölçülen yükseklik tahminden farklıysa konumları bir kez düzelt.
+  let changed = false;
+  for (let index = range.start; index < range.end; index += 1) {
+    const id = ids[index];
+    const refs = rows.get(id);
+    if (!refs) continue;
+    const measured = refs.root.offsetHeight;
+    if (measured > 0 && Math.abs((rowHeights.get(id) ?? -1) - measured) > 0.5) {
+      rowHeights.set(id, measured);
+      changed = true;
+    }
+  }
+  if (changed) {
+    const corrected = buildLayout(ids, (id) => rowHeights.get(id));
+    list.style.height = `${corrected.total}px`;
+    for (let index = range.start; index < range.end; index += 1) {
+      const refs = rows.get(ids[index]);
+      if (refs) positionRow(refs, corrected.offsets[index]);
+    }
+  }
+}
+
+/** Kaydırma sırasında pencereyi tazele (kare başına en fazla bir kez). */
+function scheduleScrollRender() {
+  if (!virtualMode || scrollScheduled) return;
+  scrollScheduled = true;
+  requestAnimationFrame(() => {
+    scrollScheduled = false;
+    if (virtualMode) renderList(sortDownloads(downloads.filter(matches)));
   });
+}
+
+const selectbar = $<HTMLElement>("#selectbar");
+const selectCount = $("#select-count");
+
+/** Seçim barını ve düğmelerin uygunluğunu tazeler. */
+function renderSelectionBar() {
+  // Silinen kayıtlar seçimde kalmasın.
+  for (const id of [...selection]) {
+    if (!downloads.some((item) => item.id === id)) selection.delete(id);
+  }
+  const count = selection.size;
+  selectbar.hidden = count === 0;
+  if (count === 0) return;
+
+  selectCount.textContent = `${count} kayıt seçili`;
+  const picked = downloads.filter((item) => selection.has(item.id));
+  const canPause = picked.some((d) => d.status === "downloading" || d.status === "queued");
+  const canResume = picked.some(
+    (d) => d.status === "paused" || d.status === "failed" || d.status === "cancelled",
+  );
+  const canCancel = picked.some(
+    (d) => d.status === "downloading" || d.status === "queued" || d.status === "paused",
+  );
+  for (const button of selectbar.querySelectorAll<HTMLButtonElement>("button[data-bulk]")) {
+    const action = button.dataset.bulk;
+    // Her turda sıfırla: `runBulk` çalışırken hepsini kilitliyor, aksi hâlde
+    // "Seçimi temizle" kilitli kalırdı.
+    button.disabled = false;
+    if (action === "pause") button.disabled = !canPause;
+    if (action === "resume") button.disabled = !canResume;
+    if (action === "cancel") button.disabled = !canCancel;
+  }
+}
+
+/** Seçili kayıtları etkiler; uygun olmayanları sayar. */
+async function runBulk(action: "pause" | "resume" | "cancel" | "remove") {
+  const picked = downloads.filter((item) => selection.has(item.id));
+  if (picked.length === 0) return;
+
+  const eligible = picked.filter((item) => {
+    switch (action) {
+      case "pause":
+        return item.status === "downloading" || item.status === "queued";
+      case "resume":
+        return item.status === "paused" || item.status === "failed" || item.status === "cancelled";
+      case "cancel":
+        return item.status === "downloading" || item.status === "queued" || item.status === "paused";
+      case "remove":
+        return true;
+    }
+  });
+
+  if (eligible.length === 0) {
+    toast("Seçilenler bu işlem için uygun değil", "info");
+    return;
+  }
+
+  for (const button of selectbar.querySelectorAll<HTMLButtonElement>("button[data-bulk]")) {
+    button.disabled = true;
+  }
+
+  let failed = 0;
+  // Sırayla: kuyruk yöneticisi zaten kendi eşzamanlılığını yönetiyor; biz
+  // yalnız komutları gönderiyoruz (200 kayıtta 200 paralel çağrı yapmayalım).
+  for (const item of eligible) {
+    try {
+      if (action === "pause") await api.pause(item.id);
+      else if (action === "resume") await api.resume(item.id);
+      else if (action === "cancel") await api.cancel(item.id);
+      else await api.remove(item.id, false);
+    } catch {
+      failed += 1;
+    }
+  }
+
+  const done = eligible.length - failed;
+  const labels: Record<typeof action, string> = {
+    pause: "duraklatıldı",
+    resume: "devam ettirildi",
+    cancel: "iptal edildi",
+    remove: "listeden çıkarıldı",
+  };
+  const skipped = picked.length - eligible.length;
+  const bits = [`${done} kayıt ${labels[action]}`];
+  if (skipped > 0) bits.push(`${skipped} atlandı`);
+  if (failed > 0) bits.push(`${failed} başarısız`);
+  toast(bits.join(" · "), failed > 0 ? "error" : done > 0 ? "success" : "info");
+
+  if (action === "remove") {
+    for (const item of eligible) selection.delete(item.id);
+  }
+  renderSelectionBar();
+}
+
+function render() {
+  const visible = sortDownloads(downloads.filter(matches));
+  renderList(visible);
 
   empty.hidden = visible.length > 0;
   if (visible.length === 0 && downloads.length > 0) {
@@ -1063,6 +1271,18 @@ $("#probe-btn").addEventListener("click", () => void probeAndOpen());
 
 list.addEventListener("click", async (event) => {
   const target = event.target as HTMLElement;
+  // Seçim kutusu: satır eylemiyle karışmasın.
+  const pick = target.closest<HTMLInputElement>(".pick input");
+  if (pick) {
+    const row = pick.closest<HTMLElement>(".row");
+    const id = row?.dataset.id;
+    if (id) {
+      if (pick.checked) selection.add(id);
+      else selection.delete(id);
+      renderSelectionBar();
+    }
+    return;
+  }
   const button = target.closest<HTMLButtonElement>("button[data-action]");
   if (!button) return;
   const row = button.closest<HTMLElement>(".row");
@@ -1114,6 +1334,24 @@ function resetRows() {
   for (const refs of rows.values()) refs.root.remove();
   rows.clear();
 }
+
+selectbar.addEventListener("click", (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-bulk]");
+  if (!button) return;
+  const action = button.dataset.bulk;
+  if (action === "clear") {
+    selection.clear();
+    for (const refs of rows.values()) refs.pick.checked = false;
+    renderSelectionBar();
+    return;
+  }
+  if (action === "pause" || action === "resume" || action === "cancel" || action === "remove") {
+    void runBulk(action);
+  }
+});
+
+content.addEventListener("scroll", scheduleScrollRender, { passive: true });
+window.addEventListener("resize", scheduleScrollRender);
 
 filters.addEventListener("click", (event) => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-filter]");
@@ -1529,7 +1767,13 @@ window.addEventListener("keydown", (event) => {
     urlInput.focus();
     urlInput.select();
   }
-  // Toplu içe aktarma: Ctrl+Shift+V (panoda liste varsa pencere hazır gelir).
+  // Ctrl+A (yazı alanında değilken) → görünen tüm kayıtları seç.
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a" && !typing) {
+    event.preventDefault();
+    for (const item of sortDownloads(downloads.filter(matches))) selection.add(item.id);
+    for (const [id, refs] of rows) refs.pick.checked = selection.has(id);
+    renderSelectionBar();
+  }  // Toplu içe aktarma: Ctrl+Shift+V (panoda liste varsa pencere hazır gelir).
   if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "v") {
     event.preventDefault();
     void (async () => {

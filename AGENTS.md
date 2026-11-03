@@ -20,6 +20,7 @@ node tools/hygiene.mjs                                               # depo/disk
 node tools/build-extension.mjs                                       # eklenti paketleri
 node tools/ui-harness/run.mjs                                        # masaüstü UI (mock API)
 node tools/test-links.mjs                                           # toplu içe aktarma ayrıştırıcısı
+node tools/test-virtual.mjs                                         # sanal liste yerleşimi
 node tools/net-capture-check.mjs                                     # eklenti ağ yakalama (gerçek tarayıcı)
 ```
 
@@ -47,6 +48,7 @@ node tools/net-capture-check.mjs                                     # eklenti a
 | `src-tauri/src/capture.rs` | aynı yönlendiriciyi `127.0.0.1:6712`'de açar (eklenti) |
 | `src-tauri/src/commands.rs` | Tauri komut yüzeyi |
 | `src/` | masaüstü arayüzü (vanilla TS); durum yalnız `downloads:changed` |
+| `src/virtual.ts` | **sanal liste matematiği** (saf): satır ofsetleri, görünen pencere, kaydırma kırpma |
 | `webapp/` | telefonda çalışan statik arayüz (derleme yok, SSE) |
 | `webapp/links.js` | **toplu içe aktarma ayrıştırıcısı** (saf, tek kaynak): satır/virgül/boşluk, `<sarmal>`, noktalama, `magnet`, yinelenen eleme, 500 sınırı |
 | `extension/` | Chrome/Edge MV3: panel, avcı modu, **ağdan medya yakalama** (`webRequest`), sağ tık. **Tek kaynak**; `node tools/build-extension.mjs` ile `build/extensions/{chrome,firefox}` üretilir |
@@ -123,36 +125,18 @@ değil. Ayrıntı ve tehdit modeli: `SECURITY.md`. Kontrol: `node tools/security
   için "yalnız izin verilen içerik" uyarısı arayüzde durur.
 - **Arayüz Türkçe, kod İngilizce.** Kullanıcıya görünen her metin Türkçe ve doğru yazım.
 
-## Tuzaklar
+## Tuzaklar (özet — ayrıntı `docs/TRAPS.md`)
 
 - `npm.ps1` engelli → `npm.cmd`.
-- PowerShell 5.1 `Set-Content -Encoding UTF8` BOM ekler; Rust dosyalarında BOM bırakma.
-  Dosyaları `write`/`edit` araçlarıyla düzenle.
-- Vite portu 1420 `strictPort`. Yakalama 6712, web 6790 varsayılan; çakışırsa ayarlardan değiştir.
-- `webapp/` statik: derleme adımı yok. Tauri paketine `resources` ile **hedef adı verilerek**
-  girer (`{"../webapp": "webapp"}`). Kaynak `src-tauri` dışındaysa Tauri dosyaları
-  `resource/_up_/` altına koyar; kod her iki yolu da dener (`web::pick_webapp_dir`).
-- **Kurulum paketi ayrı test edilmeli:** `tauri dev` çalışsa bile NSIS paketi bozuk olabilir
-  (bu bir kez oldu: web arayüzü 404). Değişiklikten sonra
-  `npm run tauri build` → `setup.exe /S /D=%TEMP%\hydra-test` → farklı cwd'den çalıştır →
-  `/health` + `/` kontrol et.
-- yt-dlp yoksa medya indirmesi çalışmaz; arayüz bunu "bulunamadı" olarak göstermeli, sessiz düşmemeli.
-- Torrent testleri gerçek ağ trafiği üretir; CI'da yalnız kaynak tanıma testleri koşar.
-- `src-tauri/target`, `node_modules`, `dist`, `*.log` üretim/geçici — git'e girmez.
-- **Disk dolabilir**: `src-tauri\target` birikimli olarak **50 GB+** olabiliyor; disk
-  %99 dolduğunda derleme `os error 112` (yer yok) ile düşer. Belirti alışılmadık:
-  `failed to build archive ... .lib`. Çözüm: `cargo clean`, sonra tekrar derle.
-  Hızlı test için `CARGO_TARGET_DIR=%TEMP%\hydra-target` kullanılabilir.
-- Yakalama API'si `127.0.0.1`'e kilitli; web API'si LAN'a açılır. İkisini karıştırma.
-- **`setup()` ana thread'de çalışır.** Orada `tokio::spawn` çağırma → "there is no reactor
-  running" paniği, süreç 0xc0000409 ile sessizce kapanır. `tauri::async_runtime::spawn` kullan.
-- **Tarayıcı API farkı:** Chrome `chrome.*`, Firefox `browser.*` (promise tabanlı) sunar.
-  Bu yüzden kod `chrome.` yerine `HX.api.` kullanır (`extension/compat.js` her bağlamda
-  **ilk** yüklenmeli: `importScripts`, `content_scripts.js[0]`, HTML'de ilk `<script>`).
-  Yeni kod yazarken callback'li `chrome.*` çağrısı ekleme — Firefox'ta çalışmaz.
-- **Firefox MV3 host izni** kurulumda otomatik gelmez: ayarlar sayfasındaki
-  *Yerel erişim izni ver* düğmesi `permissions.request` çağırır. Bu düğmeyi kaldırma.
-- `build/extensions/*` üretilen çıktıdır; elle düzenleme, `extension/`'ı düzenle.
+- Disk dolunca derleme garip düşer (`failed to build archive`, `no space on device`);
+  `hygiene --clean` + `cargo clean`.
+- `setup()` ana thread'de: orada `tokio::spawn` **yasak** → süreç sessizce kapanır.
+- `panic = "abort"`: panic tüm süreci öldürür; yeni bağımlılık eklerken stderr'i yakala.
+- Vite 1420 `strictPort`; yakalama 6712 (loopback), web 6790 (LAN).
+- Paketlenen `webapp/` ayrı test edilmeli; `tauri dev` yeşilken NSIS bozuk olabilir.
+- Eklenti `HX.api.` kullanır (`compat.js` ilk yüklenir); `chrome.*` callback ekleme.
+- `build/extensions/*` üretilen çıktı; kaynağı `extension/`.
+- `.ps1` ASCII; UTF-8 kaynak `write`/`edit` ile.
 
 ## Yeni özellik akışı
 

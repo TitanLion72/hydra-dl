@@ -428,4 +428,29 @@ window.__hydraMock = {
     listHandler(DOWNLOADS.map((item) => ({ ...item })));
     return true;
   },
+  /**
+   * Sanal liste testi: `count` kayıt gönderir (200+ senaryosu).
+   * Durumlar karışık ki toplu işlem uygunluğu da denenebilsin.
+   */
+  pushMany: (count = 300) => {
+    if (!listHandler) return false;
+    const template = DOWNLOADS[0];
+    const items = Array.from({ length: count }, (_, index) => ({
+      ...template,
+      id: `dl-many-${index}`,
+      url: `https://cdn.example.com/dosya-${index}.mp4`,
+      filename: `dosya-${String(index).padStart(3, "0")}.mp4`,
+      status: index === 0 ? "downloading" : index === 1 ? "paused" : "completed",
+      progress: index <= 1 ? 0.42 : 1,
+      // Tutarlı olsun: gerçek sunucu baytları ilerlemeyle uyumlu gönderir.
+      downloadedBytes: Math.round(template.totalBytes * (index <= 1 ? 0.42 : 1)),
+      speedBps: index === 0 ? 1048576 : 0,
+      error: null,
+      createdAt: NOW - index * 1000,
+      finishedAt: index > 1 ? NOW - index * 1000 : null,
+      segments: [],
+    }));
+    listHandler(items);
+    return true;
+  },
 };

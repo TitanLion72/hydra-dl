@@ -54,7 +54,9 @@ v0.2 = "IDM'den iyi" temeli. Sıra bağımlılığa göre; üstteki bitmeden alt
 - [x] **Geçmişte arama + sıralama**: ad/adres araması (Türkçe/büyük-küçük harf
       duyarsız), sıralama (tarih/ad/boyut/durum, tercih kalıcı), Ctrl+F ve `/`
       kısayolları, aramada boş durum metni
-- [ ] Geçmişte toplu seçim, sanal liste (>200 kayıt)
+- [x] **Geçmişte toplu seçim + sanal liste**: satır seçim kutuları, seçim çubuğu
+      (duraklat/devam/iptal/çıkar), Ctrl+A; 150+ kayıtta yalnız görünen pencere çizilir
+      (`src/virtual.ts`, değişken satır yüksekliği, overscan) — 300 kayıtta DOM'da ~14 satır
 - [ ] yt-dlp otomatik güncelleme (sürüm kontrolü + tek tık)
 
 ## Güvenlik — tamamlanan (2026-10-28)

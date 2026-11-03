@@ -503,6 +503,86 @@ async function main() {
     await page.keyboard.press("Escape");
     await page.waitForSelector("#settings-drawer", { state: "hidden", timeout: 5000 });
 
+    // --- 6f. Sanal liste: 300 kayitta DOM sinirli kalir --------------------
+    await page.evaluate(() => window.__hydraMock.pushMany(300));
+    await page.waitForFunction(
+      () => (document.querySelector("#count-all")?.textContent ?? "") === "300",
+      null,
+      { timeout: 15_000 },
+    );
+    const domRows = await page.evaluate(() => document.querySelectorAll("#list .row").length);
+    check(domRows > 0 && domRows < 60, `300 kayitta DOM'da ${domRows} satir (sinirli)`);
+    check(
+      await page.evaluate(() => document.querySelector("#list")?.classList.contains("virtual")),
+      "liste sanal moda gecti",
+    );
+    const firstVisible = await page.evaluate(
+      () => document.querySelector("#list .row")?.dataset.id ?? "",
+    );
+    check(firstVisible === "dl-many-0", `en ustteki kayit ilk sirada (${firstVisible})`);
+    await shot("04b-virtual.png");
+
+    // Sona kaydir: son kayit gorunur olmali (offset hesabi dogru).
+    await page.evaluate(() => {
+      const content = document.querySelector(".content");
+      if (content) content.scrollTop = content.scrollHeight;
+    });
+    await page.waitForFunction(
+      () => {
+        const rows = [...document.querySelectorAll("#list .row")];
+        return rows.some((row) => row.dataset.id === "dl-many-299");
+      },
+      null,
+      { timeout: 15_000 },
+    );
+    ok("sona kaydirinca son kayit cizildi");
+    const bottomRows = await page.evaluate(() => document.querySelectorAll("#list .row").length);
+    check(bottomRows < 60, `kaydirmada da DOM sinirli (${bottomRows} satir)`);
+
+    // --- 6g. Toplu secim --------------------------------------------------
+    await page.evaluate(() => {
+      const content = document.querySelector(".content");
+      if (content) content.scrollTop = 0;
+    });
+    await page.waitForTimeout(200);
+    await page.evaluate(() => {
+      const boxes = [...document.querySelectorAll("#list .pick input")];
+      for (const box of boxes.slice(0, 3)) box.click();
+    });
+    await page.waitForSelector("#selectbar:not([hidden])", { timeout: 5000 });
+    const selectText = (await page.locator("#select-count").textContent()) ?? "";
+    check(selectText.includes("3"), `secim cubugu 3 kayit gosteriyor ('${selectText.trim()}')`);
+    check(
+      (await page.locator("#selectbar button[data-bulk='pause']").isEnabled()) === true,
+      "duraklat etkin (secimde aktif kayit var)",
+    );
+    await shot("04c-secim.png");
+
+    const pauseBefore = await page.evaluate(() => window.__hydraCalls.pause.length);
+    await page.click("#selectbar button[data-bulk='pause']");
+    await page.waitForFunction(
+      (before) => window.__hydraCalls.pause.length > before,
+      pauseBefore,
+      { timeout: 10_000 },
+    );
+    const paused = await page.evaluate((before) => window.__hydraCalls.pause.slice(before), pauseBefore);
+    check(paused.includes("dl-many-0"), `secilen aktif kayit duraklatildi (${paused.join(", ")})`);
+
+    await page.click("#selectbar button[data-bulk='clear']");
+    await page.waitForSelector("#selectbar", { state: "hidden", timeout: 5000 });
+    ok("secim temizlendi, cubuk kapandi");
+    await page.evaluate(() => window.__hydraMock.pushList());
+    await page.waitForFunction(
+      () => document.querySelectorAll("#list .row").length === 5,
+      null,
+      { timeout: 10_000 },
+    );
+    ok("normal listeye donunce sanal mod kapandi");
+    check(
+      !(await page.evaluate(() => document.querySelector("#list")?.classList.contains("virtual"))),
+      "liste artik sanal degil",
+    );
+
     // --- 7. Konsol ---------------------------------------------------------
     if (consoleErrors.length === 0) {
       ok("konsol hatasi yok");

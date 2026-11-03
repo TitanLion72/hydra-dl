@@ -67,7 +67,8 @@ svg {
 
 .app {
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  /* topbar · ekleme · araç çubuğu · liste (esner) · seçim çubuğu · durum */
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
   height: 100vh;
   max-width: 1240px;
   margin: 0 auto;
@@ -521,7 +522,7 @@ svg {
 
 .row {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 138px;
+  grid-template-columns: 20px 42px minmax(0, 1fr) 138px;
   gap: 14px;
   align-items: center;
   padding: 13px 16px;
@@ -749,6 +750,104 @@ svg {
 
 .row-error[hidden] {
   display: none;
+}
+
+/* Seçim kutusu: satır eylemlerinden bağımsız, sade. */
+.pick {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  cursor: pointer;
+}
+
+.pick input {
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+.pick input:hover {
+  border-color: rgba(34, 211, 238, 0.45);
+}
+
+.pick input:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+  background-image: linear-gradient(180deg, var(--accent), var(--accent-2));
+}
+
+.pick input:checked::after {
+  content: "";
+  display: block;
+  width: 4px;
+  height: 8px;
+  margin: 1px auto 0;
+  border: solid #06121b;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.row.selected {
+  border-color: rgba(34, 211, 238, 0.4);
+  background: linear-gradient(180deg, rgba(34, 211, 238, 0.09), rgba(13, 21, 34, 0.7));
+}
+
+/* Sanal liste: satırlar mutlak konumlanır, liste toplam yüksekliği taşır. */
+.list.virtual {
+  position: relative;
+}
+
+.list.virtual > .row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  will-change: transform;
+}
+
+/* Toplu seçim çubuğu: seçim varken alt şeridin üstünde görünür. */
+.selectbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin: 0 4px 8px 0;
+  border: 1px solid rgba(34, 211, 238, 0.25);
+  border-radius: var(--radius);
+  background: rgba(12, 24, 38, 0.92);
+  backdrop-filter: blur(8px);
+  font-size: 12.5px;
+}
+
+.selectbar[hidden] {
+  display: none;
+}
+
+.selectbar #select-count {
+  color: var(--accent);
+  font-weight: 550;
+  margin-right: 4px;
+  white-space: nowrap;
+}
+
+.selectbar .spacer {
+  flex: 1;
+}
+
+.selectbar .danger {
+  color: #fca5a5;
+}
+
+.selectbar .danger:hover {
+  border-color: rgba(248, 113, 113, 0.45);
+  color: #fecaca;
 }
 
 .row-side {
