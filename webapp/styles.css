@@ -478,8 +478,7 @@ a {
   transition: border-color 0.15s ease, color 0.15s ease;
 }
 
-/* Toplu içe aktarma (telefon): katlanır liste kutusu. */
-.bulk {
+/* Toplu içe aktarma (telefon): katlanır liste kutusu. */.bulk {
   margin: 0 0 8px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -542,6 +541,24 @@ a {
 .bulk .btn {
   width: calc(100% - 24px);
   margin: 0 12px 12px;
+}
+
+/* yt-dlp güncelleme düğmeleri: iki düğme yan yana, dar ekranda taşmasın. */
+#ytdlpUpdateRow {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 8px;
+  flex-wrap: wrap;
+}
+
+#ytdlpUpdateRow[hidden] {
+  display: none;
+}
+
+#ytdlpUpdateRow .btn {
+  flex: 1 1 auto;
+  width: auto;
+  margin: 0;
 }
 
 .torrent-upload:active {

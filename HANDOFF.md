@@ -2,7 +2,7 @@
 
 > Yeni oturum: **önce bu dosyayı oku**, sonra `git status`. Bitirdiğin dilimi en alta 10 satır yaz.
 
-**Son güncelleme:** 2026-11-03 · v0.3.9 · AGPL-3.0-or-later
+**Son güncelleme:** 2026-11-05 · v0.4.0 · AGPL-3.0-or-later
 
 ---
 
@@ -14,9 +14,9 @@ telefon için web arayüzü, tarayıcı eklentisi (panel + avcı modu).
 
 **Repo public:** <https://github.com/TitanLion72/hydra-dl> (AGPL-3.0, ilk commit `9495fd4`).
 
-**Kurulu sürüm:** v0.3.8, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
+**Kurulu sürüm:** v0.4.0, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
 girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
-`src-tauri\target\release\bundle\nsis\Hydra DL_0.3.9_x64-setup.exe`.
+`src-tauri\target\release\bundle\nsis\Hydra DL_0.4.0_x64-setup.exe`.
 
 ## Doğrulanmış (bu oturum, kanıt var)
 
@@ -34,8 +34,8 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
 | LAN erişimi | `http://192.168.1.106:6790/health` → 200 |
 | Masaüstü UI | `tools/ui-harness` → torrent dosya seçimi dahil, konsol hatası yok |
 | Telefon arayüzü | `node tools/web-ui-check.mjs` → PASS (yt-dlp + torrent dosya seçimi + retry) |
-| **Yeniden deneme** | Yerel axum: 503×2→başarı, `Retry-After` beklendi, 404 → tekrar yok, 5. denemede vazgeçme; canlı kurulu 0.2.4'te de sha256 doğru |
-| **Yol okuma açığı (kapandı)** | Canlı: `GET /C:/Windows/win.ini` → 400, kaynak dosya → 400, `/..%2f..%2fAGENTS.md` → 400, `/app.js` → 200 |
+| **Yeniden deneme** | 503×2→başarı, `Retry-After` beklendi, 404 → tekrar yok; canlı 0.2.4'te sha256 doğru |
+| **Yol okuma açığı (kapandı)** | Canlı: `GET /C:/Windows/win.ini` → 400, kaynak dosya → 400, `/..%2f..%2fAGENTS.md` → 400 |
 | **Güvenlik taraması** | `node tools/security-check.mjs` → PASS (koruma regresyonu + sır/yol) |
 | **cargo audit** | `cd src-tauri && cargo audit` → exit 0 (1 gerekçeli istisna: ringbuf/librqbit-utp) |
 | e2e 503 senaryosu | `tools/e2e.mjs` → 16 MB + 503'lü 2 MB kaynak, iki hash de doğru |
@@ -55,7 +55,8 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
 | **HTTPS (0.3.7)** | `check-web-tls.mjs`: HTTP→HTTPS geçişi, SAN'lar, http reddi, token 401→200, sertifika sabit — **21/21** |
 | **Toplu içe aktarma (0.3.8)** | `test-links.mjs` 27; ui-harness + web-ui-check yeni senaryolar; canlı: 3 dosya indi, sha256 ✓ — **12/12** |
 | **Sanal liste (0.3.9)** | `test-virtual.mjs` 28; ui-harness: 300 kayıtta DOM'da **14 satır**, sona kaydırma son kaydı çizdi, seçim→duraklat API'ye gitti |
-| Rust testleri | `cargo test` → **138 passed** (1 ağ testi `#[ignore]`); 8 TLS + `web_restart_needed` |
+| **yt-dlp güncelleme (0.4.0)** | canlı: kontrol 571 ms → ikinci 4 ms (önbellek), gerçek güncelleme 13 sn → "güncelleme yok" |
+| Rust testleri | `cargo test` → **142 passed** (1 ağ testi `#[ignore]`); 6 yeni sürüm karşılaştırma testi |
 
 ## Bu oturumda düzeltilen gerçek hatalar
 
@@ -75,14 +76,11 @@ Tam liste ve kök nedenler: [`docs/HISTORY.md`](docs/HISTORY.md) (25 madde).
 - **Torrent etik sınırı:** motor gerçek ve yasal torrentlerle (Ubuntu, Big Buck Bunny)
   doğrulandı; telifli içerik test edilmedi, edilmeyecek.
 - **Eklenti Chrome/Edge'de gerçek tarayıcıda doğrulandı** (Edge 156 + Playwright, 17 madde;
-  `tools/ext-check/REPORT.md`). Google Chrome markalı derlemede `--load-extension` kapalı
-  olduğu için Chrome yerine Edge kullanıldı; elle yükleme yolu değişmedi.
-- `webapp/` içinde yt-dlp kurulum düğmesi **var** (0.2.3). Telefondan gerçek kurulum
-  denenmedi: arayüz mock API ile, sunucu tarafı gerçek istekle doğrulandı.
+  `tools/ext-check/REPORT.md`). Chrome markalı derlemede `--load-extension` kapalı olduğu
+  için Edge kullanıldı; elle yükleme yolu değişmedi.
 - Torrent dosya seçimi canlı doğrulandı (0.2.3): liste + `files:[0,2]` doğru boyutlar.
-- **Windows bildirimi çalışıyor** (kullanıcı teyit etti, 2026-10-29): biten indirmede toast
-  görünüyor. AUMID kaydı + `notify-rust` yeterliydi. Telefon tarafı kullanıcı tarafından
-  henüz denenmedi (sunucu tarafı test edildi).
+- **Windows bildirimi çalışıyor** (kullanıcı teyit etti): biten indirmede toast görünüyor;
+  AUMID + `notify-rust` yeterliydi. Telefon tarafı cihazda denenmedi.
 - **Çerez/oturum**: eklenti `cookies` izniyle, kullanıcı indirmeyi başlattığında hedef
   adresin çerezlerini toplar ve **yalnız kullanıcının kendi Hydra sunucusuna** gönderir.
   Firefox'ta tüm siteler için host izni kullanıcı onayı ister; izin yoksa indirme
@@ -112,15 +110,11 @@ Tam liste ve kök nedenler: [`docs/HISTORY.md`](docs/HISTORY.md) (25 madde).
   `.torrent` çözümleme tek deneme yapar (kullanıcı yeniden basar); medya (yt-dlp) kendi
   retry'ini yapar.
 
-## Paketleme (bu oturumda bulunan ve düzeltilen hata)
+## Paketleme
 
-İlk NSIS paketi kurulduğunda web arayüzü **404** veriyordu: `resources: ["../webapp"]`
-dosyaları `resource/_up_/webapp` altına koyuyor, kod ise `resource/webapp` arıyordu.
-Düzeltme: `resources` nesne biçimine çevrildi (`{"../webapp": "webapp"}`) + `webapp_dir`
-artık `_up_/webapp`, exe yanı ve cwd'yi de sırayla deniyor (`pick_webapp_dir`, testli).
-**Kurulum paketi her değişiklikten sonra gerçekten kurulup denenmeli** — sadece `tauri dev`
-yeterli değil.
-- Masaüstü kurulum paketi (NSIS) denenmedi: `npm run tauri build`.
+İlk NSIS paketi web arayüzünü **404** veriyordu (`resources` dosyaları `_up_/` altına
+koyuyordu); nesne biçimi + `pick_webapp_dir` ile düzeldi. Paket her değişiklikten sonra
+**gerçekten kurulup** denenmeli — `tauri dev` yeterli değil (`docs/TRAPS.md`).
 
 ## Sıradaki iş
 
@@ -136,8 +130,14 @@ yeterli değil.
    (duraklat/devam/iptal/çıkar), Ctrl+A. 150+ kayıtta yalnız görünen pencere çizilir
    (`src/virtual.ts`: değişken yükseklik, overscan, kaydırma kırpma). Kanıt: 300 kayıtta
    DOM'da 14 satır, sona kaydırma son kaydı çizdi, seçim→duraklat API'ye gitti.
-5. **v0.3 devam:** yt-dlp otomatik güncelleme, DASH'te kaldığı yerden devam.
-6. Küçükler: `ringbuf` muafiyeti `librqbit-utp` 0.4.9+/0.5.2+ çıkınca kalkar; torrent proxy
+5. **yt-dlp güncelleme (0.4.0) — BİTTİ, gerçek ağla doğrulandı.** `GET /ytdlp/latest`
+   (GitHub `tag_name`, 30 dk önbellek) + saf `is_newer` (eksik bileşen 0, `.1` yeni).
+   Masaüstü + telefonda "Güncelleme var mı?" / "Güncelle (sürüm)". Kanıt: kontrol 571 ms,
+   ikinci kontrol 4 ms (ağa çıkmadı), gerçek güncelleme 13 sn → "güncelleme yok".
+   **v0.3 dilimi 14/14 tamam.**
+6. **v0.4 / v1.0:** otomatik güncelleme (uygulama), kod imzalı NSIS, TR/EN, DASH'te
+   kaldığı yerden devam, dayanıklılık testleri.
+7. Küçükler: `ringbuf` muafiyeti `librqbit-utp` 0.4.9+/0.5.2+ çıkınca kalkar; torrent proxy
    desteği librqbit proxy kazanınca `proxyUrl`'e bağlanır.
 
 ## Oturum kesilirse ilk komut

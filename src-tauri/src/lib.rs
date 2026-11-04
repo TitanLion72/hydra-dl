@@ -125,6 +125,7 @@ pub fn run() {
             commands::probe_url,
             commands::get_web_status,
             commands::install_ytdlp,
+            commands::check_ytdlp_update,
         ])
         .run(tauri::generate_context!())
         .expect("Hydra DL baslatilamadi");

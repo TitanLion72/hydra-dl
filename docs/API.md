@@ -208,7 +208,8 @@ bağlantısını izler. Hepsi başarısız olursa `400` ve "indirme sayfası gib
 | Metot | Yol | Not |
 |---|---|---|
 | GET | `/ytdlp` | `{available, path, version}` |
-| POST | `/ytdlp/install` | Resmi son sürümü indirir, `<app_data>/bin/yt-dlp.exe` altına kurar, `--version` ile doğrular. Yanıt `{ok, path}`; hata 502 `{ok:false,error}`. Yavaş olabilir (≈7 sn / 20 MB). |
+| GET | `/ytdlp/latest` | Güncelleme kontrolü: `{current, latest, updateAvailable, error?}`. `latest` GitHub releases API'sinden (`tag_name`), 30 dk önbellekli. **Ağ hatası 200 + `error` alanıyla döner** — istemci "kontrol edilemedi" gösterir, istek başarısız sayılmaz. |
+| POST | `/ytdlp/install` | Resmi son sürümü indirir, `<app_data>/bin/yt-dlp.exe` altına kurar, `--version` ile doğrular. Yanıt `{ok, path}`; hata 502 `{ok:false,error}`. Yavaş olabilir (≈7 sn / 20 MB). Güncelleme de aynı yolu kullanır (üzerine yazar), sonrasında sürüm önbellekleri temizlenir. |
 
 Masaüstü ayrıca `ytdlp:install` olayıyla ilerleme yayınlar:
 `{stage: "downloading"|"verifying"|"done"|"failed", downloaded, total, error?}`.

@@ -91,7 +91,8 @@ async function mockApi(
   const setTorrentFilesCalls = [];
   const addCalls = [];
   const torrentUploads = [];
-  page.__calls = { torrentSources, setTorrentFilesCalls, addCalls, torrentUploads };
+  const latestChecks = [];
+  page.__calls = { torrentSources, setTorrentFilesCalls, addCalls, torrentUploads, latestChecks };
   await page.route("**/events", (route) =>
     route.fulfill({ status: 200, contentType: "text/event-stream", body: ": mock\n\n" }),
   );
@@ -268,6 +269,17 @@ async function mockApi(
       body: JSON.stringify({ ok: true, path: "C:\\fake\\bin\\yt-dlp.exe" }),
     });
   });
+  await page.route("**/ytdlp/latest", async (route) => {
+    latestChecks.push(true);
+    await route.fulfill({
+      ...JSON_OK,
+      body: JSON.stringify(
+        installed
+          ? { current: version, latest: "2026.12.01", updateAvailable: true }
+          : { current: null, latest: "2026.12.01", updateAvailable: false },
+      ),
+    });
+  });
   await page.route("**/ytdlp", async (route) => {
     if (statusDelay) await new Promise((resolve) => setTimeout(resolve, statusDelay));
     await route.fulfill({
@@ -298,6 +310,24 @@ try {
     check(await page.locator("#ytdlpHelp").isHidden(), "kurulu iken yardım metni gizli");
     check(await page.locator("#setNotify").isChecked(), "bildirim anahtarı açık geliyor");
     check((await page.locator("#setProxy").inputValue()) === "", "proxy alanı boş geliyor");
+
+    // Güncelleme kontrolü: yeni sürüm varsa "Güncelle" düğmesi çıkar.
+    check(await page.locator("#ytdlpUpdateRow").isVisible(), "kurulu iken güncelleme satırı görünür");
+    await page.click("#checkYtdlp");
+    await page.waitForFunction(
+      () => (document.querySelector("#ytdlpStatus")?.textContent ?? "").includes("2026.12.01"),
+      null,
+      { timeout: 10000 },
+    );
+    const updateText = (await page.textContent("#ytdlpStatus")).trim();
+    check(updateText.includes("Yeni sürüm"), `telefonda yeni sürüm bildirildi ('${updateText}')`);
+    check(await page.locator("#updateYtdlp").isVisible(), "telefonda Güncelle düğmesi görünür");
+    check(
+      ((await page.textContent("#updateYtdlp")) || "").includes("2026.12.01"),
+      "telefonda Güncelle düğmesi sürümü yazıyor",
+    );
+    check((page.__calls?.latestChecks ?? []).length >= 1, "GET /ytdlp/latest çağrısı gitti");
+    await page.screenshot({ path: path.join(SHOTS, "hydra-webui-ytdlp-guncelle.png") });
     check(errors.length === 0, `konsol hatası yok (${errors.join(" | ")})`);
     await page.screenshot({ path: path.join(SHOTS, "hydra-webui-ytdlp-kurulu.png") });
 

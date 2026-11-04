@@ -187,6 +187,13 @@ pub fn get_ytdlp_status(state: St<'_>) -> Result<YtdlpStatus, String> {
     })
 }
 
+/// yt-dlp güncelleme kontrolü (kurulu sürüm + GitHub'daki son sürüm).
+#[tauri::command]
+pub async fn check_ytdlp_update(state: St<'_>) -> Result<ytdlp::UpdateCheck, String> {
+    let settings = state.settings();
+    let client = state.http();
+    Ok(ytdlp::check_update(&state.app, &client, &settings.ytdlp_path).await)
+}
 /// yt-dlp'yi indirip uygulama klasörüne kurar. İlerleme `ytdlp:install` olayıyla yayınlanır.
 #[tauri::command]
 pub async fn install_ytdlp(state: St<'_>) -> Result<YtdlpStatus, String> {
@@ -204,6 +211,7 @@ pub async fn install_ytdlp(state: St<'_>) -> Result<YtdlpStatus, String> {
         Ok(path) => {
             // Yeni ikili geldi: önbellekteki eski sürüm metni kullanılmasın.
             ytdlp::invalidate_version_cache();
+            ytdlp::invalidate_latest_cache();
             let version = ytdlp::status(&app, "").await.version;
             Ok(YtdlpStatus {
                 available: true,

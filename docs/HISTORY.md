@@ -72,3 +72,15 @@ Numaralar kronolojiktir; yeni hata eklerken en alta ekle.
     `panic = "abort"` olduğu için süreç öldü. Artık `tls::install_crypto_provider()`
     açılışta + `rustls_config` içinde açıkça `aws-lc-rs` kuruyor; regresyon testi
     (`tls_yapilandirmasi_saglayici_kurulunca_olusturulur`) panik'lerse kırmızı olur.
+26. **yt-dlp sürüm karşılaştırması sessizce yanlış cevap verebilirdi** (tasarım aşamasında
+    yakalandı, canlıya çıkmadı): saf `>` karşılaştırması `2026.10.26.1` (yeniden yayın) ile
+    `2026.10.26`'yı ayırt etmiyor ve `2026.10` ile `2026.10.0`'ı farklı sanıyordu. Artık
+    `version_parts` + bileşen bileşen `is_newer`: eksik bileşen `0`, ek bileşen yeni sayılır;
+    kurulu sürüm okunamıyorsa "güncellenebilir", **son** sürüm okunamıyorsa "güncelleme yok"
+    (yanlış yönlendirme yapmıyoruz). 6 birim testi sabitliyor.
+27. **`GET /ytdlp/latest` ağ hatasında isteği düşürüyordu** (tasarım düzeltmesi): istemci
+    "kontrol edilemedi" ile "sürüm yok"u ayırt edemiyor, ayarlar ekranı hata gösteriyordu.
+    Artık ağ hatası **200 + `error` alanı** döner; `current` bilgisi korunur.
+28. **GitHub API bütçesi** (token'sız 60 istek/saat): her ayar açılışında istek atmak
+    bütçeyi bitirirdi → 30 dk `LATEST_CACHE`. Ölçüm: 571 ms → **4 ms**.
+    Güncelleme sonrası iki önbellek de temizlenir (kontrol tazelenir).

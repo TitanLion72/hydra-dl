@@ -57,7 +57,12 @@ v0.2 = "IDM'den iyi" temeli. Sıra bağımlılığa göre; üstteki bitmeden alt
 - [x] **Geçmişte toplu seçim + sanal liste**: satır seçim kutuları, seçim çubuğu
       (duraklat/devam/iptal/çıkar), Ctrl+A; 150+ kayıtta yalnız görünen pencere çizilir
       (`src/virtual.ts`, değişken satır yüksekliği, overscan) — 300 kayıtta DOM'da ~14 satır
-- [ ] yt-dlp otomatik güncelleme (sürüm kontrolü + tek tık)
+- [x] **yt-dlp otomatik güncelleme**: `GET /ytdlp/latest` (GitHub releases `tag_name`,
+      30 dk önbellek) + sürüm karşılaştırma (`is_newer`: eksik bileşen 0, `.1` yeniden
+      yayını yeni sayılır, okunamayan kurulu sürüm güncellenebilir). Masaüstü + telefonda
+      "Güncelleme var mı?" → "Güncelle (sürüm)" düğmesi; güncelleme mevcut kurulum
+      yolunu kullanır, sonrasında iki önbellek de temizlenir. Ağ hatası 200 + `error`
+      alanıyla döner (istek başarısız sayılmaz).
 
 ## Güvenlik — tamamlanan (2026-10-28)
 

@@ -592,14 +592,19 @@ async fn install_ytdlp(State(state): State<Arc<AppState>>) -> Response {
     let app = state.app.clone();
     let client = state.http().clone();
     match crate::ytdlp::install(&app, &client, |_| {}).await {
-        Ok(path) => (
-            StatusCode::OK,
-            Json(serde_json::json!({
-                "ok": true,
-                "path": path.to_string_lossy().to_string(),
-            })),
-        )
-            .into_response(),
+        Ok(path) => {
+            // Sonraki sürüm kontrolü taze sonucu görsün.
+            crate::ytdlp::invalidate_version_cache();
+            crate::ytdlp::invalidate_latest_cache();
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "ok": true,
+                    "path": path.to_string_lossy().to_string(),
+                })),
+            )
+                .into_response()
+        }
         Err(err) => error_response(StatusCode::BAD_GATEWAY, err),
     }
 }
@@ -608,6 +613,17 @@ async fn ytdlp_status(State(state): State<Arc<AppState>>) -> Response {
     let settings = state.settings();
     let status = crate::ytdlp::status(&state.app, &settings.ytdlp_path).await;
     (StatusCode::OK, Json(status)).into_response()
+}
+
+/// yt-dlp güncelleme kontrolü: kurulu sürüm + GitHub'daki son sürüm.
+///
+/// Ağ hatası 200 ile döner (yanıtın `error` alanında): istemci "kontrol
+/// edilemedi" gösterebilsin, istek başarısız sayılıp tüm ayarlar bozulmasın.
+async fn ytdlp_latest(State(state): State<Arc<AppState>>) -> Response {
+    let settings = state.settings();
+    let client = state.http().clone();
+    let check = crate::ytdlp::check_update(&state.app, &client, &settings.ytdlp_path).await;
+    (StatusCode::OK, Json(check)).into_response()
 }
 
 async fn index(State(state): State<Arc<AppState>>) -> Response {
@@ -754,6 +770,7 @@ pub fn api_router(state: Arc<AppState>) -> Router {
         .route("/torrent/upload", post(torrent_upload))
         .route("/notify/test", post(notify_test))
         .route("/ytdlp", get(ytdlp_status))
+        .route("/ytdlp/latest", get(ytdlp_latest))
         .route("/ytdlp/install", post(install_ytdlp))
         .route("/assets/{*path}", get(static_file))
         .route("/{*path}", get(static_file))
@@ -1382,6 +1399,7 @@ mod tests {
             "/notify/test",
             "/ytdlp",
             "/ytdlp/install",
+            "/ytdlp/latest",
             "/events",
             "/yeni/gelecek/uc",
             "/olmayan-dosya.txt",

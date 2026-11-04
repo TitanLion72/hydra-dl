@@ -16,6 +16,7 @@ import {
   type Status,
   type TorrentFile,
   type TorrentListing,
+  type YtdlpUpdateCheck,
 } from "./api";
 import { MAX_LINKS, parseLinkList } from "./links";
 import {
@@ -1661,6 +1662,87 @@ installYtdlpBtn.addEventListener("click", async () => {
     toast(String(err), "error");
   } finally {
     installYtdlpBtn.disabled = false;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// yt-dlp güncelleme
+// ---------------------------------------------------------------------------
+
+const checkYtdlpBtn = $<HTMLButtonElement>("#check-ytdlp");
+const updateYtdlpBtn = $<HTMLButtonElement>("#update-ytdlp");
+const ytdlpUpdateStatus = $("#ytdlp-update-status");
+/** Son kontrolün sonucu: "Güncelle" düğmesi bunu kullanır. */
+let pendingUpdate: string | null = null;
+
+function renderUpdateCheck(check: YtdlpUpdateCheck) {
+  pendingUpdate = null;
+  updateYtdlpBtn.hidden = true;
+
+  if (check.error) {
+    ytdlpUpdateStatus.textContent = check.error;
+    ytdlpUpdateStatus.className = "hint warn";
+    return;
+  }
+  if (!check.latest) {
+    ytdlpUpdateStatus.textContent = "Son sürüm öğrenilemedi.";
+    ytdlpUpdateStatus.className = "hint warn";
+    return;
+  }
+  if (check.updateAvailable) {
+    pendingUpdate = check.latest;
+    ytdlpUpdateStatus.textContent = `Yeni sürüm: ${check.latest} (kurulu ${check.current ?? "bilinmiyor"})`;
+    ytdlpUpdateStatus.className = "hint warn";
+    updateYtdlpBtn.hidden = false;
+    updateYtdlpBtn.textContent = `Güncelle (${check.latest})`;
+    return;
+  }
+  ytdlpUpdateStatus.textContent = `Güncel — son sürüm ${check.latest}.`;
+  ytdlpUpdateStatus.className = "hint ok";
+}
+
+checkYtdlpBtn.addEventListener("click", async () => {
+  checkYtdlpBtn.disabled = true;
+  updateYtdlpBtn.disabled = true;
+  ytdlpUpdateStatus.textContent = "Kontrol ediliyor…";
+  ytdlpUpdateStatus.className = "hint";
+  try {
+    renderUpdateCheck(await api.checkYtdlpUpdate());
+  } catch (err) {
+    ytdlpUpdateStatus.textContent = String(err);
+    ytdlpUpdateStatus.className = "hint warn";
+  } finally {
+    checkYtdlpBtn.disabled = false;
+    updateYtdlpBtn.disabled = false;
+  }
+});
+
+updateYtdlpBtn.addEventListener("click", async () => {
+  if (!pendingUpdate) return;
+  const previous = pendingUpdate;
+  checkYtdlpBtn.disabled = true;
+  updateYtdlpBtn.disabled = true;
+  ytdlpUpdateStatus.textContent = `Güncelleniyor → ${previous}…`;
+  ytdlpUpdateStatus.className = "hint";
+  try {
+    // Güncelleme = aynı kurulum yolu (indir → doğrula → yerine koy).
+    const status = await api.installYtdlp();
+    if (status.available) {
+      toast(`yt-dlp ${status.version ?? previous} sürümüne güncellendi`, "success");
+      ytdlpUpdateStatus.textContent = `Güncellendi: ${status.version ?? previous}.`;
+      ytdlpUpdateStatus.className = "hint ok";
+      pendingUpdate = null;
+      updateYtdlpBtn.hidden = true;
+      await loadInfo();
+      if (settings) bindSettingsForm(settings, info);
+    }
+  } catch (err) {
+    ytdlpUpdateStatus.textContent = String(err);
+    ytdlpUpdateStatus.className = "hint warn";
+    toast(String(err), "error");
+  } finally {
+    checkYtdlpBtn.disabled = false;
+    updateYtdlpBtn.disabled = false;
   }
 });
 

@@ -105,6 +105,148 @@ fn candidate_paths(app: &AppHandle, setting: &str) -> Vec<PathBuf> {
 pub const YTDLP_DOWNLOAD_URL: &str =
     "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
 
+/// Son sürümü öğrenmek için GitHub releases API'si.
+///
+/// Neden API: sürüm numarası indirilen ikilinin içinde. `latest/download` yolundan
+/// sürüm öğrenilemiyor; API tek küçük JSON döndürür (ikili indirmeye göre ucuz).
+pub const YTDLP_LATEST_API: &str = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest";
+
+/// Sürüm sorgusunun önbellek ömrü. GitHub token'sız 60 istek/saat veriyor;
+/// ayarlar her açıldığında istek atmak bu bütçeyi bitirirdi.
+const LATEST_TTL: Duration = Duration::from_secs(30 * 60);
+
+/// Son sürüm önbelleği: (sürüm, zaman). Hata **önbelleğe yazılmaz**
+/// (internet sonradan gelirse hemen çalışsın).
+static LATEST_CACHE: Mutex<Option<(String, SystemTime)>> = Mutex::new(None);
+
+/// Sürümü sayı bileşenlerine ayırır: `2026.10.26` → `[2026, 10, 26]`.
+///
+/// yt-dlp zaman zaman `2026.10.26.1` (yeniden yayın) ya da nightly
+/// `2026.10.26.123456` biçiminde sürüm çıkarır; eksik bileşen `0` sayılır ki
+/// `2026.10` ile `2026.10.0` aynı kabul edilsin. Sayı olmayan parçalar atılır.
+pub fn version_parts(version: &str) -> Vec<u64> {
+    version
+        .trim()
+        .split('.')
+        .filter_map(|part| {
+            let digits: String = part.chars().take_while(|c| c.is_ascii_digit()).collect();
+            if digits.is_empty() {
+                None
+            } else {
+                digits.parse::<u64>().ok()
+            }
+        })
+        .collect()
+}
+
+/// `latest`, `current`'dan yeni mi?
+///
+/// Bileşen bileşen karşılaştırır; eksik bileşen `0`. Bu yüzden
+/// `2026.10.26.1 > 2026.10.26` ve `2026.11 > 2026.10.26`.
+/// `current` okunamıyorsa (boş/çöp) **yeni sayılır**: kullanıcı güncelleyebilsin.
+pub fn is_newer(latest: &str, current: &str) -> bool {
+    let new = version_parts(latest);
+    if new.is_empty() {
+        return false;
+    }
+    let old = version_parts(current);
+    if old.is_empty() {
+        return true;
+    }
+    let len = new.len().max(old.len());
+    for index in 0..len {
+        let a = new.get(index).copied().unwrap_or(0);
+        let b = old.get(index).copied().unwrap_or(0);
+        if a != b {
+            return a > b;
+        }
+    }
+    false
+}
+
+/// GitHub releases JSON'undan `tag_name` alır (saf; ağ yok).
+///
+/// Tam JSON ayrıştırıcısı yerine `serde_json` ile tek alan okuyoruz: yanıt
+/// şeması değişse bile testle yakalanır.
+pub fn parse_latest_tag(json: &str) -> Result<String, String> {
+    let value: serde_json::Value =
+        serde_json::from_str(json).map_err(|e| format!("Sürüm yanıtı okunamadı: {e}"))?;
+    let tag = value
+        .get("tag_name")
+        .and_then(|tag| tag.as_str())
+        .map(str::trim)
+        .filter(|tag| !tag.is_empty())
+        .ok_or_else(|| "Sürüm yanıtında tag_name yok".to_string())?;
+    if version_parts(tag).is_empty() {
+        return Err(format!("Sürüm biçimi tanınmadı: {tag}"));
+    }
+    Ok(tag.to_string())
+}
+
+/// Önbelleği atlayarak son sürümü sorar (ağ).
+pub async fn fetch_latest_version(client: &reqwest::Client) -> Result<String, String> {
+    let response = client
+        .get(YTDLP_LATEST_API)
+        .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+        // GitHub UA'sız istekleri reddedebiliyor.
+        .header(reqwest::header::USER_AGENT, "hydra-dl")
+        .timeout(Duration::from_secs(12))
+        .send()
+        .await
+        .map_err(|e| format!("Sürüm kontrolü başarısız: {e}"))?;
+    let status = response.status();
+    if status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+    {
+        return Err("GitHub istek sınırı doldu; biraz sonra tekrar dene.".into());
+    }
+    if !status.is_success() {
+        return Err(format!("Sürüm kontrolü başarısız (HTTP {status})"));
+    }
+    let text = response
+        .text()
+        .await
+        .map_err(|e| format!("Sürüm yanıtı okunamadı: {e}"))?;
+    let tag = parse_latest_tag(&text)?;
+    if let Ok(mut guard) = LATEST_CACHE.lock() {
+        *guard = Some((tag.clone(), SystemTime::now()));
+    }
+    Ok(tag)
+}
+
+/// Son sürüm: taze önbellek varsa ağa çıkmaz.
+pub async fn latest_version(client: &reqwest::Client) -> Result<String, String> {
+    if let Ok(guard) = LATEST_CACHE.lock() {
+        if let Some((version, at)) = guard.as_ref() {
+            if at.elapsed().map(|age| age < LATEST_TTL).unwrap_or(false) {
+                return Ok(version.clone());
+            }
+        }
+    }
+    fetch_latest_version(client).await
+}
+
+/// Son sürüm önbelleğini temizler (güncelleme sonrası doğrulama için).
+pub fn invalidate_latest_cache() {
+    if let Ok(mut guard) = LATEST_CACHE.lock() {
+        *guard = None;
+    }
+}
+
+/// Sürüm kontrolünün sonucu (arayüz için).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateCheck {
+    /// Kurulu sürüm; yt-dlp yoksa `None`.
+    pub current: Option<String>,
+    /// GitHub'daki son sürüm; ağ hatasında `None`.
+    pub latest: Option<String>,
+    /// Güncelleme var mı? (Karşılaştırma yapılabildiyse.)
+    pub update_available: bool,
+    /// Hata varsa kullanıcıya gösterilecek metin.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstallProgress {
@@ -231,6 +373,36 @@ pub fn resolve(app: &AppHandle, setting: &str) -> Option<PathBuf> {
     candidate_paths(app, setting)
         .into_iter()
         .find(|path| path.is_file())
+}
+
+/// Sürüm kontrolü: kurulu sürüm + GitHub'daki son sürüm.
+///
+/// Ağ hatası **hata olarak** döner ama `status` bilgisini kaybetmez: arayüz
+/// "güncelleme var" diyemese de kurulu sürümü göstermeye devam eder.
+pub async fn check_update(app: &AppHandle, client: &reqwest::Client, setting: &str) -> UpdateCheck {
+    let current = status(app, setting).await.version;
+    match latest_version(client).await {
+        Ok(latest) => {
+            let update_available = match current.as_deref() {
+                Some(installed) => is_newer(&latest, installed),
+                // yt-dlp kurulu değilse "güncelleme" değil "kurulum" gerekir;
+                // arayüz bunu zaten ayrı gösteriyor.
+                None => false,
+            };
+            UpdateCheck {
+                current,
+                latest: Some(latest),
+                update_available,
+                error: None,
+            }
+        }
+        Err(err) => UpdateCheck {
+            current,
+            latest: None,
+            update_available: false,
+            error: Some(err),
+        },
+    }
 }
 
 pub async fn status(app: &AppHandle, setting: &str) -> YtdlpStatus {
@@ -1153,5 +1325,69 @@ mod tests {
         assert!(YTDLP_DOWNLOAD_URL.starts_with("https://github.com/yt-dlp/yt-dlp/releases/"));
         assert!(YTDLP_DOWNLOAD_URL.ends_with("yt-dlp.exe"));
         assert!(binary_names()[0].starts_with("yt-dlp"));
+        assert!(YTDLP_LATEST_API.starts_with("https://api.github.com/repos/yt-dlp/"));
+    }
+
+    // --- sürüm karşılaştırma (otomatik güncelleme) -------------------------
+
+    #[test]
+    fn surum_bilesenleri_ayrilir() {
+        assert_eq!(version_parts("2026.10.26"), vec![2026, 10, 26]);
+        assert_eq!(version_parts("  2026.10.26  "), vec![2026, 10, 26]);
+        // Yeniden yayın / nightly ek bileşenleri korunur.
+        assert_eq!(version_parts("2026.10.26.1"), vec![2026, 10, 26, 1]);
+        assert_eq!(
+            version_parts("2026.10.26.123456"),
+            vec![2026, 10, 26, 123456]
+        );
+        // Çöp girdi boş döner (panik yok).
+        assert!(version_parts("").is_empty());
+        assert!(version_parts("bilinmiyor").is_empty());
+    }
+
+    #[test]
+    fn yeni_surum_dogru_anlasilir() {
+        assert!(is_newer("2026.11.01", "2026.10.26"));
+        assert!(!is_newer("2026.10.26", "2026.11.01"));
+        assert!(
+            !is_newer("2026.10.26", "2026.10.26"),
+            "aynı sürüm güncelleme değil"
+        );
+        // Ek bileşen: 2026.10.26.1 > 2026.10.26
+        assert!(is_newer("2026.10.26.1", "2026.10.26"));
+        assert!(!is_newer("2026.10.26", "2026.10.26.1"));
+        // Eksik bileşen 0 sayılır: 2026.10 == 2026.10.0
+        assert!(!is_newer("2026.10", "2026.10.0"));
+        assert!(!is_newer("2026.10.0", "2026.10"));
+        // Yıl sınırı: 2027.01 eskidir, 2026.12'den yeni.
+        assert!(is_newer("2027.01.01", "2026.12.31"));
+    }
+
+    #[test]
+    fn bilinmeyen_kurulu_surum_guncellenebilir_sayilir() {
+        // Kurulu sürüm okunamıyorsa kullanıcı güncelleyebilmeli.
+        assert!(is_newer("2026.10.26", ""));
+        assert!(is_newer("2026.10.26", "bozuk"));
+        // Ama son sürüm okunamıyorsa "güncelleme var" demeyiz (yanlış yönlendirme).
+        assert!(!is_newer("", "2026.10.26"));
+        assert!(!is_newer("bozuk", "2026.10.26"));
+    }
+
+    #[test]
+    fn github_yanitindan_surum_okunur() {
+        let json = r#"{"tag_name":"2026.11.01","name":"yt-dlp 2026.11.01"}"#;
+        assert_eq!(parse_latest_tag(json).unwrap(), "2026.11.01");
+
+        // Boşluklu tag temizlenir.
+        assert_eq!(
+            parse_latest_tag(r#"{"tag_name":"  2026.11.01  "}"#).unwrap(),
+            "2026.11.01"
+        );
+
+        // Alan yoksa / boşsa / biçim tanınmıyorsa hata (sessizce 0 kabul etme).
+        assert!(parse_latest_tag(r#"{"name":"x"}"#).is_err());
+        assert!(parse_latest_tag(r#"{"tag_name":""}"#).is_err());
+        assert!(parse_latest_tag(r#"{"tag_name":"gece"}"#).is_err());
+        assert!(parse_latest_tag("HTML sayfası").is_err());
     }
 }

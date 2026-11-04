@@ -497,6 +497,31 @@ async function main() {
       { timeout: 10_000 },
     );
     check(await page.locator("#save-settings").isEnabled(), "veri gelince kaydet dugmesi acildi");
+
+    // --- 6e2. yt-dlp güncelleme kontrolü ----------------------------------
+    await page.click("#check-ytdlp");
+    await page.waitForFunction(
+      () => (window.__hydraCalls.checkYtdlpUpdate ?? 0) > 0,
+      null,
+      { timeout: 10_000 },
+    );
+    const updateText = (await page.locator("#ytdlp-update-status").textContent()) ?? "";
+    check(updateText.includes("2026.11.01"), `guncelleme metni yeni surumu gosteriyor ('${updateText.trim()}')`);
+    check(await page.locator("#update-ytdlp").isVisible(), "yeni surum varsa Guncelle dugmesi gorunur");
+    check(
+      ((await page.locator("#update-ytdlp").textContent()) ?? "").includes("2026.11.01"),
+      "Guncelle dugmesi surumu yaziyor",
+    );
+
+    const installBefore = await page.evaluate(() => window.__hydraCalls.installYtdlp ?? 0);
+    await page.click("#update-ytdlp");
+    await page.waitForFunction(
+      (before) => (window.__hydraCalls.installYtdlp ?? 0) > before,
+      installBefore,
+      { timeout: 15_000 },
+    );
+    ok("Guncelle dugmesi kurulum akisini tetikledi");
+
     await page.evaluate(() => {
       window.__hydraMock.delayMs = null;
     });

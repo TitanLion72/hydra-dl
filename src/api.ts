@@ -136,6 +136,14 @@ export interface YtdlpStatus {
   version: string | null;
 }
 
+/** yt-dlp güncelleme kontrolü (`check_ytdlp_update`). */
+export interface YtdlpUpdateCheck {
+  current: string | null;
+  latest: string | null;
+  updateAvailable: boolean;
+  error?: string;
+}
+
 export interface AppInfo {
   version: string;
   downloadDir: string;
@@ -223,6 +231,7 @@ export const api = {
   openDownload: (id: string) => invoke<void>("open_download", { id }),
   revealDownload: (id: string) => invoke<void>("reveal_download", { id }),
   installYtdlp: () => invoke<YtdlpStatus>("install_ytdlp"),
+  checkYtdlpUpdate: () => invoke<YtdlpUpdateCheck>("check_ytdlp_update"),
   notifyTest: () => invoke<void>("test_notification"),
 };
 

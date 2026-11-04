@@ -16,6 +16,7 @@ const ENDPOINTS = {
   add: "./add",
   settings: "./settings",
   ytdlp: "./ytdlp",
+  ytdlpLatest: "./ytdlp/latest",
   ytdlpInstall: "./ytdlp/install",
   torrentFiles: "./torrent/files",
   torrentUpload: "./torrent/upload",
@@ -81,6 +82,9 @@ const els = {
   setUptime: $("#setUptime"),
   setYtdlp: $("#setYtdlp"),
   installYtdlp: $("#installYtdlp"),
+  ytdlpUpdateRow: $("#ytdlpUpdateRow"),
+  checkYtdlp: $("#checkYtdlp"),
+  updateYtdlp: $("#updateYtdlp"),
   ytdlpStatus: $("#ytdlpStatus"),
   ytdlpHelp: $("#ytdlpHelp"),
   setToken: $("#setToken"),
@@ -135,6 +139,8 @@ const state = {
   renderQueued: false,
   pendingItems: null,
   settingsLoaded: false,
+  /** Güncelleme kontrolünde bulunan sürüm; "Güncelle" düğmesi kullanır. */
+  pendingYtdlp: null,
 };
 
 /* ---------------- Kimlik doğrulama ---------------- */
@@ -1423,6 +1429,72 @@ function applyYtdlpStatus(status) {
     els.installYtdlp.disabled = false;
   }
   if (els.ytdlpHelp) els.ytdlpHelp.hidden = available;
+  // Güncelleme düğmeleri yalnız yt-dlp kuruluyken anlamlı.
+  if (els.ytdlpUpdateRow) els.ytdlpUpdateRow.hidden = !available;
+}
+
+/** Güncelleme kontrolü sonucunu yazar; "Güncelle" düğmesini açar/kapatır. */
+function applyUpdateCheck(check) {
+  state.pendingYtdlp = null;
+  if (els.updateYtdlp) els.updateYtdlp.hidden = true;
+  if (!check) {
+    setYtdlpStatus("Son sürüm öğrenilemedi.", "error");
+    return;
+  }
+  if (check.error) {
+    setYtdlpStatus(check.error, "error");
+    return;
+  }
+  if (check.updateAvailable) {
+    state.pendingYtdlp = check.latest || null;
+    setYtdlpStatus(`Yeni sürüm: ${check.latest} (kurulu ${check.current || "bilinmiyor"})`);
+    if (els.updateYtdlp) {
+      els.updateYtdlp.hidden = false;
+      els.updateYtdlp.textContent = `Güncelle (${check.latest})`;
+    }
+    return;
+  }
+  setYtdlpStatus(`Güncel — son sürüm ${check.latest}.`, "ok");
+}
+
+async function checkYtdlpUpdate() {
+  const button = els.checkYtdlp;
+  if (!button || button.disabled) return;
+  button.disabled = true;
+  setYtdlpStatus("Sürüm kontrol ediliyor…");
+  try {
+    const check = await api(ENDPOINTS.ytdlpLatest);
+    applyUpdateCheck(check);
+  } catch (error) {
+    setYtdlpStatus(error.message || "Sürüm kontrolü başarısız.", "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function updateYtdlp() {
+  const button = els.updateYtdlp;
+  if (!button || button.disabled) return;
+  const target = state.pendingYtdlp;
+  button.disabled = true;
+  setYtdlpStatus(`Güncelleniyor${target ? ` → ${target}` : ""}… Sayfayı kapatma.`);
+  try {
+    const result = await api(ENDPOINTS.ytdlpInstall, { method: "POST", timeout: 120_000 });
+    await refreshYtdlp();
+    state.settingsLoaded = false;
+    await loadSettings(true);
+    button.hidden = true;
+    state.pendingYtdlp = null;
+    setYtdlpStatus(
+      result && result.path ? `Güncellendi: ${result.path}` : "yt-dlp güncellendi.",
+      "ok",
+    );
+    showToast("yt-dlp güncellendi.");
+  } catch (error) {
+    setYtdlpStatus(error.message || "Güncelleme başarısız.", "error");
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function refreshYtdlp() {
@@ -1738,6 +1810,12 @@ function bindSettings() {
   });
   if (els.installYtdlp) {
     els.installYtdlp.addEventListener("click", installYtdlp);
+  }
+  if (els.checkYtdlp) {
+    els.checkYtdlp.addEventListener("click", checkYtdlpUpdate);
+  }
+  if (els.updateYtdlp) {
+    els.updateYtdlp.addEventListener("click", updateYtdlp);
   }
 }
 
