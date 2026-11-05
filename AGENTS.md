@@ -33,7 +33,7 @@ node tools/net-capture-check.mjs                                     # eklenti a
 | Yol | Sorumluluk |
 |---|---|
 | `src-tauri/src/model.rs` | `Download`, `Segment`, `Status`, `Kind`; **segment planlama saf fonksiyonu** |
-| `src-tauri/src/store.rs` | `downloads.json`, `Settings`, kuyruk seçimi |
+| `src-tauri/src/store.rs` | `downloads.json`, `Settings`, kuyruk seçimi; **ayar dışa/içe aktarma (saf)** |
 | `src-tauri/src/engine/http.rs` | probe, Range indirme, parça birleştirme |
 | `src-tauri/src/engine/hls.rs` | **HLS indirme**: playlist çözümü, paralel segment, AES-128, DRM reddi |
 | `src-tauri/src/engine/dash.rs` | **DASH indirme**: manifest → sıralı birleştirme, ses/video ayrımı |

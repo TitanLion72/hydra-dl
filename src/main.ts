@@ -1,6 +1,6 @@
 import "./styles.css";
 import "./sheet.css";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import {
   api,
   onDownloads,
@@ -1758,8 +1758,109 @@ notifyTestBtn.addEventListener("click", async () => {
   }
 });
 
-$("#browse-btn").addEventListener("click", async () => {
+// ---------------------------------------------------------------------------
+// Ayarları dışa / içe aktarma (yedekleme)
+// ---------------------------------------------------------------------------
+
+const backupStatus = $("#backup-status");
+const exportTokenBox = $<HTMLInputElement>("#export-token");
+
+/** Alan adlarını kullanıcıya gösterilecek Türkçe etiketlere çevirir. */
+const SETTING_LABELS: Record<string, string> = {
+  downloadDir: "indirme klasörü",
+  maxConcurrent: "eşzamanlı indirme",
+  connections: "bağlantı sayısı",
+  speedLimitKbps: "hız sınırı",
+  captureEnabled: "yakalama",
+  capturePort: "yakalama portu",
+  ytdlpPath: "yt-dlp yolu",
+  autoResume: "otomatik devam",
+  askOnDownload: "eklenti onayı",
+  hunterEnabled: "avcı modu",
+  webEnabled: "web arayüzü",
+  webPort: "web portu",
+  webBind: "dinleme adresi",
+  webToken: "erişim anahtarı",
+  webTls: "HTTPS",
+  torrentEnabled: "torrent",
+  notifyOnFinish: "bildirimler",
+  proxyUrl: "proxy",
+};
+
+function labelOf(key: string): string {
+  return SETTING_LABELS[key] ?? key;
+}
+
+function setBackupStatus(message: string, tone: "" | "ok" | "warn" = "") {
+  backupStatus.textContent = message;
+  backupStatus.className = `hint ${tone}`.trim();
+}
+
+$("#export-settings").addEventListener("click", async () => {
+  const button = $<HTMLButtonElement>("#export-settings");
+  button.disabled = true;
   try {
+    const chosen = await save({
+      defaultPath: `hydra-ayarlar-${new Date().toISOString().slice(0, 10)}.json`,
+      filters: [{ name: "JSON", extensions: ["json"] }],
+      title: "Ayarları dışa aktar",
+    });
+    if (typeof chosen !== "string" || !chosen.trim()) {
+      setBackupStatus("Vazgeçildi.");
+      return;
+    }
+    const written = await api.exportSettingsTo(chosen, exportTokenBox.checked);
+    const withToken = exportTokenBox.checked ? " (erişim anahtarı dahil)" : "";
+    setBackupStatus(`Aktarıldı${withToken}: ${written}`, "ok");
+    toast("Ayarlar dışa aktarıldı", "success");
+  } catch (err) {
+    setBackupStatus(String(err), "warn");
+    toast(String(err), "error");
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$("#import-settings").addEventListener("click", async () => {
+  const button = $<HTMLButtonElement>("#import-settings");
+  button.disabled = true;
+  try {
+    const chosen = await open({
+      multiple: false,
+      filters: [{ name: "JSON", extensions: ["json"] }],
+      title: "Ayar dosyası seç",
+    });
+    if (typeof chosen !== "string" || !chosen.trim()) {
+      setBackupStatus("Vazgeçildi.");
+      return;
+    }
+    const report = await api.importSettingsFrom(chosen);
+    // Uygulanan ayarları forma yansıt ve bilgi durumunu tazele.
+    settings = report.settings;
+    await loadInfo();
+    bindSettingsForm(report.settings, info);
+
+    const parts: string[] = [];
+    if (report.changed.length > 0) {
+      parts.push(`${report.changed.length} ayar güncellendi (${report.changed.map(labelOf).join(", ")})`);
+    } else {
+      parts.push("Dosyadaki ayarlar zaten geçerliydi");
+    }
+    if (report.warnings.length > 0) parts.push(report.warnings.join(" "));
+    setBackupStatus(parts.join(" · "), report.warnings.length > 0 ? "warn" : "ok");
+    toast(
+      report.changed.length > 0 ? "Ayarlar içe aktarıldı" : "Değişiklik yok",
+      report.warnings.length > 0 ? "info" : "success",
+    );
+  } catch (err) {
+    setBackupStatus(String(err), "warn");
+    toast(String(err), "error");
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$("#browse-btn").addEventListener("click", async () => {  try {
     const chosen = await open({
       directory: true,
       multiple: false,

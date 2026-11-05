@@ -92,7 +92,15 @@ async function mockApi(
   const addCalls = [];
   const torrentUploads = [];
   const latestChecks = [];
-  page.__calls = { torrentSources, setTorrentFilesCalls, addCalls, torrentUploads, latestChecks };
+  const importCalls = [];
+  page.__calls = {
+    torrentSources,
+    setTorrentFilesCalls,
+    addCalls,
+    torrentUploads,
+    latestChecks,
+    importCalls,
+  };
   await page.route("**/events", (route) =>
     route.fulfill({ status: 200, contentType: "text/event-stream", body: ": mock\n\n" }),
   );
@@ -267,6 +275,17 @@ async function mockApi(
     await route.fulfill({
       ...JSON_OK,
       body: JSON.stringify({ ok: true, path: "C:\\fake\\bin\\yt-dlp.exe" }),
+    });
+  });
+  await page.route("**/settings/import", async (route) => {
+    importCalls.push(JSON.parse(route.request().postData() || "{}"));
+    await route.fulfill({
+      ...JSON_OK,
+      body: JSON.stringify({
+        settings: {},
+        changed: ["maxConcurrent", "proxyUrl"],
+        warnings: [],
+      }),
     });
   });
   await page.route("**/ytdlp/latest", async (route) => {
@@ -621,6 +640,81 @@ try {
     check((await page.locator("#bulkText").inputValue()) === "", "başarıda kutu temizlendi");
     check(errors.length === 0, `konsol hatası yok (${errors.join(" | ")})`);
     await page.screenshot({ path: path.join(SHOTS, "hydra-webui-toplu.png") });
+    await page.close();
+  }
+  // 8) Telefonda ayar yedekleme: dışa aktarma bağlantısı + içe aktarma
+  {
+    const page = await browser.newPage();
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(String(error)));
+    await mockApi(page, { available: true });
+    // Telefon token'ı localStorage'da tutar; dışa aktarma bağlantısı onu taşır.
+    await page.addInitScript(() => localStorage.setItem("hydra.token", "testtoken123"));
+    await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+    await page.click('.tab[data-view="settings"]');
+    await page.waitForSelector("#settingsForm:not([hidden])", { timeout: 15000 });
+
+    check(await page.locator("#exportSettings").isVisible(), "telefonda 'Ayarları indir' görünür");
+    check(
+      await page.locator("#importSettingsInput").count() === 1,
+      "telefonda ayar dosyası seçici var",
+    );
+
+    // Dışa aktarma: indirme bağlantısı token'ı sorguda taşımalı.
+    const href = await page.evaluate(() => {
+      // Butona basmadan önce bağlantı kurulumunu gözlemlemek için DOM'a
+      // geçici bir dinleyici koyuyoruz.
+      window.__lastAnchor = null;
+      const observer = new MutationObserver((records) => {
+        for (const record of records) {
+          for (const node of record.addedNodes) {
+            if (node instanceof HTMLAnchorElement) window.__lastAnchor = node.href;
+          }
+        }
+      });
+      observer.observe(document.body, { childList: true });
+      window.__anchorObserver = observer;
+      return true;
+    });
+    check(href === true, "bağlantı gözlemcisi kuruldu");
+    await page.click("#exportSettings");
+    const link = await page.evaluate(() => {
+      window.__anchorObserver?.disconnect();
+      return window.__lastAnchor;
+    });
+    check(
+      typeof link === "string" && link.includes("/settings/export") && link.includes("token="),
+      `dışa aktarma bağlantısı token taşıyor (${link})`,
+    );
+    const statusText = (await page.textContent("#backupStatus")).trim();
+    check(statusText.includes("İndirme başladı"), `telefonda dışa aktarma bildirimi ('${statusText}')`);
+
+    // İçe aktarma: seçilen JSON sunucuya gider ve özet gösterilir.
+    await page.setInputFiles("#importSettingsInput", {
+      name: "hydra-ayarlar.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(
+        JSON.stringify({ format: "hydra-dl-settings", version: 1, settings: { maxConcurrent: 6 } }),
+        "utf8",
+      ),
+    });
+    let importCall = null;
+    for (let i = 0; i < 50 && !importCall; i += 1) {
+      await page.waitForTimeout(100);
+      importCall = page.__calls?.importCalls?.[0] ?? null;
+    }
+    check(!!importCall, "POST /settings/import çağrısı gitti");
+    check(importCall?.format === "hydra-dl-settings", `gönderilen gövde ayar dosyası (${importCall?.format})`);
+    await page.waitForFunction(
+      () => (document.querySelector("#backupStatus")?.textContent ?? "").includes("ayar güncellendi"),
+      null,
+      { timeout: 10000 },
+    );
+    const importText = (await page.textContent("#backupStatus")).trim();
+    check(importText.includes("2 ayar güncellendi"), `telefonda içe aktarma özeti ('${importText}')`);
+    check(importText.includes("eşzamanlı indirme"), "telefonda alan adı Türkçe etiketle yazıldı");
+    check(errors.length === 0, `konsol hatası yok (${errors.join(" | ")})`);
+    await page.screenshot({ path: path.join(SHOTS, "hydra-webui-yedekleme.png") });
     await page.close();
   }
 } finally {

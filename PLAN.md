@@ -85,7 +85,12 @@ v0.2 = "IDM'den iyi" temeli. Sıra bağımlılığa göre; üstteki bitmeden alt
 
 - [ ] Otomatik güncelleme (tauri-plugin-updater + imzalı manifest)
 - [ ] Kod imzalı NSIS kurulumu, sürüm notları
-- [ ] TR/EN yerelleştirme, ayarların dışa/içe aktarımı
+- [x] **Ayarların dışa/içe aktarımı** (0.4.1): `GET /settings/export` +
+      `POST /settings/import`, `hydra-dl-settings` imzası + sürüm, token varsayılan
+      olarak **dışa aktarılmaz** (paylaşılabilir), içe aktarma birleştirir (token'sız
+      yedek anahtarı silmez), değerler normalize edilir, klasör oluşturulamazsa önceki
+      korunur. Masaüstü dosya seçici, telefonda indirme + dosya seçici.
+- [ ] TR/EN yerelleştirme
 - [ ] Dayanıklılık: güç kesintisi, disk dolu, ağ değişimi otomatik testleri
 - [ ] Linux/macOS deneysel hedefler
 

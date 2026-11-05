@@ -2,7 +2,7 @@
 
 > Yeni oturum: **önce bu dosyayı oku**, sonra `git status`. Bitirdiğin dilimi en alta 10 satır yaz.
 
-**Son güncelleme:** 2026-11-05 · v0.4.0 · AGPL-3.0-or-later
+**Son güncelleme:** 2026-11-06 · v0.4.1 · AGPL-3.0-or-later
 
 ---
 
@@ -14,9 +14,9 @@ telefon için web arayüzü, tarayıcı eklentisi (panel + avcı modu).
 
 **Repo public:** <https://github.com/TitanLion72/hydra-dl> (AGPL-3.0, ilk commit `9495fd4`).
 
-**Kurulu sürüm:** v0.4.0, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
+**Kurulu sürüm:** v0.4.1, `%LOCALAPPDATA%\Hydra DL` (eski geçici kurulumlar ve kayıt
 girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
-`src-tauri\target\release\bundle\nsis\Hydra DL_0.4.0_x64-setup.exe`.
+`src-tauri\target\release\bundle\nsis\Hydra DL_0.4.1_x64-setup.exe`.
 
 ## Doğrulanmış (bu oturum, kanıt var)
 
@@ -84,37 +84,32 @@ Tam liste ve kök nedenler: [`docs/HISTORY.md`](docs/HISTORY.md) (25 madde).
 - **Çerez/oturum**: eklenti `cookies` izniyle, kullanıcı indirmeyi başlattığında hedef
   adresin çerezlerini toplar ve **yalnız kullanıcının kendi Hydra sunucusuna** gönderir.
   Firefox'ta tüm siteler için host izni kullanıcı onayı ister; izin yoksa indirme
-  **çerezsiz** sürer (sessiz hata yok, akış bozulmaz). Çerez `downloads.json`'da saklanır
-  (duraklat/devam için) — dosyayı paylaşırken dikkat.
-- **Tray**: pencere kapandığında uygulama tepside çalışmaya devam eder (indirmeler sürer);
-  gerçekten çıkmak için tray menüsünden **Çıkış**. Tooltip'te aktif indirme + toplam hız.
-  Windows'ta tray simgesi gizli simge kutusunda olabilir (Ayarlar → Görev çubuğu).
+  **çerezsiz** sürer. Çerez `downloads.json`'da saklanır (duraklat/devam için) — dikkat.
+- **Tray**: tepside sürer (indirmeler devam eder); çıkmak için tray → **Çıkış**.
+  Tooltip'te aktif indirme + hız. Simge gizli kutuda olabilir.
 - **HLS (`.m3u8`) yt-dlp olmadan**: segmentler paralel indirilir, AES-128 çözülür,
   master playlist'te en yüksek varyant seçilir, duraklat/devam çalışır; DRM reddedilir.
-- **DASH (`.mpd`) yt-dlp olmadan**: `SegmentTemplate` (süre/sayı ve `SegmentTimeline`),
-  `SegmentList`, tek dosyalı `SegmentBase`, `BaseURL` zinciri. Ses ayrı akıştaysa
-  **iki dosya** üretilir (`film.mp4` + `film.ses.m4a`); birleştirme ffmpeg gerektirir.
-  DASH'te duraklatma dosyayı **saklamaz** (segmentler sıralı yazıldığı için yarım dosya
-  anlamsız), devam ederken baştan indirir. Canlı akış ve `EXT-X-BYTERANGE` desteklenmez.
-- **Depo sağlığı**: `node tools/hygiene.mjs` — git durumu, izlenen büyük dosya, `.git`
-  boyutu, `target/` şişmesi, geçici klasörler, disk eşiği, güvenlik taraması. `--clean`
-  geçici `hydra-*` klasörlerini siler. CI'da değil; elle/haftalık koşulur.
-- **Telefondan torrent**: `.torrent` base64 ile `POST /torrent/upload`'a gider,
-  `<app_data>/torrents/<uuid>.torrent` olarak saklanır; kayıt silinince kopya da silinir
-  (kullanıcının kendi dosyasına dokunulmaz). Tohum oranı `↑ 1.25` satırlarda.
-- **HTTPS (isteğe bağlı)**: ayarlardan açılır. Sertifika `<app_data>/tls/` altında,
-  LAN adreslerini kapsar, IP değişince yenilenir. Tarayıcı "güvenli değil" uyarısı verir
-  (self-signed): **Gelişmiş → devam et**. Yakalama sunucusu (`6712`) **HTTP kalır**.
+- **DASH (`.mpd`) yt-dlp olmadan**: `SegmentTemplate` (süre/sayı, `SegmentTimeline`),
+  `SegmentList`, tek dosyalı `SegmentBase`, `BaseURL` zinciri. Ses ayrı akıştaysa **iki
+  dosya** üretilir; birleştirme ffmpeg ister. Duraklatma dosyayı saklamaz (baştan indirir).
+  Canlı akış ve `EXT-X-BYTERANGE` desteklenmez.
+- **Depo sağlığı**: `node tools/hygiene.mjs` — git, büyük dosya, `.git` boyutu, `target/`
+  şişmesi, geçici klasörler, disk eşiği, güvenlik. `--clean` geçici `hydra-*` klasörlerini
+  siler. CI'da değil; elle/haftalık.
+- **Telefondan torrent**: `.torrent` base64 ile `POST /torrent/upload`'a gider ve
+  `<app_data>/torrents/<uuid>.torrent` olarak saklanır; kayıt silinince kopya gider.
+  Tohum oranı `↑ 1.25`. **HTTPS** ayarlardan açılır; sertifika `<app_data>/tls/` altında,
+  LAN adlarını kapsar, IP değişince yenilenir. Kendinden imzalı → tarayıcı uyarır
+  (**Gelişmiş → devam et**). Yakalama sunucusu (`6712`) **HTTP kalır**.
 - Avcı modunda `webRequest` yok; sayfa içi blob/manifest yakalama henüz yok.
-- Yeniden deneme HTTP indirmesinde **ve** `probe` (HEAD/Range keşfi) aşamasında geçerli.
-  `.torrent` çözümleme tek deneme yapar (kullanıcı yeniden basar); medya (yt-dlp) kendi
-  retry'ini yapar.
+- Yeniden deneme HTTP indirmesinde **ve** `probe` (HEAD/Range) aşamasında geçerli;
+  `.torrent` çözümleme tek deneme yapar, medya (yt-dlp) kendi retry'ini yapar.
 
 ## Paketleme
 
-İlk NSIS paketi web arayüzünü **404** veriyordu (`resources` dosyaları `_up_/` altına
-koyuyordu); nesne biçimi + `pick_webapp_dir` ile düzeldi. Paket her değişiklikten sonra
-**gerçekten kurulup** denenmeli — `tauri dev` yeterli değil (`docs/TRAPS.md`).
+İlk NSIS paketi web arayüzünü **404** veriyordu (`resources` `_up_/` altına koyuyordu);
+nesne biçimi + `pick_webapp_dir` ile düzeldi. Paket her değişiklikten sonra **gerçekten
+kurulup** denenmeli — `tauri dev` yetmez (`docs/TRAPS.md`).
 
 ## Sıradaki iş
 
@@ -135,9 +130,14 @@ koyuyordu); nesne biçimi + `pick_webapp_dir` ile düzeldi. Paket her değişikl
    Masaüstü + telefonda "Güncelleme var mı?" / "Güncelle (sürüm)". Kanıt: kontrol 571 ms,
    ikinci kontrol 4 ms (ağa çıkmadı), gerçek güncelleme 13 sn → "güncelleme yok".
    **v0.3 dilimi 14/14 tamam.**
-6. **v0.4 / v1.0:** otomatik güncelleme (uygulama), kod imzalı NSIS, TR/EN, DASH'te
-   kaldığı yerden devam, dayanıklılık testleri.
-7. Küçükler: `ringbuf` muafiyeti `librqbit-utp` 0.4.9+/0.5.2+ çıkınca kalkar; torrent proxy
+6. **Ayar yedekleme (0.4.1) — BİTTİ, canlı 21/21.** `GET /settings/export` +
+   `POST /settings/import` (imza `hydra-dl-settings`, sürüm 1). Token varsayılan olarak
+   **dışa aktarılmaz** (`includeToken=1` ile isteğe bağlı; `token` adı auth anahtarı,
+   karıştırılmıyor). İçe aktarma birleştirir → token'sız yedek anahtarı silmez; bozuk/
+   yabancı/gelecek sürüm 400 ve ayarlar değişmez; klasör oluşturulamazsa önceki korunur.
+7. **v1.0 sırada:** TR/EN yerelleştirme → dayanıklılık testleri → otomatik güncelleme
+   (imzalı manifest, anahtar kullanıcıda) → kod imzalı NSIS.
+8. Küçükler: `ringbuf` muafiyeti `librqbit-utp` 0.4.9+/0.5.2+ çıkınca kalkar; torrent proxy
    desteği librqbit proxy kazanınca `proxyUrl`'e bağlanır.
 
 ## Oturum kesilirse ilk komut

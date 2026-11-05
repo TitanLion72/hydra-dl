@@ -144,6 +144,15 @@ export interface YtdlpUpdateCheck {
   error?: string;
 }
 
+/** Ayar içe aktarma sonucu (`import_settings_from` / `POST /settings/import`). */
+export interface ImportReport {
+  settings: Settings;
+  /** Değişen alan adları (camelCase). */
+  changed: string[];
+  /** Uygulanamayan istekler (ör. klasör oluşturulamadı). */
+  warnings: string[];
+}
+
 export interface AppInfo {
   version: string;
   downloadDir: string;
@@ -232,6 +241,10 @@ export const api = {
   revealDownload: (id: string) => invoke<void>("reveal_download", { id }),
   installYtdlp: () => invoke<YtdlpStatus>("install_ytdlp"),
   checkYtdlpUpdate: () => invoke<YtdlpUpdateCheck>("check_ytdlp_update"),
+  exportSettingsTo: (path: string, includeToken: boolean) =>
+    invoke<string>("export_settings_to", { path, includeToken }),
+  importSettingsFrom: (path: string) =>
+    invoke<ImportReport>("import_settings_from", { path }),
   notifyTest: () => invoke<void>("test_notification"),
 };
 

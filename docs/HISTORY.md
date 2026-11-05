@@ -84,3 +84,11 @@ Numaralar kronolojiktir; yeni hata eklerken en alta ekle.
 28. **GitHub API bütçesi** (token'sız 60 istek/saat): her ayar açılışında istek atmak
     bütçeyi bitirirdi → 30 dk `LATEST_CACHE`. Ölçüm: 571 ms → **4 ms**.
     Güncelleme sonrası iki önbellek de temizlenir (kontrol tazelenir).
+29. **Dışa aktarma bayrağı auth token'ıyla çakışacaktı** (tasarımda yakalandı): ayar
+    dışa aktarmada `?token=1` kullanmak, kimlik doğrulama anahtarını (`auth_middleware`
+    `?token=`) bool sanıp isteği 400'e düşürürdü. Bayrak `includeToken` olarak ayrıldı;
+    regresyon testi (`disa_aktarma_bayragi_auth_tokeniyla_cakismaz`).
+30. **Token'sız ayar yedeği erişim anahtarını siliyordu** (tasarımda yakalandı): içe
+    aktarma "dosyayı aynen yaz" olsaydı, token dışa aktarılmadığı için geri yüklemede
+    token boşalırdı → kullanıcı telefondan kilitlenirdi. Artık içe aktarma **mevcut
+    ayarların üzerine birleştirir**; test `ice_aktarma_token_yoksa_mevcut_token_korunur`.

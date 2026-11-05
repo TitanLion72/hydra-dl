@@ -18,6 +18,8 @@ const ENDPOINTS = {
   ytdlp: "./ytdlp",
   ytdlpLatest: "./ytdlp/latest",
   ytdlpInstall: "./ytdlp/install",
+  settingsExport: "./settings/export",
+  settingsImport: "./settings/import",
   torrentFiles: "./torrent/files",
   torrentUpload: "./torrent/upload",
 };
@@ -87,6 +89,9 @@ const els = {
   updateYtdlp: $("#updateYtdlp"),
   ytdlpStatus: $("#ytdlpStatus"),
   ytdlpHelp: $("#ytdlpHelp"),
+  exportSettings: $("#exportSettings"),
+  importSettingsInput: $("#importSettingsInput"),
+  backupStatus: $("#backupStatus"),
   setToken: $("#setToken"),
   settingsStatus: $("#settingsStatus"),
   settingsSave: $("#settingsSave"),
@@ -191,7 +196,7 @@ function apiError(message, status) {
   return error;
 }
 
-async function api(path, { method = "GET", body, timeout = REQUEST_TIMEOUT } = {}) {
+async function api(path, { method = "GET", body, timeout = REQUEST_TIMEOUT, raw = false } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   const headers = { Accept: "application/json" };
@@ -202,7 +207,8 @@ async function api(path, { method = "GET", body, timeout = REQUEST_TIMEOUT } = {
     const response = await fetch(path, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      // `raw: true` → gövde zaten metin (ör. ayar dosyası); yeniden sarmalama.
+      body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
       signal: controller.signal,
       cache: "no-store",
       credentials: "same-origin",
@@ -1539,6 +1545,105 @@ async function installYtdlp() {
   }
 }
 
+/* ---------------- Yedekleme (ayar dışa/içe aktarma) ---------------- */
+
+function setBackupStatus(message, kind = "") {
+  const node = els.backupStatus;
+  if (!node) return;
+  node.textContent = message;
+  node.classList.toggle("is-error", kind === "error");
+  node.classList.toggle("is-ok", kind === "ok");
+}
+
+/** Alan adlarını kullanıcıya gösterilecek Türkçe etiketlere çevirir. */
+const SETTING_LABELS = {
+  downloadDir: "indirme klasörü",
+  maxConcurrent: "eşzamanlı indirme",
+  connections: "bağlantı sayısı",
+  speedLimitKbps: "hız sınırı",
+  captureEnabled: "yakalama",
+  capturePort: "yakalama portu",
+  ytdlpPath: "yt-dlp yolu",
+  autoResume: "otomatik devam",
+  askOnDownload: "eklenti onayı",
+  hunterEnabled: "avcı modu",
+  webEnabled: "web arayüzü",
+  webPort: "web portu",
+  webBind: "dinleme adresi",
+  webToken: "erişim anahtarı",
+  webTls: "HTTPS",
+  torrentEnabled: "torrent",
+  notifyOnFinish: "bildirimler",
+  proxyUrl: "proxy",
+};
+
+/**
+ * Ayarları indirir.
+ *
+ * Neden doğrudan gezinme: telefonda dosya indirmek için tarayıcının kendi
+ * indirme akışını kullanmak en güvenilir yol. Token varsa sorgu dizesine
+ * ekleniyor (başlık koyamıyoruz); sunucu `?token=` biçimini zaten kabul ediyor.
+ * **Token yoksa reddetmiyoruz:** sunucu token istemeyecek şekilde kurulmuş
+ * olabilir (token boş = koruma kapalı); o durumda istek zaten serbest.
+ */
+function exportSettings() {
+  const query = state.token ? `?token=${encodeURIComponent(state.token)}` : "";
+  const url = `${ENDPOINTS.settingsExport}${query}`;
+  setBackupStatus("İndiriliyor…");
+  // Gizli bağlantı + tıklama: sayfa değişmeden indirme başlar.
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "hydra-ayarlar.json";
+  link.rel = "noopener";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setBackupStatus("İndirme başladı. Dosya İndirilenler klasörüne gider.", "ok");
+}
+
+/** Seçilen ayar dosyasını sunucuya gönderir. */
+async function importSettings(file) {
+  if (!file) return;
+  if (file.size > 1024 * 1024) {
+    setBackupStatus("Dosya çok büyük (en fazla 1 MB).", "error");
+    return;
+  }
+  setBackupStatus("İçe aktarılıyor…");
+  try {
+    const text = await file.text();
+    const report = await api(ENDPOINTS.settingsImport, { method: "POST", body: text, raw: true });
+    const parts = [];
+    if (Array.isArray(report?.changed) && report.changed.length > 0) {
+      const labels = report.changed.map((key) => SETTING_LABELS[key] || key);
+      parts.push(`${report.changed.length} ayar güncellendi (${labels.join(", ")})`);
+    } else {
+      parts.push("Dosyadaki ayarlar zaten geçerliydi");
+    }
+    if (Array.isArray(report?.warnings) && report.warnings.length > 0) {
+      parts.push(report.warnings.join(" "));
+    }
+    setBackupStatus(parts.join(" · "), report?.warnings?.length ? "error" : "ok");
+    showToast(report?.changed?.length ? "Ayarlar içe aktarıldı." : "Değişiklik yok.");
+    // Ayarları yeniden çek: form yeni değerleri göstersin.
+    state.settingsLoaded = false;
+    await loadSettings(true);
+  } catch (error) {
+    setBackupStatus(error.message || "Ayar dosyası uygulanamadı.", "error");
+  }
+}
+
+function bindBackup() {
+  if (els.exportSettings) els.exportSettings.addEventListener("click", exportSettings);
+  if (els.importSettingsInput) {
+    els.importSettingsInput.addEventListener("change", () => {
+      const file = els.importSettingsInput.files?.[0];
+      void importSettings(file);
+      // Aynı dosya tekrar seçilebilsin.
+      els.importSettingsInput.value = "";
+    });
+  }
+}
+
 function clampInt(value, min, max, fallback) {
   const parsed = parseNumberish(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -1918,6 +2023,7 @@ async function boot() {
   state.token = readToken();
   bindQuickForm();
   bindBulk();
+  bindBackup();
   bindTorrentUpload();
   bindFilters();
   bindList();

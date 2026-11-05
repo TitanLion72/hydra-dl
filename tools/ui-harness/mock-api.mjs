@@ -385,6 +385,20 @@ export const api = {
     calls.installYtdlp = (calls.installYtdlp ?? 0) + 1;
     return { available: true, path: "C:/mock/bin/yt-dlp.exe", version: "2026.10.21" };
   },
+  exportSettingsTo: async (path, includeToken) => {
+    calls.exportSettingsTo = calls.exportSettingsTo ?? [];
+    calls.exportSettingsTo.push({ path, includeToken });
+    return path;
+  },
+  importSettingsFrom: async (path) => {
+    calls.importSettingsFrom = calls.importSettingsFrom ?? [];
+    calls.importSettingsFrom.push(path);
+    return {
+      settings: { ...SETTINGS, maxConcurrent: 6 },
+      changed: ["maxConcurrent", "webPort"],
+      warnings: [],
+    };
+  },
   checkYtdlpUpdate: async () => {
     calls.checkYtdlpUpdate = (calls.checkYtdlpUpdate ?? 0) + 1;
     return {

@@ -1361,6 +1361,40 @@ pub fn save_settings(state: &Arc<AppState>, mut settings: Settings) -> Result<Se
     Ok(settings)
 }
 
+/// İçe aktarılan ayar paketini uygular: doğrula → kaydet → sunucuları gerekiyorsa
+/// yeniden başlat. Masaüstü (Tauri komutu) ve telefon (HTTP) **aynı** yolu kullanır.
+///
+/// Dönüş: uygulanan ayarlar + değişen alanlar + uyarılar. Hata olursa ayarlar
+/// **değiştirilmez** (`apply_import` ve `verify_download_dir` önce çalışır).
+pub async fn import_settings(
+    state: &Arc<AppState>,
+    payload: &serde_json::Value,
+) -> Result<crate::store::ImportReport, String> {
+    let previous = state.settings();
+    let outcome = crate::store::apply_import(&previous, payload)?;
+    let (settings, dir_warnings) = crate::store::verify_download_dir(&outcome.settings, &previous);
+
+    let saved = save_settings(state, settings)?;
+
+    let mut warnings = dir_warnings;
+    warnings.extend(outcome.warnings);
+
+    if crate::web::web_restart_needed(&previous, &saved) {
+        crate::web::restart_web(state, &saved).await?;
+    }
+    if previous.capture_enabled != saved.capture_enabled
+        || previous.capture_port != saved.capture_port
+    {
+        crate::capture::restart(state, saved.capture_enabled, saved.capture_port).await?;
+    }
+
+    Ok(crate::store::ImportReport {
+        settings: saved,
+        changed: outcome.changed,
+        warnings,
+    })
+}
+
 /// Uygulama acilisinda yarim kalanlari kuyruga al.
 pub fn resume_pending(state: &Arc<AppState>) {
     if !state.settings().auto_resume {

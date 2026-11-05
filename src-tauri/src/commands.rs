@@ -187,6 +187,74 @@ pub fn get_ytdlp_status(state: St<'_>) -> Result<YtdlpStatus, String> {
     })
 }
 
+/// Ayarları dosyaya aktarır (masaüstü). `includeToken` yalnız kullanıcı
+/// açıkça isterse `true`; varsayılan olarak erişim anahtarı dosyaya yazılmaz.
+///
+/// Yol **kullanıcı dosya seçicisinden** gelir (arayüz `plugin-dialog` ile alır).
+/// Yine de savunmacı davranıyoruz: boş yol, dizin yolu ve `.json` dışı uzantı
+/// reddedilir; yazma atomik (`*.tmp` → rename).
+#[tauri::command]
+pub fn export_settings_to(
+    state: St<'_>,
+    path: String,
+    include_token: bool,
+) -> Result<String, String> {
+    let target = settings_export_path(&path)?;
+    let settings = state.settings();
+    let stamp = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let payload = crate::store::export_payload(&settings, include_token, &stamp);
+
+    let text = serde_json::to_string_pretty(&payload)
+        .map_err(|e| format!("Ayarlar yazıya çevrilemedi: {e}"))?;
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("Klasör oluşturulamadı: {e}"))?;
+    }
+    let tmp = target.with_extension("json.tmp");
+    std::fs::write(&tmp, text).map_err(|e| format!("Dosya yazılamadı: {e}"))?;
+    std::fs::rename(&tmp, &target).map_err(|e| format!("Dosya yerine konulamadı: {e}"))?;
+    Ok(target.to_string_lossy().to_string())
+}
+
+/// Ayar dosyası yolunu doğrular ve `.json` uzantısını garantiler.
+///
+/// Saf fonksiyon: arayüzden gelen yol ne olursa olsun güvenli bir hedef üretir.
+pub fn settings_export_path(raw: &str) -> Result<PathBuf, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("Dosya yolu boş.".into());
+    }
+    let mut path = PathBuf::from(trimmed);
+    if path.is_dir() {
+        return Err("Bir klasör değil, dosya yolu seç.".into());
+    }
+    match path.extension().and_then(|ext| ext.to_str()) {
+        Some(ext) if ext.eq_ignore_ascii_case("json") => {}
+        // Uzantı yoksa ekle; farklı uzantıyı sessizce değiştirmek yerine düzelt.
+        _ => {
+            path.set_extension("json");
+        }
+    }
+    Ok(path)
+}
+
+/// Ayar dosyasını okur ve uygular (masaüstü). Hata olursa ayarlar değişmez.
+#[tauri::command]
+pub async fn import_settings_from(
+    state: St<'_>,
+    path: String,
+) -> Result<crate::store::ImportReport, String> {
+    let target = settings_export_path(&path)?;
+    let text = std::fs::read_to_string(&target)
+        .map_err(|e| format!("Dosya okunamadı ({}): {e}", target.display()))?;
+    // 1 MB üstü ayar dosyası olamaz; belleği şişirmeyelim.
+    if text.len() > 1024 * 1024 {
+        return Err("Dosya çok büyük; bir ayar dosyası en fazla 1 MB olabilir.".into());
+    }
+    let payload: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("Dosya geçerli JSON değil: {e}"))?;
+    manager::import_settings(state.inner(), &payload).await
+}
+
 /// yt-dlp güncelleme kontrolü (kurulu sürüm + GitHub'daki son sürüm).
 #[tauri::command]
 pub async fn check_ytdlp_update(state: St<'_>) -> Result<ytdlp::UpdateCheck, String> {
@@ -194,6 +262,7 @@ pub async fn check_ytdlp_update(state: St<'_>) -> Result<ytdlp::UpdateCheck, Str
     let client = state.http();
     Ok(ytdlp::check_update(&state.app, &client, &settings.ytdlp_path).await)
 }
+
 /// yt-dlp'yi indirip uygulama klasörüne kurar. İlerleme `ytdlp:install` olayıyla yayınlanır.
 #[tauri::command]
 pub async fn install_ytdlp(state: St<'_>) -> Result<YtdlpStatus, String> {
@@ -267,4 +336,50 @@ pub fn reveal_download(state: St<'_>, id: String) -> Result<(), String> {
         .filter(|p| p.exists())
         .unwrap_or_else(|| item.dir.clone());
     tauri_plugin_opener::reveal_item_in_dir(path).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bos_yol_reddedilir() {
+        assert!(settings_export_path("").is_err());
+        assert!(settings_export_path("   ").is_err());
+    }
+
+    #[test]
+    fn json_uzantisi_garanti_edilir() {
+        assert_eq!(
+            settings_export_path("C:\\Users\\ornek\\yedek").unwrap(),
+            PathBuf::from("C:\\Users\\ornek\\yedek.json")
+        );
+        assert_eq!(
+            settings_export_path("C:\\Users\\ornek\\yedek.json").unwrap(),
+            PathBuf::from("C:\\Users\\ornek\\yedek.json")
+        );
+        // Buyuk harfli uzanti korunur (Windows'ta ayni dosya).
+        let upper = settings_export_path("C:\\Users\\ornek\\yedek.JSON").unwrap();
+        assert_eq!(upper.extension().unwrap(), "JSON");
+        // Farkli uzanti JSON'a cevrilir (yanlis dosyaya yazmayalim).
+        assert_eq!(
+            settings_export_path("C:\\Users\\ornek\\yedek.txt").unwrap(),
+            PathBuf::from("C:\\Users\\ornek\\yedek.json")
+        );
+    }
+
+    #[test]
+    fn klasor_yolu_dosya_olarak_kabul_edilmez() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = settings_export_path(&dir.path().to_string_lossy()).unwrap_err();
+        assert!(err.contains("klasör"), "anlasilir hata: {err}");
+    }
+
+    #[test]
+    fn bosluklar_temizlenir() {
+        assert_eq!(
+            settings_export_path("  C:\\Users\\ornek\\yedek.json  ").unwrap(),
+            PathBuf::from("C:\\Users\\ornek\\yedek.json")
+        );
+    }
 }

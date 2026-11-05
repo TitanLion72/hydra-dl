@@ -275,6 +275,24 @@
           </div>
         </section>
 
+        <section class="field-group">
+          <h3>Yedekleme</h3>
+          <p class="hint">
+            Ayarları dosyaya aktarıp başka bir makineye taşıyabilirsin.
+            <b>Erişim anahtarı varsayılan olarak yazılmaz</b> — dosya paylaşılabilir kalır.
+          </p>
+          <div class="row-inline ytdlp-actions">
+            <button class="ghost mini" type="button" id="export-settings">Dışa aktar</button>
+            <button class="ghost mini" type="button" id="import-settings">İçe aktar</button>
+            <span class="hint" id="backup-status"></span>
+          </div>
+          <label class="switch" id="export-token-row">
+            <input id="export-token" type="checkbox" />
+            <span class="track"></span>
+            <span>Erişim anahtarını da yaz<small>Dosyayı paylaşacaksan işaretleme.</small></span>
+          </label>
+        </section>
+
         <section class="field-group meta-group">
           <h3>Hakkında</h3>
           <p class="hint" id="about-info"></p>

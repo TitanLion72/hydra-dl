@@ -135,6 +135,28 @@ async function main() {
     );
     ok("`/src/api.ts` sahte modul ile karsilandi");
 
+    // Diyalog eklentisi tarayicida `invoke` cagirir ve patlar; testte sahte
+    // modulle degistiriyoruz. Donen yolu `window.__hydraDialog` belirler.
+    const dialogStub = `
+export async function open(options) {
+  return globalThis.__hydraDialog?.open ?? null;
+}
+export async function save(options) {
+  return globalThis.__hydraDialog?.save ?? null;
+}
+export async function message() {}
+export async function ask() { return true; }
+export async function confirm() { return true; }
+`;
+    await page.route(/plugin-dialog/, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "text/javascript; charset=utf-8",
+        body: dialogStub,
+      }),
+    );
+    ok("diyalog eklentisi sahte modulle karsilandi");
+
     const shot = async (name) => {
       const file = path.join(artifactsDir, name);
       await page.screenshot({ path: file, fullPage: true });
@@ -521,6 +543,43 @@ async function main() {
       { timeout: 15_000 },
     );
     ok("Guncelle dugmesi kurulum akisini tetikledi");
+
+    // --- 6e3. Ayar disa/ice aktarma ---------------------------------------
+    await page.evaluate(() => {
+      globalThis.__hydraDialog = { save: "C:\\Users\\ornek\\yedek.json", open: "C:\\Users\\ornek\\yedek.json" };
+    });
+    await page.click("#export-settings");
+    await page.waitForFunction(
+      () => (window.__hydraCalls.exportSettingsTo ?? []).length > 0,
+      null,
+      { timeout: 10_000 },
+    );
+    const exported = await page.evaluate(() => window.__hydraCalls.exportSettingsTo[0]);
+    check(
+      exported?.path === "C:\\Users\\ornek\\yedek.json",
+      `disa aktarma secilen yolu kullandi (${exported?.path})`,
+    );
+    check(exported?.includeToken === false, "token varsayilan olarak disa aktarilmadi");
+    const exportMsg = (await page.locator("#backup-status").textContent()) ?? "";
+    check(exportMsg.includes("Aktarıldı"), `disa aktarma geri bildirimi ('${exportMsg.trim()}')`);
+
+    await page.click("#import-settings");
+    await page.waitForFunction(
+      () => (document.querySelector("#backup-status")?.textContent ?? "").includes("ayar güncellendi"),
+      null,
+      { timeout: 10_000 },
+    );
+    const importMsg = (await page.locator("#backup-status").textContent()) ?? "";
+    check(
+      importMsg.includes("2 ayar güncellendi"),
+      `ice aktarma ozeti degisen sayiyi gosteriyor ('${importMsg.trim()}')`,
+    );
+    check(
+      importMsg.includes("eşzamanlı indirme"),
+      "degisen alan adi Turkce etiketle yazildi",
+    );
+    ok("ayar disa/ice aktarma akisi tamam");
+    await shot("03b-yedekleme.png");
 
     await page.evaluate(() => {
       window.__hydraMock.delayMs = null;

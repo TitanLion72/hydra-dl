@@ -371,6 +371,20 @@
           </section>
 
           <section class="panel">
+            <h2 class="panel-title">Yedekleme</h2>
+            <p class="field-help">
+              Ayarları dosyaya aktarıp başka bir cihaza taşıyabilirsin.
+              <b>Erişim anahtarı varsayılan olarak yazılmaz.</b>
+            </p>
+            <div id="backupRow">
+              <button id="exportSettings" class="btn ghost" type="button">Ayarları indir</button>
+              <label class="btn ghost" for="importSettingsInput">Ayar dosyası seç</label>
+              <input id="importSettingsInput" type="file" accept=".json,application/json" hidden />
+            </div>
+            <p id="backupStatus" class="form-status" role="status" aria-live="polite"></p>
+          </section>
+
+          <section class="panel">
             <h2 class="panel-title">Erişim anahtarı</h2>
             <label class="field">
               <span class="field-label" for="setToken">Token</span>

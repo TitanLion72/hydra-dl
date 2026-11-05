@@ -345,6 +345,76 @@ async fn get_settings(State(state): State<Arc<AppState>>) -> Json<Settings> {
     Json(state.settings())
 }
 
+/// Ayarları dışa aktarır (telefon/istemci dosya olarak indirir).
+///
+/// **`includeToken=1`** yalnız açıkça istenirse erişim anahtarını dosyaya koyar;
+/// varsayılan olarak anahtar dışarıda bırakılır (dosya paylaşılabilir kalsın).
+///
+/// Dikkat: sorgudaki `token` parametresi **kimlik doğrulama** anahtarıdır
+/// (`auth_middleware`). Bu yüzden buradaki bayrak ayrı ad taşır; aynı adı
+/// kullanmak auth token'ını bool gibi ayrıştırmaya çalışıp 400 verirdi.
+async fn export_settings(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<ExportQuery>,
+) -> Response {
+    let settings = state.settings();
+    let include_token = params
+        .include_token
+        .as_deref()
+        .map(flag_truthy)
+        .unwrap_or(false);
+    let stamp = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let payload = crate::store::export_payload(&settings, include_token, &stamp);
+    let mut response = Json(payload).into_response();
+    // Tarayıcı "dosya indir" davranışı için indirilebilir ad öner.
+    response.headers_mut().insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_static("attachment; filename=\"hydra-ayarlar.json\""),
+    );
+    response
+}
+
+/// Sorgu bayrağı: `1`, `true`, `yes`, `on` → doğru.
+pub fn flag_truthy(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ExportQuery {
+    /// `1`/`true` ise erişim anahtarı da dosyaya yazılır.
+    #[serde(rename = "includeToken", default)]
+    pub include_token: Option<String>,
+}
+
+/// Ayar dosyasını uygular. Gövde: `{format, version, settings}`.
+///
+/// Hatalar 400 ile döner ve **ayarlar değişmez**: doğrulama kaydetmeden önce.
+async fn import_settings(State(state): State<Arc<AppState>>, body: axum::body::Bytes) -> Response {
+    // Ayar dosyası 1 MB'ı geçemez; belleği şişirmeyelim.
+    if body.len() > 1024 * 1024 {
+        return error_response(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "Dosya çok büyük; bir ayar dosyası en fazla 1 MB olabilir.",
+        );
+    }
+    let payload: serde_json::Value = match serde_json::from_slice(&body) {
+        Ok(value) => value,
+        Err(err) => {
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                format!("Dosya geçerli JSON değil: {err}"),
+            )
+        }
+    };
+    match manager::import_settings(&state, &payload).await {
+        Ok(report) => (StatusCode::OK, Json(report)).into_response(),
+        Err(err) => error_response(StatusCode::BAD_REQUEST, err),
+    }
+}
+
 /// Ayarlar değişince web sunucusunun yeniden başlatılması gerekiyor mu?
 ///
 /// **Kritik:** bu listede bir alan eksik olursa o ayar sessizce yok sayılır.
@@ -765,6 +835,8 @@ pub fn api_router(state: Arc<AppState>) -> Router {
         .route("/downloads/{id}/cancel", post(cancel))
         .route("/downloads/{id}", delete(remove))
         .route("/settings", get(get_settings).put(put_settings))
+        .route("/settings/export", get(export_settings))
+        .route("/settings/import", post(import_settings))
         .route("/torrents", post(add_torrent).get(list_torrents))
         .route("/torrent/files", post(torrent_files))
         .route("/torrent/upload", post(torrent_upload))
@@ -1258,6 +1330,39 @@ mod tests {
     use super::*;
 
     #[test]
+    fn sorgu_bayragi_okunur() {
+        for truthy in ["1", "true", "TRUE", " yes ", "on"] {
+            assert!(flag_truthy(truthy), "'{truthy}' doğru olmalı");
+        }
+        for falsy in ["", "0", "false", "hayir", "off", "2"] {
+            assert!(!flag_truthy(falsy), "'{falsy}' yanlış olmalı");
+        }
+    }
+
+    /// Regresyon riski: dışa aktarma bayrağı `token` adını taşısaydı
+    /// **kimlik doğrulama** token'ıyla çakışır ve istek 400 dönerdi.
+    #[test]
+    fn disa_aktarma_bayragi_auth_tokeniyla_cakismaz() {
+        // ?token=<auth>&includeToken=1 → auth token ayrı, bayrak ayrı.
+        let with_flag = ExportQuery {
+            include_token: Some("1".into()),
+        };
+        assert!(flag_truthy(
+            with_flag.include_token.as_deref().unwrap_or("")
+        ));
+
+        // Yalnız auth token'ı varsa bayrak yok → token dosyaya yazılmaz.
+        let only_auth = ExportQuery {
+            include_token: None,
+        };
+        assert!(!only_auth
+            .include_token
+            .as_deref()
+            .map(flag_truthy)
+            .unwrap_or(false));
+    }
+
+    #[test]
     fn qr_uretilir() {
         let uri = qr_svg_data_uri("http://192.168.1.20:6790?token=abc").unwrap();
         assert!(uri.starts_with("data:image/svg+xml;base64,"));
@@ -1391,6 +1496,8 @@ mod tests {
         for korumali in [
             "/downloads",
             "/settings",
+            "/settings/export",
+            "/settings/import",
             "/probe",
             "/add",
             "/torrents",

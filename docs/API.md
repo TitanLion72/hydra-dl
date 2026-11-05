@@ -221,6 +221,27 @@ Masaüstü ayrıca `ytdlp:install` olayıyla ilerleme yayınlar:
 - Avcı modu: `Settings.hunterEnabled`; içerik betiği seçilen öğenin `src`/`currentSrc`/
   `href` adresini `POST /add` ile `referer` olarak sayfa adresiyle gönderir.
 
+## Ayarların dışa/içe aktarımı (yedekleme)
+
+| Metot | Yol | Not |
+|---|---|---|
+| GET | `/settings/export` | `{format:"hydra-dl-settings", version:1, exportedAt, settings:{…}}`. **`webToken` varsayılan olarak yoktur** (dosya paylaşılabilir kalsın). `Content-Disposition: attachment` ile dosya olarak iner. |
+| POST | `/settings/import` | Gövde aynı biçim. Yanıt `{settings, changed[], warnings[]}`; hata **400** ve ayarlar **değişmez** (doğrulama kaydetmeden önce). Gövde > 1 MB → 413. |
+
+Kurallar:
+
+- `includeToken=1` sorgu bayrağı **yalnız** açıkça istenirse erişim anahtarını dosyaya
+  koyar. `token` adı **kimlik doğrulama** anahtarıdır; bayrakla karıştırılmaz.
+- İçe aktarma **mevcut ayarların üzerine birleştirir**: dosyada olmayan alan mevcut
+  değeri korur. Bu yüzden token'sız bir yedek geri yüklenince kullanıcının anahtarı
+  **silinmez**. Token'ı sıfırlamak istiyorsan `"webToken": ""` gönder.
+- Değerler `Settings::normalize()` ile sınırlanır (port aralığı, bağlantı sayısı, token
+  karakter seti, proxy şeması). Geçersiz değer sessizce düzeltilir.
+- Dosyadaki `downloadDir` boşsa veya klasör oluşturulamıyorsa **önceki klasör korunur**
+  ve `warnings` içinde bildirilir.
+- `version` bu sürümden büyükse reddedilir (anlaşılmayan dosya yarım uygulanmaz).
+- `changed` alanı camelCase anahtar listesidir; arayüz bunları Türkçe etikete çevirir.
+
 ## Kimlik doğrulama
 
 Yakalama sunucusu yalnız `127.0.0.1` dinler, token istemez. Web sunucusu LAN'a açıldığında
