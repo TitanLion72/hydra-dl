@@ -724,35 +724,20 @@ async fn finish_completed(
 
     // Segment kayitlari ticker'in son turundan bayat olabilir; gercek boyut
     // diskten okunur. Eksik parca varsa "tamamlandi" demek veri kaybidir.
+    // Karsilastirma saf `verify_parts`'ta (birim testli).
     let mut total_written = 0u64;
     if !empty {
-        let mut problem: Option<String> = None;
+        let mut observed: Vec<(usize, u64)> = Vec::with_capacity(segments.len());
         for seg in segments {
             let part = parts_dir.join(format!("{}.part", seg.index));
             let size = tokio::fs::metadata(&part)
                 .await
                 .map(|m| m.len())
                 .unwrap_or(0);
-            total_written = total_written.saturating_add(size);
-            if let Some(expected) = seg.total_len() {
-                if size != expected && problem.is_none() {
-                    problem = Some(format!(
-                        "{}. parca eksik: {size}/{expected} bayt",
-                        seg.index
-                    ));
-                }
-            }
+            observed.push((seg.index, size));
         }
-        let expected_total = crate::model::segments_len(segments);
-        if problem.is_none() {
-            if let Some(expected) = expected_total {
-                if total_written != expected {
-                    problem = Some(format!(
-                        "toplam boyut tutmuyor: {total_written}/{expected} bayt"
-                    ));
-                }
-            }
-        }
+        let (seen, problem) = crate::model::verify_parts(&observed, segments);
+        total_written = seen;
         if let Some(problem) = problem {
             // Parcalar silinmez: kullanici "yeniden dene" ile devam edebilir.
             state.update_item(id, |d| {

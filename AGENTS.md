@@ -51,9 +51,7 @@ node tools/net-capture-check.mjs                                     # eklenti a
 | `src-tauri/src/commands.rs` | Tauri komut yüzeyi |
 | `src/` | masaüstü arayüzü (vanilla TS); durum yalnız `downloads:changed` |
 | `src/i18n.ts` | masaüstü i18n köprüsü → `webapp/i18n.js` |
-| `webapp/i18n.js` | **yerelleştirme motoru (tek kaynak, saf)**: `t`/`tt`, `localizeDom`, şablon eşleştirici |
-| `webapp/i18n-en.js` | İngilizce sözlük; anahtar = Türkçe kaynak metin, `%n` yer tutucu |
-| `webapp/i18n.d.ts` | `webapp/i18n.js` tip bildirimleri (masaüstü TS bunu kullanır) |
+| `webapp/i18n.js` | **yerelleştirme motoru (tek kaynak, saf)**: `t`/`tt`, `localizeDom`; `i18n-en.js` sözlük, `i18n.d.ts` tipler |
 | `src/virtual.ts` | **sanal liste matematiği** (saf): satır ofsetleri, görünen pencere, kaydırma kırpma |
 | `webapp/` | telefonda çalışan statik arayüz (derleme yok, SSE) |
 | `webapp/links.js` | **toplu içe aktarma ayrıştırıcısı** (saf, tek kaynak): satır/virgül/boşluk, `<sarmal>`, noktalama, `magnet`, yinelenen eleme, 500 sınırı |

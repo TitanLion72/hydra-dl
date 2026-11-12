@@ -317,6 +317,37 @@ pub fn plan_segments(total: Option<u64>, resumable: bool, connections: usize) ->
     segments
 }
 
+/// Diskten okunan parca boyutlarini planla karsilastirir.
+///
+/// `observed`: (segment indeksi, diskteki bayt). Planda olup `observed`'ta
+/// bulunmayan segment **0 bayt** sayilir (hic yazilmamis).
+///
+/// Donen: `(diskteki toplam bayt, ilk sorun)`. Boyutu bilinmeyen segment
+/// (`end == None`, canli akis) dogrulanamaz ve atlanir: sahte hata uretmez.
+pub fn verify_parts(observed: &[(usize, u64)], segments: &[Segment]) -> (u64, Option<String>) {
+    let mut total = 0u64;
+    let mut problem = None;
+    for seg in segments {
+        let size = observed
+            .iter()
+            .find(|(index, _)| *index == seg.index)
+            .map(|(_, size)| *size)
+            .unwrap_or(0);
+        total = total.saturating_add(size);
+        if problem.is_none() {
+            if let Some(expected) = seg.total_len() {
+                if size != expected {
+                    problem = Some(format!(
+                        "{}. parca eksik: {size}/{expected} bayt",
+                        seg.index
+                    ));
+                }
+            }
+        }
+    }
+    (total, problem)
+}
+
 /// Planin toplam uzunlugunu dogrular (testler ve guvenlik agi icin).
 pub fn segments_len(segments: &[Segment]) -> Option<u64> {
     let mut sum = 0u64;
@@ -329,6 +360,49 @@ pub fn segments_len(segments: &[Segment]) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parca_boyutlari_planla_karsilastirilir() {
+        // 4 MB, 4 bağlantı → her parça 1 MB (MIN_SEGMENT_SIZE sınırı).
+        let total: u64 = 4 * 1024 * 1024;
+        let part: u64 = 1024 * 1024;
+        let segments = plan_segments(Some(total), true, 4);
+        assert_eq!(segments.len(), 4, "4 MB dört parçaya bölünmeli");
+        let full: Vec<(usize, u64)> = segments
+            .iter()
+            .map(|s| (s.index, s.total_len().unwrap()))
+            .collect();
+
+        // 1) Her parça tam: toplam doğru, sorun yok.
+        assert_eq!(verify_parts(&full, &segments), (total, None));
+
+        // 2) Bir parça eksik yazılmış (10 bayt): sorun parçayı adlandırır,
+        //    toplam diskteki gerçek baytı yansıtır.
+        let mut short = full.clone();
+        short[2].1 -= 10;
+        let (seen, problem) = verify_parts(&short, &segments);
+        assert_eq!(seen, total - 10, "toplam diskteki gerçek boyuttan gelmeli");
+        let problem = problem.expect("eksik parça sorun bildirmeli");
+        assert!(
+            problem.contains('2') && problem.contains(&format!("{}/{part}", part - 10)),
+            "sorun mesajı parçayı ve boyutu içermeli: {problem}"
+        );
+
+        // 3) Hiç yazılmamış parça: 0 bayt kabul edilir, yine sorun.
+        let missing = &full[..2];
+        let (seen3, problem3) = verify_parts(missing, &segments);
+        assert_eq!(seen3, 2 * part, "eksik parça 0 sayılmalı");
+        assert!(problem3.is_some(), "hiç yazılmamış parça sorun bildirmeli");
+    }
+
+    #[test]
+    fn boyutu_bilinmeyen_parca_dogrulamayi_engellemez() {
+        // Canlı akışta `end` yok: beklenti kurulamaz, sorun üretilmemeli.
+        let segments = plan_segments(None, true, 4);
+        assert_eq!(segments.len(), 1);
+        let observed = vec![(segments[0].index, 12_345)];
+        assert_eq!(verify_parts(&observed, &segments), (12_345, None));
+    }
 
     #[test]
     fn tohum_orani_hesaplanir() {

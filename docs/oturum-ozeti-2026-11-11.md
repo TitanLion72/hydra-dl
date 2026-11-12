@@ -89,7 +89,7 @@ envanter, 0 eksik, 0 tekrar.
 ## Nasıl devam edilir
 
 ```powershell
-cd C:\Users\titan\Projeler\hydra-dl
+cd <proje dizini>        # hydra-dl deposunun kökü
 git status --short
 git log --oneline -5
 cargo test --manifest-path src-tauri\Cargo.toml

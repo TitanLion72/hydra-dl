@@ -2,7 +2,7 @@
 
 > Yeni oturum: **önce bu dosyayı oku**, sonra `git status`. Bitirdiğin dilimi en alta 10 satır yaz.
 
-**Son güncelleme:** 2026-11-11 · v0.5.0 · AGPL-3.0-or-later
+**Son güncelleme:** 2026-11-12 · v0.6.0 · AGPL-3.0-or-later
 
 ---
 
@@ -118,35 +118,21 @@ kurulup** denenmeli — `tauri dev` yetmez (`docs/TRAPS.md`).
 2. **Dış PR'lar (`smart-screen`, bizim repo değil):** #3 yol enjeksiyonu **doğru** (ham
    soketle 10/10); #1 `audit` kırmızısını gideriyor; #2 çakışıyor ve lockfile'da alakasız
    sürüm değişikliği var. Kullanıcı onayı bekliyor.
-3. **Toplu içe aktarma (0.3.8) — BİTTİ (12/12 canlı).** Tek kaynak `webapp/links.js`:
-   satır/virgül, `<sarmal>`, noktalama, `magnet`, yinelenen eleme, 500 sınırı.
-   "Toplu" düğmesi + Ctrl+Shift+V; telefonda katlanır kutu; başarısızlar kutuda kalır.
-4. **Toplu seçim + sanal liste (0.3.9) — BİTTİ.** Seçim kutuları, seçim çubuğu
-   (duraklat/devam/iptal/çıkar), Ctrl+A. 150+ kayıtta yalnız görünen pencere çizilir
-   (`src/virtual.ts`: değişken yükseklik, overscan, kaydırma kırpma). Kanıt: 300 kayıtta
-   DOM'da 14 satır, sona kaydırma son kaydı çizdi, seçim→duraklat API'ye gitti.
-5. **yt-dlp güncelleme (0.4.0) — BİTTİ, gerçek ağla doğrulandı.** `GET /ytdlp/latest`
-   (GitHub `tag_name`, 30 dk önbellek) + saf `is_newer` (eksik bileşen 0, `.1` yeni).
-   Masaüstü + telefonda "Güncelleme var mı?" / "Güncelle (sürüm)". Kanıt: kontrol 571 ms,
-   ikinci kontrol 4 ms (ağa çıkmadı), gerçek güncelleme 13 sn → "güncelleme yok".
-   **v0.3 dilimi 14/14 tamam.**
-6. **Ayar yedekleme (0.4.1) — BİTTİ, canlı 21/21.** `GET /settings/export` +
-   `POST /settings/import` (imza `hydra-dl-settings`, sürüm 1). Token varsayılan olarak
-   **dışa aktarılmaz** (`includeToken=1` ile isteğe bağlı; `token` adı auth anahtarı,
-   karıştırılmıyor). İçe aktarma birleştirir → token'sız yedek anahtarı silmez; bozuk/
-   yabancı/gelecek sürüm 400 ve ayarlar değişmez; klasör oluşturulamazsa önceki korunur.
-7. **TR/EN yerelleştirme (0.5.0) — BİTTİ.** Tek kaynak `webapp/i18n.js` + `i18n-en.js`
-   (357 anahtar, **envanter 293/293**, 0 eksik, 0 tekrar). Anahtar = Türkçe kaynak metin:
-   eksik çeviri görünür Türkçe kalır, asla boş/`missing.key` olmaz. `%1`..`%9` yer tutucu,
-   `%%` literal yüzde, `tt` etiketli şablon (35 şablon denetimli). Statik HTML
-   `localizeDom` ile (metin düğümleri + placeholder/title/aria-label), dil değişimi sayfa
-   yenilemeden; orijinal metinler `WeakMap`'te → EN→TR geri dönüş kayıpsız.
-   `Settings.language` (`#[serde(default)]`, normalize `tr`/`en`). Masaüstü + telefon
-   seçicide anında uygulanır, Kaydet kalıcılaştırır. Kanıt: `test-i18n` 25/25,
-   `audit-i18n` temiz, ui-harness dil senaryosu, web-ui-check EN→TR turu.
-8. **v1.0 sırada:** dayanıklılık testleri → otomatik güncelleme (imzalı manifest,
-   anahtar kullanıcıda) → kod imzalı NSIS.
-9. Küçükler: `ringbuf` muafiyeti `librqbit-utp` 0.4.9+/0.5.2+ çıkınca kalkar; torrent proxy
+3. **Tamamlanan dilimler:** 0.3.8 toplu içe aktarma (`webapp/links.js`, 12/12 canlı) ·
+   0.3.9 toplu seçim + sanal liste (300 kayıtta DOM'da 14 satır) · 0.4.0 yt-dlp güncelleme
+   (`GET /ytdlp/latest`, 30 dk önbellek) · 0.4.1 ayar yedekleme (token varsayılan dışa
+   yazılmaz, içe aktarma birleştirir) · 0.5.0 TR/EN yerelleştirme (envanter 293/293).
+4. **Dayanıklılık testleri — 1. dilim (0.6.0) BİTTİ.** Bitiş doğrulaması saf
+   `model::verify_parts`'a çıkarıldı (parça indeksi + boyut, bilinmeyen boyut atlanır) ve
+   manager onu kullanıyor. Yeni testler: kopan bağlantı (sunucu gövdeyi yarıda keser →
+   tekrar dene + kaldığı yerden devam → dosya birebir), eksik parçada hedef dosya
+   **oluşmaz**, birleştirme hatasında `.hydra-tmp` artığı kalmaz (gerçek sızıntıydı,
+   düzeltildi). `cargo test` 164.
+5. **Dayanıklılık — sırada:** disk dolu simülasyonu (yazma hatası → failed + parçalar
+   korunur), uzun süreli eşzamanlı 10 indirme soak testi, HLS/DASH parça kopması.
+6. **v1.0 sırada:** otomatik güncelleme (imzalı manifest, anahtar kullanıcıda) → kod
+   imzalı NSIS.
+7. Küçükler: `ringbuf` muafiyeti `librqbit-utp` 0.4.9+/0.5.2+ çıkınca kalkar; torrent proxy
    desteği librqbit proxy kazanınca `proxyUrl`'e bağlanır.
 
 ## Oturum kesilirse ilk komut

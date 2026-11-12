@@ -583,7 +583,8 @@ async fn attempt_once(
 }
 
 /// Parcalari tek dosyada birlestirir. Once `.hydra-tmp` dosyasina yazip
-/// yeniden adlandirir; yarim kalan birlestirme hedefi bozmaz.
+/// yeniden adlandirir; yarim kalan birlestirme hedefi bozmaz. Yazma
+/// basarisiz olursa gecici dosya silinir (her denemede birikmesin).
 pub async fn concat_parts(
     parts_dir: &Path,
     segments: &[Segment],
@@ -594,11 +595,34 @@ pub async fn concat_parts(
         name.push(".hydra-tmp");
         PathBuf::from(name)
     };
+    if let Err(err) = write_parts_to(&tmp, parts_dir, segments).await {
+        // Yarim gecici dosya birakma: sonraki denemeler birikmesin.
+        let _ = fs::remove_file(&tmp).await;
+        return Err(err);
+    }
+
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent)
+            .await
+            .map_err(|e| HttpError::Io(e.to_string()))?;
+    }
+    fs::rename(&tmp, target)
+        .await
+        .map_err(|e| HttpError::Io(format!("yeniden adlandirma: {e}")))?;
+    Ok(())
+}
+
+/// Parcalari `tmp` dosyasina sirayla yazar ve diske indirir.
+async fn write_parts_to(
+    tmp: &Path,
+    parts_dir: &Path,
+    segments: &[Segment],
+) -> Result<(), HttpError> {
     let mut out = OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
-        .open(&tmp)
+        .open(tmp)
         .await
         .map_err(|e| HttpError::Io(e.to_string()))?;
 
@@ -618,15 +642,6 @@ pub async fn concat_parts(
         .await
         .map_err(|e| HttpError::Io(e.to_string()))?;
     drop(out);
-
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent)
-            .await
-            .map_err(|e| HttpError::Io(e.to_string()))?;
-    }
-    fs::rename(&tmp, target)
-        .await
-        .map_err(|e| HttpError::Io(format!("yeniden adlandirma: {e}")))?;
     Ok(())
 }
 
@@ -1081,6 +1096,94 @@ mod tests {
         assert_eq!(std::fs::read(&target).unwrap(), data);
     }
 
+    /// Kopan baglanti: sunucu govdeyi yarida kesip soketi kapatir.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn kopan_baglanti_kaldigi_yerden_devam_eder() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let data = test_data(1_200_000);
+        let total = data.len() as u64;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let hits = Arc::new(AtomicU64::new(0));
+        let hits_server = hits.clone();
+        let data_server = Arc::new(data.clone());
+
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let hits = hits_server.clone();
+                let data = data_server.clone();
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 4096];
+                    let n = socket.read(&mut buf).await.unwrap_or(0);
+                    let head = String::from_utf8_lossy(&buf[..n]).to_ascii_lowercase();
+                    // `range: bytes=<start>-...`; yoksa bastan.
+                    let start = head
+                        .lines()
+                        .find_map(|line| {
+                            line.strip_prefix("range: bytes=")
+                                .map(|rest| rest.split('-').next().unwrap_or("0").to_string())
+                        })
+                        .and_then(|text| text.parse::<u64>().ok())
+                        .unwrap_or(0)
+                        .min(total.saturating_sub(1));
+                    let slice = &data[start as usize..];
+                    let response_head = format!(
+                        "HTTP/1.1 206 Partial Content\r\nContent-Length: {}\r\nContent-Range: bytes {start}-{}/{total}\r\nAccept-Ranges: bytes\r\nConnection: close\r\n\r\n",
+                        slice.len(),
+                        total - 1
+                    );
+                    let hit = hits.fetch_add(1, Ordering::SeqCst);
+                    let _ = socket.write_all(response_head.as_bytes()).await;
+                    // Ilk istekte govde yarida kesilir: istemci bunu kopma olarak
+                    // gormeli, tekrar denemeli ve kaldigi yerden surmelidir.
+                    let body: &[u8] = if hit == 0 {
+                        &slice[..slice.len() / 2]
+                    } else {
+                        slice
+                    };
+                    let _ = socket.write_all(body).await;
+                    let _ = socket.shutdown().await;
+                });
+            }
+        });
+
+        let url = format!("http://{addr}/file");
+        let client = build_client();
+        let segments = plan_segments(Some(total), true, 2);
+        let dir = tempfile::tempdir().unwrap();
+        let parts = dir.path().join("parts");
+        let cancel = CancelToken::new();
+        let limiter = RateLimiter::new(0);
+        let progress: Vec<AtomicU64> = segments.iter().map(|_| AtomicU64::new(0)).collect();
+
+        download_segments(DownloadRequest {
+            client: &client,
+            url: &url,
+            headers: RequestHeaders::default(),
+            segments: &segments,
+            parts_dir: &parts,
+            cancel: &cancel,
+            progress: &progress,
+            limiter: &limiter,
+            on_retry: None,
+        })
+        .await
+        .expect("kopma sonrasi tekrar denemeyle tamamlanmali");
+
+        let target = dir.path().join("out.bin");
+        concat_parts(&parts, &segments, &target).await.unwrap();
+        assert_eq!(
+            std::fs::read(&target).unwrap(),
+            data,
+            "kopma sonrasi birlestirilen dosya bozulmamali"
+        );
+        assert!(
+            hits.load(Ordering::SeqCst) >= 2,
+            "en az bir tekrar deneme olmali"
+        );
+    }
+
     #[tokio::test]
     async fn range_yok_sayilirsa_hata_verir() {
         let data = test_data(10_000);
@@ -1181,6 +1284,51 @@ mod tests {
         ] {
             assert!(proxy_problem(kotu).is_some(), "reddedilmeli: {kotu}");
         }
+    }
+
+    /// Birlestirme atomik olmali: eksik parca varsa hedef dosya **olusmamali**.
+    #[tokio::test]
+    async fn eksik_parcada_hedef_dosya_olusmaz() {
+        let dir = tempfile::tempdir().unwrap();
+        let parts = dir.path().join("parts");
+        tokio::fs::create_dir_all(&parts).await.unwrap();
+        // Ikinci parca hic yazilmamis (kesinti senaryosu).
+        tokio::fs::write(parts.join("0.part"), b"birinci parca")
+            .await
+            .unwrap();
+
+        let segments = vec![
+            Segment {
+                index: 0,
+                start: 0,
+                end: Some(12),
+                done: 13,
+            },
+            Segment {
+                index: 1,
+                start: 13,
+                end: Some(25),
+                done: 13,
+            },
+        ];
+        let target = dir.path().join("hedef.bin");
+
+        let err = concat_parts(&parts, &segments, &target).await;
+        assert!(err.is_err(), "eksik parca hata vermeli");
+        assert!(
+            !target.exists(),
+            "hata durumunda hedef dosya olusmamali (yarim dosya birakilmaz)"
+        );
+        // Kaynak parcalar korunur: kullanici yeniden deneyebilir.
+        assert!(parts.join("0.part").exists());
+        // Gecici dosya da temizlenmeli: yoksa her denemede birikir.
+        let leftovers: Vec<String> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().to_string())
+            .filter(|name| name.ends_with(".hydra-tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "gecici dosya kaldi: {leftovers:?}");
     }
 
     #[test]
