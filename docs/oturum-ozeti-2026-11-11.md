@@ -49,6 +49,21 @@ envanter, 0 eksik, 0 tekrar.
 - `node tools/test-links.mjs` 27/27, `test-virtual.mjs` 28/28.
 - `node tools/security-check.mjs` → PASS.
 
+### Canlı doğrulama (kurulu v0.5.0)
+
+- NSIS paketi üretildi ve **sessizce kuruldu** → `%LOCALAPPDATA%\Hydra DL`,
+  `hydra-dl.exe` 14.5 MB, `webapp/` içinde `i18n.js` + `i18n-en.js` var (paketleme
+  sorunu yok).
+- `GET /health` → `{"version":"0.5.0","downloads":22,"uptimeSecs":11}` — kullanıcının
+  **22 indirme kaydı korundu**.
+- `PUT /settings {language:"en"}` → yanıt `en`, ardından `GET /settings` → `en`
+  (kalıcı). Sonra `tr`'ye geri alındı.
+- `GET /i18n-en.js` ve `/i18n.js` → 200 (telefon arayüzü dosyaları servis ediliyor).
+
+### Commit
+
+`dc95b64` — v0.5.0, `main`'e push edildi. Çalışma ağacı temiz.
+
 ## Bilinen sınırlar (dürüst olalım)
 
 - **Çeviri kalitesi** elle yazıldı; uzun yardım metinlerinde üslup tutarlı ama ana dili
