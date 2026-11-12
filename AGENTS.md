@@ -21,6 +21,8 @@ node tools/build-extension.mjs                                       # eklenti p
 node tools/ui-harness/run.mjs                                        # masaüstü UI (mock API)
 node tools/test-links.mjs                                           # toplu içe aktarma ayrıştırıcısı
 node tools/test-virtual.mjs                                         # sanal liste yerleşimi
+node tools/test-i18n.mjs                                            # i18n motoru + envanter tamlığı
+node tools/audit-i18n.mjs                                           # eksik/tekrar çeviri denetimi
 node tools/net-capture-check.mjs                                     # eklenti ağ yakalama (gerçek tarayıcı)
 ```
 
@@ -48,6 +50,10 @@ node tools/net-capture-check.mjs                                     # eklenti a
 | `src-tauri/src/capture.rs` | aynı yönlendiriciyi `127.0.0.1:6712`'de açar (eklenti) |
 | `src-tauri/src/commands.rs` | Tauri komut yüzeyi |
 | `src/` | masaüstü arayüzü (vanilla TS); durum yalnız `downloads:changed` |
+| `src/i18n.ts` | masaüstü i18n köprüsü → `webapp/i18n.js` |
+| `webapp/i18n.js` | **yerelleştirme motoru (tek kaynak, saf)**: `t`/`tt`, `localizeDom`, şablon eşleştirici |
+| `webapp/i18n-en.js` | İngilizce sözlük; anahtar = Türkçe kaynak metin, `%n` yer tutucu |
+| `webapp/i18n.d.ts` | `webapp/i18n.js` tip bildirimleri (masaüstü TS bunu kullanır) |
 | `src/virtual.ts` | **sanal liste matematiği** (saf): satır ofsetleri, görünen pencere, kaydırma kırpma |
 | `webapp/` | telefonda çalışan statik arayüz (derleme yok, SSE) |
 | `webapp/links.js` | **toplu içe aktarma ayrıştırıcısı** (saf, tek kaynak): satır/virgül/boşluk, `<sarmal>`, noktalama, `magnet`, yinelenen eleme, 500 sınırı |
@@ -81,6 +87,10 @@ node tools/net-capture-check.mjs                                     # eklenti a
 12. **Ağ yakalama varsayılan kapalı** (`netCapture`): açıkken yalnız medya uzantılı/türlü
     istekler saklanır, sekme başına tutulur, sekme kapanınca silinir. Kayıt asla dışarı
     gönderilmez.
+13. **Yerelleştirme tek kaynak**: yeni kullanıcı metni eklerken ya mevcut Türkçe metni
+    kullan (sözlükte varsa kendiliğinden çevrilir) ya da `webapp/i18n-en.js`'e anahtar
+    ekle. `node tools/audit-i18n.mjs` eksik/tekrar anahtarı ve `tt` şablon kapsamını
+    zorlar. Varsayılan dil **Türkçe**; dil değişimi sayfa yenilemez (SSE kopmasın).
 
 ## Güvenlik değişmezleri (ihlal = merge yok)
 

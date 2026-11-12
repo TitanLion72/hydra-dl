@@ -90,7 +90,7 @@ v0.2 = "IDM'den iyi" temeli. Sıra bağımlılığa göre; üstteki bitmeden alt
       olarak **dışa aktarılmaz** (paylaşılabilir), içe aktarma birleştirir (token'sız
       yedek anahtarı silmez), değerler normalize edilir, klasör oluşturulamazsa önceki
       korunur. Masaüstü dosya seçici, telefonda indirme + dosya seçici.
-- [ ] TR/EN yerelleştirme
+- [x] TR/EN yerelleştirme (v0.5.0 — `webapp/i18n.js`, envanter 293/293)
 - [ ] Dayanıklılık: güç kesintisi, disk dolu, ağ değişimi otomatik testleri
 - [ ] Linux/macOS deneysel hedefler
 

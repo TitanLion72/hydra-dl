@@ -258,6 +258,7 @@ async function mockApi(
         proxyUrl: "",
         webToken: "",
         webTls: false,
+        language: "tr",
       }),
     }),
   );
@@ -329,6 +330,28 @@ try {
     check(await page.locator("#ytdlpHelp").isHidden(), "kurulu iken yardım metni gizli");
     check(await page.locator("#setNotify").isChecked(), "bildirim anahtarı açık geliyor");
     check((await page.locator("#setProxy").inputValue()) === "", "proxy alanı boş geliyor");
+
+    // Dil: TR varsayılan, EN'e geçince metinler çevrilir, geri dönünce Türkçe.
+    check(
+      (await page.locator("#setLanguage").inputValue()) === "tr",
+      "#setLanguage varsayılan tr",
+    );
+    const tabSelector = '.tab[data-view="downloads"]';
+    const tabTrBefore = (await page.locator(tabSelector).textContent()) ?? "";
+    await page.selectOption("#setLanguage", "en");
+    await page.waitForFunction(() => document.documentElement.lang === "en", null, {
+      timeout: 5000,
+    });
+    const tabEn = (await page.locator(tabSelector).textContent()) ?? "";
+    check(/Downloads/.test(tabEn), `EN dilinde sekme çevrildi ('${tabEn.trim()}')`);
+    const proxyLabelEn = (await page.locator('.field-label[for="setProxy"]').textContent()) ?? "";
+    check(/Proxy/.test(proxyLabelEn), "EN dilinde ayar etiketi korunuyor");
+    await page.selectOption("#setLanguage", "tr");
+    await page.waitForFunction(() => document.documentElement.lang === "tr", null, {
+      timeout: 5000,
+    });
+    const tabTrAfter = (await page.locator(tabSelector).textContent()) ?? "";
+    check(tabTrAfter === tabTrBefore, `TR'ye dönünce metin geri geldi ('${tabTrAfter.trim()}')`);
 
     // Güncelleme kontrolü: yeni sürüm varsa "Güncelle" düğmesi çıkar.
     check(await page.locator("#ytdlpUpdateRow").isVisible(), "kurulu iken güncelleme satırı görünür");

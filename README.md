@@ -58,7 +58,9 @@ yerel web arayüzüyle birlikte gelir. Arayüz Türkçe ve koyu temalıdır.
 
 ### Arayüz
 
-- Türkçe, koyu tema, durum filtreleri, canlı hız / ilerleme / ETA, klasörde göster ve
+- **Türkçe / İngilizce** arayüz (varsayılan Türkçe). Dil ayarlardan değişir; sayfa
+  yeniden yüklenmez, süren indirmeler ve canlı akış etkilenmez.
+- Koyu tema, durum filtreleri, canlı hız / ilerleme / ETA, klasörde göster ve
   dosyayı aç.
 - **Geçmişte arama ve sıralama** — dosya adı ya da adrese göre anında süzme
   (`Ctrl+F` veya `/`), tarih / ad / boyut / duruma göre sıralama (tercih hatırlanır).
@@ -236,8 +238,8 @@ Yerel HTTP sözleşmesi: [`docs/API.md`](docs/API.md).
 
 ## Yol haritası
 
-Sıradaki işler ve tamamlananlar [`PLAN.md`](PLAN.md) dosyasında. Kısa vadede: çerez
-aktarımı, `Retry-After` desteği, proxy ayarları, indirme geçmişinde arama, bildirimler ve
+Sıradaki işler ve tamamlananlar [`PLAN.md`](PLAN.md) dosyasında. Kısa vadede: dayanıklılık
+testleri (kopan bağlantı, disk dolması, yeniden başlatma), otomatik güncelleme ve kod
 imzalı kurulum.
 
 ## Güvenlik

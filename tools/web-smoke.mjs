@@ -167,6 +167,25 @@ async function main() {
     if (!settings.ok) throw new Error(`settings GET ${settings.status}`);
     console.log(`[web] settings OK: concurrent=${settings.body.maxConcurrent}`);
 
+    // Dil kalıcılığı: PUT ile değiştir, GET ile doğrula, eski değere döndür.
+    const originalLanguage = settings.body.language ?? "tr";
+    const languageUpdate = await call("/settings", {
+      method: "PUT",
+      body: JSON.stringify({ ...settings.body, language: "en" }),
+    });
+    if (!languageUpdate.ok) {
+      throw new Error(`settings PUT ${languageUpdate.status}: ${JSON.stringify(languageUpdate.body)}`);
+    }
+    const afterLanguage = await call("/settings");
+    if ((afterLanguage.body.language ?? "tr") !== "en") {
+      throw new Error(`dil kalıcı olmadı: ${afterLanguage.body.language}`);
+    }
+    await call("/settings", {
+      method: "PUT",
+      body: JSON.stringify({ ...settings.body, language: originalLanguage }),
+    });
+    console.log("[web] dil ayarı OK (PUT/GET, geri alındı)");
+
     // Telefon arayüzü yt-dlp durumunu bu uçtan okuyor (kurulum düğmesi buna bakar).
     const ytdlp = await call("/ytdlp");
     if (!ytdlp.ok) throw new Error(`ytdlp GET ${ytdlp.status}`);

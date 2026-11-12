@@ -19,6 +19,7 @@ import {
   type YtdlpUpdateCheck,
 } from "./api";
 import { MAX_LINKS, parseLinkList } from "./links";
+import { localizeDom, normalizeLanguage, setLanguage, t, tt } from "./i18n";
 import {
   buildLayout,
   clampScroll,
@@ -265,7 +266,7 @@ function updateRow(refs: RowRefs, item: Download) {
   refs.icon.innerHTML = `<svg viewBox="0 0 24 24">${ICONS[iconKey] ?? ICONS.file}</svg>`;
   refs.icon.dataset.kind = iconKey;
 
-  refs.badge.textContent = STATUS_TEXT[item.status];
+  refs.badge.textContent = t(STATUS_TEXT[item.status]);
   refs.badge.className = `badge b-${item.status}`;
   refs.host.textContent = hostOf(item.url);
   refs.host.title = item.url;
@@ -278,7 +279,7 @@ function updateRow(refs: RowRefs, item: Download) {
 
   if (item.status === "downloading" && item.speedBps > 0 && total) {
     const remaining = Math.max(0, total - item.downloadedBytes);
-    refs.eta.textContent = `${formatEta(remaining / item.speedBps)} kaldı`;
+    refs.eta.textContent = tt`${formatEta(remaining / item.speedBps)} kaldı`;
     refs.eta.hidden = false;
   } else {
     refs.eta.hidden = true;
@@ -302,7 +303,7 @@ function updateRow(refs: RowRefs, item: Download) {
     refs.segInfo.textContent = `· ${peers} peer${ratio ? ` · ${ratio}` : ""}`;
     refs.segInfo.hidden = false;
   } else if (item.status === "downloading" && segCount > 1) {
-    refs.segInfo.textContent = `· ${segCount} bağlantı`;
+    refs.segInfo.textContent = tt`· ${segCount} bağlantı`;
     refs.segInfo.hidden = false;
   } else if (item.kind === "media" && item.status === "completed") {
     refs.segInfo.textContent = "· yt-dlp";
@@ -327,7 +328,7 @@ function updateRow(refs: RowRefs, item: Download) {
   if (indeterminate) refs.fill.style.width = "100%";
   if (item.status === "downloading" && item.retry) {
     const wait = Math.max(1, Math.round(item.retry.waitMs / 1000));
-    refs.speed.textContent = `Yeniden deneniyor ${item.retry.attempt}/${item.retry.max} · ${wait} sn`;
+    refs.speed.textContent = tt`Yeniden deneniyor ${item.retry.attempt}/${item.retry.max} · ${wait} sn`;
   } else {
     refs.speed.textContent =
       item.status === "downloading" && item.speedBps > 0 ? `${formatBytes(item.speedBps)}/s` : "";
@@ -342,7 +343,7 @@ function updateRow(refs: RowRefs, item: Download) {
     refs.actions.innerHTML = actionsFor(item)
       .map(
         (a) =>
-          `<button class="icon-only ${a.tone ?? ""}" data-action="${a.action}" title="${a.title}" aria-label="${a.title}"><svg viewBox="0 0 24 24">${a.icon}</svg></button>`,
+          `<button class="icon-only ${a.tone ?? ""}" data-action="${a.action}" title="${t(a.title)}" aria-label="${t(a.title)}"><svg viewBox="0 0 24 24">${a.icon}</svg></button>`,
       )
       .join("");
   }
@@ -553,7 +554,7 @@ function renderSelectionBar() {
   selectbar.hidden = count === 0;
   if (count === 0) return;
 
-  selectCount.textContent = `${count} kayıt seçili`;
+  selectCount.textContent = tt`${count} kayıt seçili`;
   const picked = downloads.filter((item) => selection.has(item.id));
   const canPause = picked.some((d) => d.status === "downloading" || d.status === "queued");
   const canResume = picked.some(
@@ -640,16 +641,16 @@ function render() {
   empty.hidden = visible.length > 0;
   if (visible.length === 0 && downloads.length > 0) {
     if (normalizeQuery(query).length > 0) {
-      empty.querySelector("h2")!.textContent = "Aramanla eşleşen kayıt yok";
+      empty.querySelector("h2")!.textContent = t("Aramanla eşleşen kayıt yok");
       const p = empty.querySelector("p")!;
-      p.textContent = `"${query.trim()}" için sonuç bulunamadı. Aramayı temizleyip başka bir şey deneyebilirsin.`;
+      p.textContent = tt`"${query.trim()}" için sonuç bulunamadı. Aramayı temizleyip başka bir şey deneyebilirsin.`;
     } else {
-      empty.querySelector("h2")!.textContent = "Bu filtrede kayıt yok";
+      empty.querySelector("h2")!.textContent = t("Bu filtrede kayıt yok");
       empty.querySelector("p")!.textContent =
         "Başka bir sekmeye geçebilir ya da yeni bir bağlantı ekleyebilirsin.";
     }
   } else {
-    empty.querySelector("h2")!.textContent = "Henüz indirme yok";
+    empty.querySelector("h2")!.textContent = t("Henüz indirme yok");
     empty.querySelector("p")!.innerHTML =
       "Bir bağlantı yapıştırıp <b>Ekle</b>'ye bas. Hydra dosyayı parçalara bölüp paralel çeker; kapatıp açsan bile kaldığı yerden devam eder.";
   }
@@ -715,7 +716,8 @@ function formatEta(seconds: number): string {
 function toast(message: string, level: Notice["level"] = "info") {
   const node = document.createElement("div");
   node.className = `toast ${level}`;
-  node.textContent = message;
+  // Mesajlar kodda Türkçe yazılıyor; gösterirken aktif dile çevir.
+  node.textContent = t(message);
   toasts.appendChild(node);
   setTimeout(() => {
     node.classList.add("out");
@@ -802,7 +804,7 @@ function renderBulkPreview() {
   }
 
   bulkAddBtn.disabled = count === 0 || bulkAdding;
-  bulkAddBtn.textContent = count > 0 ? `Tümünü ekle (${count})` : "Tümünü ekle";
+  bulkAddBtn.textContent = count > 0 ? tt`Tümünü ekle (${count})` : t("Tümünü ekle");
 
   const rejected = result.rejected.slice(0, 20);
   bulkRejected.hidden = rejected.length === 0;
@@ -811,7 +813,7 @@ function renderBulkPreview() {
     return;
   }
   const title = document.createElement("b");
-  title.textContent = `${result.rejected.length} satır bağlantı değil, atlanacak:`;
+  title.textContent = tt`${result.rejected.length} satır bağlantı değil, atlanacak:`;
   const fragment = document.createDocumentFragment();
   fragment.append(title);
   for (const line of rejected) {
@@ -838,7 +840,7 @@ async function addBulk() {
   try {
     for (let index = 0; index < total; index += 1) {
       const url = result.links[index];
-      bulkAddBtn.textContent = `Ekleniyor ${index + 1}/${total}…`;
+      bulkAddBtn.textContent = tt`Ekleniyor ${index + 1}/${total}…`;
       try {
         await api.add({ url, ...(media === undefined ? {} : { media }) });
       } catch {
@@ -854,14 +856,14 @@ async function addBulk() {
     bulkText.value = "";
     renderBulkPreview();
     closeBulk();
-    toast(`${added} bağlantı kuyruğa eklendi`, "success");
+    toast(tt`${added} bağlantı kuyruğa eklendi`, "success");
     return;
   }
 
   // Kalanları kutuda bırak: kullanıcı düzeltip yeniden deneyebilir.
   bulkText.value = failed.join("\n");
   renderBulkPreview();
-  bulkAddBtn.textContent = `Kalanları ekle (${failed.length})`;
+  bulkAddBtn.textContent = tt`Kalanları ekle (${failed.length})`;
   bulkAddBtn.disabled = false;
   toast(
     added > 0
@@ -920,7 +922,7 @@ function renderFileList(
     const picked = files.filter((f) => f.included);
     const total = picked.reduce((sum, f) => sum + f.length, 0);
     const label = head.querySelector("strong");
-    if (label) label.textContent = `${picked.length}/${files.length} dosya`;
+    if (label) label.textContent = tt`${picked.length}/${files.length} dosya`;
     const amount = head.querySelector(".files-amount");
     if (amount) {
       amount.textContent =
@@ -990,7 +992,7 @@ function closeProbe() {
 function openProbe(result: ProbeResult) {
   probeState = result;
   probeSelected = result.formats[0]?.id ?? null;
-  probeTitle.textContent = result.title || "İndirme seçenekleri";
+  probeTitle.textContent = result.title || t("İndirme seçenekleri");
   probeSub.textContent = hostOf(result.finalUrl || result.url);
   probeFilename.value = result.filename ?? "";
   probeDir.value = settings?.downloadDir ?? info?.downloadDir ?? "";
@@ -1049,7 +1051,7 @@ function openProbe(result: ProbeResult) {
   const token = ++probeFilesToken;
   if (result.kind === "torrent") {
     probeFilesBox.hidden = false;
-    probeFilesBox.innerHTML = `<p class="hint">Torrent dosyaları okunuyor… (magnet ise peer beklenir)</p>`;
+    probeFilesBox.innerHTML = `<p class="hint">${escapeHtml(t("Torrent dosyaları okunuyor… (magnet ise peer beklenir)"))}</p>`;
     void loadTorrentFiles(result.url, token);
   } else {
     probeFilesBox.hidden = true;
@@ -1092,7 +1094,7 @@ async function loadTorrentFiles(source: string, token: number) {
   } catch (err) {
     if (token !== probeFilesToken) return;
     probeFilesBox.hidden = false;
-    probeFilesBox.innerHTML = `<p class="hint warn">Dosya listesi alınamadı: ${escapeHtml(String(err))}</p>`;
+    probeFilesBox.innerHTML = `<p class="hint warn">${escapeHtml(tt`Dosya listesi alınamadı: ${String(err)}`)}</p>`;
   }
 }
 
@@ -1133,7 +1135,7 @@ $("#probe-download").addEventListener("click", async () => {
             : undefined,
       files,
     });
-    toast(files ? `${files.length} dosya indirilecek` : "Kuyruğa eklendi", "success");
+    toast(files ? tt`${files.length} dosya indirilecek` : t("Kuyruğa eklendi"), "success");
     closeProbe();
     urlInput.value = "";
   } catch (err) {
@@ -1188,7 +1190,7 @@ $("#files-apply").addEventListener("click", async () => {
   button.disabled = true;
   try {
     await api.setTorrentFiles(id, picked);
-    toast(`${picked.length} dosya seçildi`, "success");
+    toast(tt`${picked.length} dosya seçildi`, "success");
     closeFilesSheet();
   } catch (err) {
     toast(String(err), "error");
@@ -1218,17 +1220,17 @@ async function probeAndOpen() {
 function kindLabel(kind: string): string {
   switch (kind) {
     case "file":
-      return "dosya";
+      return t("dosya");
     case "media":
-      return "medya";
+      return t("medya");
     case "torrent":
       return "torrent";
     case "hls":
-      return "HLS akışı";
+      return t("HLS akışı");
     case "dash":
-      return "DASH akışı";
+      return t("DASH akışı");
     case "page":
-      return "sayfa";
+      return t("sayfa");
     default:
       return kind;
   }
@@ -1422,7 +1424,7 @@ function updateCapture(info: AppInfo | null) {
   captureDot.className = `status-dot ${state.running ? "on" : state.enabled ? "warn" : "off"}`;
   captureLabel.textContent = captureText(state);
   captureFooter.textContent = state.running && state.url ? `Eklenti: ${state.url}/add` : "";
-  capturePill.title = state.url ? `${state.url}/health` : "Yakalama sunucusu kapalı";
+  capturePill.title = state.url ? `${state.url}/health` : t("Yakalama sunucusu kapalı");
 }
 
 async function loadInfo() {
@@ -1470,6 +1472,7 @@ const stateInfo = $("#state-info");
 
 function bindSettingsForm(source: Settings, appInfo: AppInfo | null) {
   setDir.value = source.downloadDir;
+  languageSelect.value = normalizeLanguage(source.language);
   setConcurrent.value = String(source.maxConcurrent);
   setConnections.value = String(source.connections);
   setSpeed.value = String(source.speedLimitKbps);
@@ -1505,7 +1508,7 @@ function bindSettingsForm(source: Settings, appInfo: AppInfo | null) {
   aboutInfo.textContent = appInfo
     ? `Sürüm ${appInfo.version} · çalışma süresi ${formatUptime(appInfo.uptimeSecs)}`
     : "";
-  stateInfo.textContent = appInfo ? `Durum dosyası: ${appInfo.statePath}` : "";
+  stateInfo.textContent = appInfo ? tt`Durum dosyası: ${appInfo.statePath}` : "";
 }
 
 function formatUptime(seconds: number): string {
@@ -1572,9 +1575,12 @@ async function saveSettings() {
     webToken: setWebToken.value.trim().replace(/[^A-Za-z0-9]/g, ""),
     webTls: setWebTls.checked,
     torrentEnabled: setTorrent.checked,
+    language: normalizeLanguage(languageSelect.value),
   };
   try {
     settings = await api.saveSettings(next);
+    // Dil değiştiyse arayüzü hemen uygula (yeniden başlatma gerekmesin).
+    applyLanguage(settings.language);
     await loadInfo();
     bindSettingsForm(settings, info);
     toast("Ayarlar kaydedildi", "success");
@@ -1582,6 +1588,40 @@ async function saveSettings() {
   } catch (err) {
     toast(String(err), "error");
   }
+}
+
+// ---------------------------------------------------------------------------
+// Dil / yerelleştirme
+// ---------------------------------------------------------------------------
+
+const languageSelect = $<HTMLSelectElement>("#set-language");
+// Seçim anında uygula (anında geri bildirim); kalıcı olması için Kaydet gerekir.
+languageSelect.addEventListener("change", () => applyLanguage(languageSelect.value));
+
+/**
+ * Arayüz dilini uygular: statik HTML metinlerini çevirir ve belge dilini ayarlar.
+ *
+ * Neden sayfa yeniden yüklenmiyor: indirmeler sürerken yeniden yükleme listeyi
+ * boşaltır ve SSE'yi koparır. DOM yerelleştirme metin düğümlerini yerinde
+ * değiştirir; dinamik metinler bir sonraki render'da doğru dilde yazılır.
+ */
+function applyLanguage(language: string) {
+  const active = setLanguage(language);
+  document.documentElement.lang = active;
+  localizeDom(document);
+  // Çeviri sonrası dinamik metinleri tazele (rozetler, sayaçlar).
+  render();
+  refreshYtdlpStatusText();
+}
+
+/** Dinamik yt-dlp durum metnini aktif dilde yeniden yazar. */
+function refreshYtdlpStatusText() {
+  const availability = info?.ytdlp;
+  if (!availability) return;
+  ytdlpStatus.textContent = availability.available
+    ? `Bulundu: ${availability.path}${availability.version ? ` (v${availability.version})` : ""}`
+    : "yt-dlp bulunamadı — video indirmeleri için gerekli.";
+  ytdlpStatus.className = `hint ${availability.available ? "ok" : "warn"}`;
 }
 
 function clampNumber(raw: string, min: number, max: number, fallback: number): number {
@@ -1621,33 +1661,33 @@ function renderInstallProgress(progress: InstallProgress) {
   if (progress.stage === "downloading") {
     const total = progress.total;
     if (total && total > 0) {
-      const percent = Math.round((progress.downloaded / total) * 100);
-      ytdlpInstallStatus.textContent = `İndiriliyor… %${percent} (${formatBytes(progress.downloaded)} / ${formatBytes(total)})`;
+      const percentText = `${Math.round((progress.downloaded / total) * 100)}%`;
+      ytdlpInstallStatus.textContent = tt`İndiriliyor… ${percentText} (${formatBytes(progress.downloaded)} / ${formatBytes(total)})`;
     } else {
-      ytdlpInstallStatus.textContent = `İndiriliyor… ${formatBytes(progress.downloaded)}`;
+      ytdlpInstallStatus.textContent = tt`İndiriliyor… ${formatBytes(progress.downloaded)}`;
     }
     ytdlpInstallStatus.className = "hint";
     return;
   }
   if (progress.stage === "verifying") {
-    ytdlpInstallStatus.textContent = "Doğrulanıyor…";
+    ytdlpInstallStatus.textContent = t("Doğrulanıyor…");
     ytdlpInstallStatus.className = "hint";
     return;
   }
   if (progress.stage === "done") {
-    ytdlpInstallStatus.textContent = "Kuruldu ve doğrulandı.";
+    ytdlpInstallStatus.textContent = t("Kuruldu ve doğrulandı.");
     ytdlpInstallStatus.className = "hint ok";
     return;
   }
   if (progress.stage === "failed") {
-    ytdlpInstallStatus.textContent = progress.error ?? "Kurulum başarısız";
+    ytdlpInstallStatus.textContent = progress.error ?? t("Kurulum başarısız");
     ytdlpInstallStatus.className = "hint warn";
   }
 }
 
 installYtdlpBtn.addEventListener("click", async () => {
   installYtdlpBtn.disabled = true;
-  ytdlpInstallStatus.textContent = "Başlatılıyor…";
+  ytdlpInstallStatus.textContent = t("Başlatılıyor…");
   ytdlpInstallStatus.className = "hint";
   try {
     const status = await api.installYtdlp();
@@ -1685,19 +1725,19 @@ function renderUpdateCheck(check: YtdlpUpdateCheck) {
     return;
   }
   if (!check.latest) {
-    ytdlpUpdateStatus.textContent = "Son sürüm öğrenilemedi.";
+    ytdlpUpdateStatus.textContent = t("Son sürüm öğrenilemedi.");
     ytdlpUpdateStatus.className = "hint warn";
     return;
   }
   if (check.updateAvailable) {
     pendingUpdate = check.latest;
-    ytdlpUpdateStatus.textContent = `Yeni sürüm: ${check.latest} (kurulu ${check.current ?? "bilinmiyor"})`;
+    ytdlpUpdateStatus.textContent = tt`Yeni sürüm: ${check.latest} (kurulu ${check.current ?? t("bilinmiyor")})`;
     ytdlpUpdateStatus.className = "hint warn";
     updateYtdlpBtn.hidden = false;
-    updateYtdlpBtn.textContent = `Güncelle (${check.latest})`;
+    updateYtdlpBtn.textContent = tt`Güncelle (${check.latest})`;
     return;
   }
-  ytdlpUpdateStatus.textContent = `Güncel — son sürüm ${check.latest}.`;
+  ytdlpUpdateStatus.textContent = tt`Güncel — son sürüm ${check.latest}.`;
   ytdlpUpdateStatus.className = "hint ok";
 }
 
@@ -1722,14 +1762,14 @@ updateYtdlpBtn.addEventListener("click", async () => {
   const previous = pendingUpdate;
   checkYtdlpBtn.disabled = true;
   updateYtdlpBtn.disabled = true;
-  ytdlpUpdateStatus.textContent = `Güncelleniyor → ${previous}…`;
+  ytdlpUpdateStatus.textContent = tt`Güncelleniyor → ${previous}…`;
   ytdlpUpdateStatus.className = "hint";
   try {
     // Güncelleme = aynı kurulum yolu (indir → doğrula → yerine koy).
     const status = await api.installYtdlp();
     if (status.available) {
-      toast(`yt-dlp ${status.version ?? previous} sürümüne güncellendi`, "success");
-      ytdlpUpdateStatus.textContent = `Güncellendi: ${status.version ?? previous}.`;
+      toast(tt`yt-dlp ${status.version ?? previous} sürümüne güncellendi`, "success");
+      ytdlpUpdateStatus.textContent = tt`Güncellendi: ${status.version ?? previous}.`;
       ytdlpUpdateStatus.className = "hint ok";
       pendingUpdate = null;
       updateYtdlpBtn.hidden = true;
@@ -1752,7 +1792,7 @@ notifyTestBtn.addEventListener("click", async () => {
     await api.notifyTest();
     toast("Test bildirimi gönderildi", "success");
   } catch (err) {
-    toast(`Bildirim gönderilemedi: ${String(err)}`, "error");
+    toast(tt`Bildirim gönderilemedi: ${String(err)}`, "error");
   } finally {
     notifyTestBtn.disabled = false;
   }
@@ -1785,6 +1825,7 @@ const SETTING_LABELS: Record<string, string> = {
   torrentEnabled: "torrent",
   notifyOnFinish: "bildirimler",
   proxyUrl: "proxy",
+  language: "dil",
 };
 
 function labelOf(key: string): string {
@@ -1976,8 +2017,7 @@ window.addEventListener("keydown", (event) => {
 // ---------------------------------------------------------------------------
 
 async function bootstrap() {
-  await Promise.all([
-    onDownloads((items) => {
+  await Promise.all([    onDownloads((items) => {
       downloads = items;
       render();
     }),
@@ -1989,9 +2029,16 @@ async function bootstrap() {
     downloads = await api.list();
     render();
   } catch (err) {
-    toast(`Liste alınamadı: ${err}`, "error");
+    toast(tt`Liste alınamadı: ${String(err)}`, "error");
   }
   await loadInfo();
+  // Dil ayarını uygula ve statik HTML metinlerini çevir.
+  try {
+    settings = await api.getSettings();
+  } catch {
+    // Ayar okunamazsa varsayılan dil (Türkçe) ile devam et.
+  }
+  applyLanguage(settings?.language ?? "tr");
   urlInput.focus();
 
   if ("isTauri" in window) {

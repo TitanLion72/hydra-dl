@@ -4,6 +4,7 @@
  */
 
 import { parseLinkList } from "./links.js";
+import { localizeDom, normalizeLanguage, setLanguage, t, tt } from "./i18n.js";
 
 const TOKEN_KEY = "hydra.token";
 const REQUEST_TIMEOUT = 8000;
@@ -77,6 +78,7 @@ const els = {
   setAutoResume: $("#setAutoResume"),
   setNotify: $("#setNotify"),
   setProxy: $("#setProxy"),
+  setLanguage: $("#setLanguage"),
   setCapture: $("#setCapture"),
   setCapturePort: $("#setCapturePort"),
   setWebUrl: $("#setWebUrl"),
@@ -318,11 +320,11 @@ const KIND_LABELS = {
 };
 
 function statusLabel(status) {
-  return STATUS_LABELS[status] || String(status || "Bilinmiyor");
+  return t(STATUS_LABELS[status] || String(status || "Bilinmiyor"));
 }
 
 function kindLabel(kind) {
-  return KIND_LABELS[kind] || String(kind || "").toUpperCase();
+  return t(KIND_LABELS[kind] || String(kind || "").toUpperCase());
 }
 
 function progressRatio(download) {
@@ -454,6 +456,9 @@ function createRow(download) {
   li.dataset.id = download.id;
   li.setAttribute("role", "listitem");
   li.innerHTML = CARD_MARKUP; // yalnızca statik şablon; kullanıcı verisi sonradan textContent ile
+  // Kart içindeki sabit etiketler (Duraklat/Devam/İptal) statik şablondan gelir;
+  // dil değişimi sayfa yenilemeden çalıştığı için burada yerinde çeviriyoruz.
+  localizeDom(li);
 
   const refs = {};
   for (const node of li.querySelectorAll("[data-ref]")) refs[node.dataset.ref] = node;
@@ -894,12 +899,12 @@ async function handleAction(action, id, button) {
   const download = state.items.find((item) => item.id === id);
   const name = download ? download.filename || download.url : "İndirme";
 
-  if (action === "cancel" && !window.confirm(`"${name}" iptal edilsin mi?\nParçalar silinir.`)) {
+  if (action === "cancel" && !window.confirm(`"${name}" iptal edilsin mi? Parçalar silinir.`)) {
     return;
   }
   if (action === "remove") {
     const message = download
-      ? `"${name}" listeden silinsin mi?\nİndirilen dosya diskte kalır.`
+      ? `"${name}" listeden silinsin mi? İndirilen dosya diskte kalır.`
       : "Kayıt listeden silinsin mi?";
     if (!window.confirm(message)) return;
   }
@@ -945,7 +950,7 @@ let toastTimer = null;
 
 function showToast(message, kind = "ok") {
   const node = els.toast;
-  node.textContent = message;
+  node.textContent = t(message);
   node.classList.toggle("is-error", kind === "error");
   node.hidden = false;
   if (toastTimer) clearTimeout(toastTimer);
@@ -1258,7 +1263,7 @@ async function loadTorrentFiles(source, probe, token) {
     renderFiles(files);
   } catch (error) {
     if (token !== probeToken) return;
-    els.fileSummary.textContent = `Dosya listesi alınamadı: ${error.message || "bilinmeyen hata"}`;
+    els.fileSummary.textContent = tt`Dosya listesi alınamadı: ${error.message || t("bilinmeyen hata")}`;
   }
 }
 
@@ -1341,7 +1346,7 @@ async function addFromProbe() {
     const result = await api(ENDPOINTS.add, { method: "POST", body });
     if (result && result.ok === false) throw new Error(result.error || "Eklenemedi.");
     const label = result && result.filename ? result.filename : body.url;
-    showToast(files ? `Eklendi: ${label} (${files.length} dosya)` : `İndirmeye eklendi: ${label}`);
+    showToast(files ? tt`Eklendi: ${label} (${files.length} dosya)` : tt`İndirmeye eklendi: ${label}`);
     closeSheet();
     showView("downloads");
     loadDownloads();
@@ -1363,6 +1368,35 @@ function updateHealthFacts() {
   setText(els.setWebUrl, origin || "—");
 }
 
+/* ---------------- Dil ---------------- */
+
+/**
+ * Arayüz dilini uygular.
+ *
+ * Statik metinler `localizeDom` ile **yerinde** çevrilir: sayfa yenilenmediği
+ * için SSE kopmaz, süren indirmeler etkilenmez. Dinamik metinler `t`/`tt` ile
+ * yazıldığı için bir sonraki çizimde doğru dilde görünür.
+ */
+function applyLanguage(language) {
+  const active = setLanguage(language);
+  document.documentElement.lang = active;
+  localizeDom(document);
+  // Dinamik metinleri (sayaç, boş durum, satır rozetleri) yeni dilde tazele.
+  refreshCounts();
+  renderEmptyStates();
+  for (const download of state.items) {
+    const row = state.rows.get(download.id);
+    if (row) updateRow(row, download);
+  }
+}
+
+function bindLanguage() {
+  const select = els.setLanguage;
+  if (!select) return;
+  // Seçim anında uygula (anında geri bildirim); kalıcı olması için Kaydet gerekir.
+  select.addEventListener("change", () => applyLanguage(select.value));
+}
+
 function applySettings(settings) {
   const data = settings && typeof settings === "object" ? settings : {};
   setValue(els.setDir, data.downloadDir || "Sistemin İndirilenler klasörü");
@@ -1373,6 +1407,8 @@ function applySettings(settings) {
   els.setAutoResume.checked = Boolean(data.autoResume);
   if (els.setNotify) els.setNotify.checked = data.notifyOnFinish !== false;
   if (els.setProxy) els.setProxy.value = data.proxyUrl || "";
+  if (els.setLanguage) els.setLanguage.value = normalizeLanguage(data.language);
+  applyLanguage(data.language);
   setText(els.setCapturePort, data.capturePort ? String(data.capturePort) : "—");
   els.setToken.value = state.token;
 }
@@ -1401,13 +1437,13 @@ async function loadSettings(force = false) {
   } catch (error) {
     els.settingsLoading.hidden = true;
     els.settingsError.hidden = false;
-    els.settingsError.textContent = `Ayarlar yüklenemedi: ${error.message}`;
+    els.settingsError.textContent = tt`Ayarlar yüklenemedi: ${error.message}`;
   }
 }
 
 function setSettingsStatus(message, kind = "") {
   const node = els.settingsStatus;
-  node.textContent = message;
+  node.textContent = t(message);
   node.classList.toggle("is-error", kind === "error");
   node.classList.toggle("is-ok", kind === "ok");
 }
@@ -1417,7 +1453,7 @@ function setSettingsStatus(message, kind = "") {
 function setYtdlpStatus(message, kind = "") {
   const node = els.ytdlpStatus;
   if (!node) return;
-  node.textContent = message;
+  node.textContent = t(message);
   node.classList.toggle("is-error", kind === "error");
   node.classList.toggle("is-ok", kind === "ok");
 }
@@ -1453,14 +1489,14 @@ function applyUpdateCheck(check) {
   }
   if (check.updateAvailable) {
     state.pendingYtdlp = check.latest || null;
-    setYtdlpStatus(`Yeni sürüm: ${check.latest} (kurulu ${check.current || "bilinmiyor"})`);
+    setYtdlpStatus(tt`Yeni sürüm: ${check.latest} (kurulu ${check.current || t("bilinmiyor")})`);
     if (els.updateYtdlp) {
       els.updateYtdlp.hidden = false;
-      els.updateYtdlp.textContent = `Güncelle (${check.latest})`;
+      els.updateYtdlp.textContent = tt`Güncelle (${check.latest})`;
     }
     return;
   }
-  setYtdlpStatus(`Güncel — son sürüm ${check.latest}.`, "ok");
+  setYtdlpStatus(tt`Güncel — son sürüm ${check.latest}.`, "ok");
 }
 
 async function checkYtdlpUpdate() {
@@ -1483,7 +1519,8 @@ async function updateYtdlp() {
   if (!button || button.disabled) return;
   const target = state.pendingYtdlp;
   button.disabled = true;
-  setYtdlpStatus(`Güncelleniyor${target ? ` → ${target}` : ""}… Sayfayı kapatma.`);
+  const suffix = target ? ` → ${target}` : "";
+  setYtdlpStatus(tt`Güncelleniyor${suffix}… Sayfayı kapatma.`);
   try {
     const result = await api(ENDPOINTS.ytdlpInstall, { method: "POST", timeout: 120_000 });
     await refreshYtdlp();
@@ -1575,6 +1612,7 @@ const SETTING_LABELS = {
   torrentEnabled: "torrent",
   notifyOnFinish: "bildirimler",
   proxyUrl: "proxy",
+  language: "dil",
 };
 
 /**
@@ -1660,6 +1698,7 @@ async function saveSettings() {
   next.autoResume = els.setAutoResume.checked;
   if (els.setNotify) next.notifyOnFinish = els.setNotify.checked;
   if (els.setProxy) next.proxyUrl = els.setProxy.value.trim();
+  if (els.setLanguage) next.language = normalizeLanguage(els.setLanguage.value);
   if (Object.prototype.hasOwnProperty.call(next, "webToken")) {
     next.webToken = els.setToken.value.trim();
   }
@@ -1712,7 +1751,7 @@ function renderBulkHint() {
     els.bulkHint.dataset.state = "ok";
   }
   els.bulkAdd.disabled = count === 0;
-  els.bulkAdd.textContent = count > 0 ? `Tümünü ekle (${count})` : "Tümünü ekle";
+  els.bulkAdd.textContent = count > 0 ? tt`Tümünü ekle (${count})` : t("Tümünü ekle");
 }
 
 /** Listeyi sırayla ekler; başarısızları kutuda bırakır. */
@@ -1740,7 +1779,7 @@ async function addBulk() {
   if (failed.length === 0) {
     els.bulkText.value = "";
     renderBulkHint();
-    showToast(`${added} bağlantı kuyruğa eklendi.`);
+    showToast(tt`${added} bağlantı kuyruğa eklendi.`);
     return;
   }
   els.bulkText.value = failed.join("\n");
@@ -2029,11 +2068,14 @@ async function boot() {
   bindList();
   bindNewForm();
   bindSettings();
+  bindLanguage();
   bindSheet();
   bindNav();
   bindLifecycle();
 
   setConnection("pending", "Bağlanıyor…");
+  // Dil ayarını ilk boyamadan önce uygula (Türkçe yanıp İngilizce'ye dönmesin).
+  await loadSettings();
   const ok = await loadDownloads();
   if (!ok) {
     els.skeleton.hidden = true;

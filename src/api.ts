@@ -109,6 +109,8 @@ export interface Settings {
   torrentEnabled: boolean;
   notifyOnFinish: boolean;
   proxyUrl: string;
+  /** Arayüz dili: "tr" | "en". */
+  language: string;
 }
 
 export interface CaptureStatus {

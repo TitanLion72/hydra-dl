@@ -29,6 +29,7 @@ const SETTINGS = {
   torrentEnabled: true,
   notifyOnFinish: true,
   proxyUrl: "",
+  language: "tr",
 };
 
 const APP_INFO = {

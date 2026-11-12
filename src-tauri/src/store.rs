@@ -44,6 +44,9 @@ pub struct Settings {
     pub notify_on_finish: bool,
     /// HTTP/SOCKS5 proxy (`http://host:port`, `socks5://host:port`). Bos = yok.
     pub proxy_url: String,
+    /// Arayuz dili: `tr` (varsayilan) veya `en`.
+    #[serde(default)]
+    pub language: String,
 }
 
 impl Default for Settings {
@@ -67,6 +70,7 @@ impl Default for Settings {
             torrent_enabled: true,
             notify_on_finish: true,
             proxy_url: String::new(),
+            language: "tr".into(),
         }
     }
 }
@@ -101,6 +105,11 @@ impl Settings {
         {
             self.proxy_url.clear();
         }
+        // Dil: yalniz desteklenen degerler; taninmayan varsayilana doner.
+        self.language = match self.language.trim().to_lowercase().as_str() {
+            "en" => "en".to_string(),
+            _ => "tr".to_string(),
+        };
     }
 
     pub fn speed_limit_bytes(&self) -> u64 {
@@ -525,6 +534,38 @@ mod tests {
         assert_eq!(store.take_queued(5), vec!["a".to_string()]);
         assert_eq!(store.running_count(), 2);
         assert_eq!(store.take_queued(5), Vec::<String>::new());
+    }
+
+    #[test]
+    fn dil_yalniz_desteklenen_degerleri_kabul_eder() {
+        let mut settings = Settings::default();
+        assert_eq!(settings.language, "tr", "varsayilan turkce");
+
+        settings.language = "EN".into();
+        settings.normalize();
+        assert_eq!(settings.language, "en", "buyuk harf kabul edildi");
+
+        settings.language = "  en  ".into();
+        settings.normalize();
+        assert_eq!(settings.language, "en", "bosluklar temizlendi");
+
+        settings.language = "klingon".into();
+        settings.normalize();
+        assert_eq!(settings.language, "tr", "taninmayan dil varsayilana dondu");
+    }
+
+    #[test]
+    fn eski_ayar_dosyasinda_dil_turkce_varsayilan() {
+        // `language` alani olmayan eski downloads.json okunabilmeli.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("downloads.json"),
+            r#"{"version":1,"settings":{"maxConcurrent":4},"items":[]}"#,
+        )
+        .unwrap();
+        let store = Store::load(dir.path());
+        assert_eq!(store.settings.max_concurrent, 4);
+        assert_eq!(store.settings.language, "tr");
     }
 
     // --- ayarların dışa/içe aktarımı ---------------------------------------

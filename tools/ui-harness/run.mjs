@@ -330,6 +330,42 @@ export async function confirm() { return true; }
     );
     await shot("03-settings.png");
 
+    // --- Dil: seçim anında uygulanır, sayfa yenilenmez ---------------------
+    check(
+      (await page.locator("#set-language").inputValue()) === expected.language,
+      `#set-language mock ayariyla dolu (${expected.language})`,
+    );
+    const addTextTr = (await page.locator("#add-btn").textContent()) ?? "";
+    check(addTextTr.includes("Ekle"), `Turkce modda ekle dugmesi Turkce ('${addTextTr.trim()}')`);
+    await page.selectOption("#set-language", "en");
+    await page.waitForFunction(
+      () => document.documentElement.lang === "en",
+      null,
+      { timeout: 5000 },
+    );
+    const addTextEn = (await page.locator("#add-btn").textContent()) ?? "";
+    check(addTextEn.includes("Add"), `Ingilizce modda ekle dugmesi cevrildi ('${addTextEn.trim()}')`);
+    const placeholderEn = (await page.locator("#url-input").getAttribute("placeholder")) ?? "";
+    check(
+      placeholderEn.includes("Paste a link"),
+      `placeholder cevrildi ('${placeholderEn}')`,
+    );
+    // Listeyi yeniden yuklemeden geri don: indirmeler korunur.
+    const rowsBefore = await page.evaluate(() => window.__hydraCalls.list);
+    await page.selectOption("#set-language", "tr");
+    await page.waitForFunction(
+      () => document.documentElement.lang === "tr",
+      null,
+      { timeout: 5000 },
+    );
+    const addTextBack = (await page.locator("#add-btn").textContent()) ?? "";
+    check(addTextBack.includes("Ekle"), "Turkce'ye donunce metin geri geldi");
+    check(
+      (await page.evaluate(() => window.__hydraCalls.list)) === rowsBefore,
+      "dil degisimi listeyi yeniden yuklemedi (SSE/indirmeler korunur)",
+    );
+    ok("dil secimi aninda uygulaniyor");
+
     await page.click("#save-settings");
     await page.waitForFunction(() => window.__hydraCalls.saveSettings.length > 0, null, { timeout: 10_000 });
     const saved = await page.evaluate(() => window.__hydraCalls.saveSettings[0]);
