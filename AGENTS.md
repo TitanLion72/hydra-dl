@@ -23,6 +23,7 @@ node tools/test-links.mjs                                           # toplu içe
 node tools/test-virtual.mjs                                         # sanal liste yerleşimi
 node tools/test-i18n.mjs                                            # i18n motoru + envanter tamlığı
 node tools/audit-i18n.mjs                                           # eksik/tekrar çeviri denetimi
+node tools/soak.mjs --capture-port 6712 --count 10                  # eşzamanlı indirme soak (uygulama açıkken)
 node tools/net-capture-check.mjs                                     # eklenti ağ yakalama (gerçek tarayıcı)
 ```
 

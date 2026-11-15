@@ -128,11 +128,16 @@ kurulup** denenmeli — `tauri dev` yetmez (`docs/TRAPS.md`).
    tekrar dene + kaldığı yerden devam → dosya birebir), eksik parçada hedef dosya
    **oluşmaz**, birleştirme hatasında `.hydra-tmp` artığı kalmaz (gerçek sızıntıydı,
    düzeltildi). `cargo test` 164.
-5. **Dayanıklılık — sırada:** disk dolu simülasyonu (yazma hatası → failed + parçalar
-   korunur), uzun süreli eşzamanlı 10 indirme soak testi, HLS/DASH parça kopması.
-6. **v1.0 sırada:** otomatik güncelleme (imzalı manifest, anahtar kullanıcıda) → kod
+5. **Dayanıklılık — 2. dilim BİTTİ.** Disk dolu / yazma hatası testi (G/Ç hatası yeniden
+   denenmez, panik yok — regresyon kilidi). `tools/soak.mjs`: N eşzamanlı indirme, her
+   dosya farklı desen+boyut, sha256 birebir; 20 dosya / 122 MB / 1.1 sn. Test artıkları
+   artık geçmişte birikmiyor (e2e + soak kendi kayıtlarını siler, kullanıcınınkine
+   dokunmaz). `cargo test` 165.
+6. **Dayanıklılık — sırada:** HLS/DASH parça kopması, yeniden başlatma sonrası kuyruk
+   tutarlılığı (çoklu yarım indirme), yavaş/askıda kalan sunucu (zaman aşımı).
+7. **v1.0 sırada:** otomatik güncelleme (imzalı manifest, anahtar kullanıcıda) → kod
    imzalı NSIS.
-7. Küçükler: `ringbuf` muafiyeti `librqbit-utp` 0.4.9+/0.5.2+ çıkınca kalkar; torrent proxy
+8. Küçükler: `ringbuf` muafiyeti `librqbit-utp` 0.4.9+/0.5.2+ çıkınca kalkar; torrent proxy
    desteği librqbit proxy kazanınca `proxyUrl`'e bağlanır.
 
 ## Oturum kesilirse ilk komut

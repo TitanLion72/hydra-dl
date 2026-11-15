@@ -11,6 +11,8 @@ function arg(name, fallback) {
 }
 
 const capturePort = Number(arg("capture-port", "6712"));
+/** Bu kosu baslamadan once var olan kayitlar (temizlikte korunur). */
+const beforeIds = new Set();
 const targetDir = path.resolve(arg("dir", path.join(process.env.TEMP ?? ".", "hydra-e2e")));
 const size = Number(arg("size", String(16 * 1024 * 1024)));
 
@@ -129,6 +131,16 @@ async function run(port) {
   });
   console.log("[e2e] Hydra yakalama sunucusu hazir");
 
+  // Mevcut kayitlar: temizlikte yalniz bu kosuda eklenenler silinsin.
+  try {
+    const existing = await (await fetch(`http://127.0.0.1:${capturePort}/downloads`)).json();
+    if (Array.isArray(existing)) {
+      for (const entry of existing) beforeIds.add(entry.id);
+    }
+  } catch {
+    // Liste alinamazsa temizlik yalniz yol eslesmesiyle yapilir.
+  }
+
   const addUrl =
     `http://127.0.0.1:${capturePort}/add?url=` +
     encodeURIComponent(`http://127.0.0.1:${port}/file`) +
@@ -190,6 +202,38 @@ async function run(port) {
   }
   console.log(`[e2e] GECICI HATA SONRASI BASARILI (${flakyBytes.length} bayt, sha256 ${flakyActual.slice(0, 16)}…)`);
   await rm(flakyTarget, { force: true });
+
+  // Kayitlar kullanicinin gecmisinde birikmesin: bu kosuda eklenenleri sil.
+  await removeTestRecords();
+}
+
+/**
+ * Bu kosuda eklenen indirme kayitlarini siler (test kalintisi gecmiste birikmesin).
+ *
+ * Yalniz `targetDir` altindaki kayitlar ve `beforeIds` disindakiler silinir;
+ * kullanicinin gercek indirmelerine dokunulmaz.
+ */
+async function removeTestRecords() {
+  try {
+    const list = await (await fetch(`http://127.0.0.1:${capturePort}/downloads`)).json();
+    if (!Array.isArray(list)) return;
+    const junk = list.filter(
+      (entry) =>
+        !beforeIds.has(entry.id) &&
+        typeof entry.filePath === "string" &&
+        entry.filePath.startsWith(targetDir),
+    );
+    await Promise.all(
+      junk.map((entry) =>
+        fetch(`http://127.0.0.1:${capturePort}/downloads/${entry.id}`, {
+          method: "DELETE",
+        }).catch(() => undefined),
+      ),
+    );
+    if (junk.length > 0) console.log(`[e2e] ${junk.length} test kaydi temizlendi`);
+  } catch {
+    // Temizlik basarisiz olsa da test sonucu gecerli.
+  }
 }
 
 main()

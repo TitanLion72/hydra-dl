@@ -1286,6 +1286,63 @@ mod tests {
         }
     }
 
+    /// Diske yazilamiyorsa (disk dolu / izin yok) hata doner: panik yok,
+    /// sonsuz yeniden deneme yok.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn yazma_hatasi_temiz_hata_verir_ve_tekrar_denemez() {
+        let data = test_data(50_000);
+        let url = spawn_file_server(data.clone(), true).await;
+        let client = build_client();
+        let segments = vec![Segment {
+            index: 0,
+            start: 0,
+            end: Some(data.len() as u64 - 1),
+            done: 0,
+        }];
+
+        let dir = tempfile::tempdir().unwrap();
+        let parts = dir.path().join("parts");
+        tokio::fs::create_dir_all(&parts).await.unwrap();
+        // `0.part` yerinde bir **klasor**: acma/yazma basarisiz olur
+        // (disk dolu veya izin yok durumunun esdegeri).
+        tokio::fs::create_dir_all(parts.join("0.part"))
+            .await
+            .unwrap();
+
+        let cancel = CancelToken::new();
+        let limiter = RateLimiter::new(0);
+        let progress = vec![AtomicU64::new(0)];
+        let started = std::time::Instant::now();
+
+        let err = download_segments(DownloadRequest {
+            client: &client,
+            url: &url,
+            headers: RequestHeaders::default(),
+            segments: &segments,
+            parts_dir: &parts,
+            cancel: &cancel,
+            progress: &progress,
+            limiter: &limiter,
+            on_retry: None,
+        })
+        .await
+        .expect_err("yazma hatasi hata olarak donmeli");
+
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(3),
+            "G/C hatasi yeniden denenmemeli, gecen: {:?}",
+            started.elapsed()
+        );
+        assert!(
+            matches!(err, HttpError::Io(_)),
+            "hata G/C hatasi olmali, gelen: {err:?}"
+        );
+        assert!(
+            err.retry_after().is_none(),
+            "G/C hatasi yeniden denenmemeli"
+        );
+    }
+
     /// Birlestirme atomik olmali: eksik parca varsa hedef dosya **olusmamali**.
     #[tokio::test]
     async fn eksik_parcada_hedef_dosya_olusmaz() {
