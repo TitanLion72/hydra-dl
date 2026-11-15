@@ -412,7 +412,7 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::Kind;
+    use crate::model::{Kind, Segment};
 
     fn sample(id: &str) -> Download {
         Download {
@@ -486,6 +486,96 @@ mod tests {
 
         let reloaded = Store::load(dir.path());
         assert_eq!(reloaded.items[0].status, Status::Queued);
+    }
+
+    #[test]
+    fn coklu_yarim_indirme_acilista_tutarli() {
+        // Uygulama kapanirken 4 indirme farkli durumda: iki yarim indirme,
+        // bir duraklatilmis, bir kuyrukta. Acilista yalniz "indiriliyor"
+        // olanlar kuyruga donmeli; digerlerine DOKUNULMAMALI ve ilerleme
+        // korunmali (kaldigi yerden devam).
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::load(dir.path());
+
+        let mut downloading_a = sample("a");
+        downloading_a.status = Status::Downloading;
+        downloading_a.downloaded_bytes = 1_234_567;
+        downloading_a.segments = vec![
+            Segment {
+                index: 0,
+                start: 0,
+                end: Some(999_999),
+                done: 1_200_000,
+            },
+            Segment {
+                index: 1,
+                start: 1_000_000,
+                end: Some(1_999_999),
+                done: 34_567,
+            },
+        ];
+
+        let mut downloading_b = sample("b");
+        downloading_b.status = Status::Downloading;
+        downloading_b.downloaded_bytes = 42;
+
+        let mut paused = sample("c");
+        paused.status = Status::Paused;
+        paused.downloaded_bytes = 777;
+
+        let mut queued = sample("d");
+        queued.status = Status::Queued;
+
+        store.items = vec![
+            downloading_a.clone(),
+            downloading_b.clone(),
+            paused.clone(),
+            queued.clone(),
+        ];
+        store.save().unwrap();
+
+        let reloaded = Store::load(dir.path());
+        assert_eq!(reloaded.items.len(), 4, "kayit sayisi korunmali");
+
+        assert_eq!(reloaded.items[0].status, Status::Queued);
+        assert_eq!(reloaded.items[1].status, Status::Queued);
+        assert_eq!(
+            reloaded.items[0].downloaded_bytes, 1_234_567,
+            "indirilen bayt korunmali"
+        );
+        assert_eq!(
+            reloaded.items[0].segments, downloading_a.segments,
+            "segment ilerlemesi korunmali"
+        );
+        assert_eq!(reloaded.items[1].downloaded_bytes, 42);
+
+        assert_eq!(reloaded.items[2].status, Status::Paused);
+        assert_eq!(reloaded.items[2].downloaded_bytes, 777);
+        assert_eq!(reloaded.items[3].status, Status::Queued);
+
+        assert!(!reloaded
+            .items
+            .iter()
+            .any(|item| item.status == Status::Completed));
+    }
+
+    #[test]
+    fn her_acilista_yarim_indirme_sayisi_artmaz() {
+        // Kaydet/yukle dongusu tekrarlansa da durum kararli kalmali (idempotent).
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::load(dir.path());
+        let mut item = sample("a");
+        item.status = Status::Downloading;
+        item.downloaded_bytes = 500;
+        store.items.push(item);
+        store.save().unwrap();
+
+        for _ in 0..3 {
+            let reloaded = Store::load(dir.path());
+            assert_eq!(reloaded.items[0].status, Status::Queued);
+            assert_eq!(reloaded.items[0].downloaded_bytes, 500);
+            reloaded.save().unwrap();
+        }
     }
 
     #[test]

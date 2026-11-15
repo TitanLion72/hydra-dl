@@ -126,8 +126,11 @@ kurulup** denenmeli — `tauri dev` yetmez (`docs/TRAPS.md`).
    kadar üstel geri çekilme (200/400/800 ms); kalıcı hata (404/403, sınır aşımı) hemen
    döner. Önceden HLS'te tek parça hatası tüm indirmeyi öldürüyordu. `is_transient` saf +
    testli; uçtan uca test: 503×2 → parça indi. `cargo test` 167.
-7. **Dayanıklılık — sırada:** yeniden başlatma sonrası kuyruk tutarlılığı (çoklu yarım
-   indirme), yavaş/askıda kalan sunucu (zaman aşımı).
+7. **Yeniden başlatma tutarlılığı (0.6.3) — BİTTİ.** Çoklu yarım indirme testi: açılışta
+   yalnız `downloading` olanlar kuyruğa döner, `paused`/`queued` dokunulmaz, indirilen bayt
+   ve segment ilerlemesi korunur, hiçbiri sahte `completed` olmaz. Ayrıca kaydet/yükle
+   döngüsü idempotent (her açılışta durum daha fazla bozulmaz). `cargo test` 169.
+8. **Dayanıklılık — sırada:** yavaş/askıda kalan sunucu (zaman aşımı davranışı).
 7. **v1.0 sırada:** otomatik güncelleme (imzalı manifest, anahtar kullanıcıda) → kod
    imzalı NSIS.
 8. Küçükler: `ringbuf` muafiyeti `librqbit-utp` 0.4.9+/0.5.2+ çıkınca kalkar; torrent proxy
