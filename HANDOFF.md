@@ -22,41 +22,29 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
 
 | Ne | Kanıt |
 |---|---|
-| Rust testleri + clippy | `cargo test` → **136 passed** (1 ağ testi `#[ignore]`); clippy `-D warnings` → 0 |
-| Arayüz derlemesi | `npm run build` → 21.84 kB JS |
-| Segmentli indirme | `node tools/e2e.mjs` → 16 MB, sha256 eşleşti |
+| Rust testleri + clippy | `cargo test` → **167 passed** (1 ağ testi `#[ignore]`); clippy `-D warnings` → 0 |
+| Arayüz derlemesi | `npm run build` → temiz (≈65.7 kB JS) |
+| Segmentli indirme | `node tools/e2e.mjs` → 16 MB, sha256 eşleşti; 503'lü kaynak da ✓; kendi kayıtlarını siler |
 | Web API + SSE | `node tools/web-smoke.mjs --port 6790` → "TÜMÜ GEÇTİ" |
-| **yt-dlp kurulumu** | `POST /ytdlp/install` → 7 sn, `2026.10.21` sürümü doğrulandı |
-| **YouTube probe** | 4K video → 49 format, başlık çözüldü, dosya adı başlıktan |
-| **YouTube indirme** | 360p, 33 MB, `ftyp isom` MP4, ses+video birleşik, doğru dosya adı |
-| **Torrent (yasal)** | Ubuntu 24.04 `.torrent` 3.1 GB @5 MB/s, 800 peer; Big Buck Bunny magnet 264 MB tamamlandı |
-| **Torrent duraklat/devam** | `paused` → hız 0, `resume` → indirme sürdü; 4 yarım indirmeyle açılış çökmeden devam etti |
-| LAN erişimi | `http://192.168.1.106:6790/health` → 200 |
-| Masaüstü UI | `tools/ui-harness` → torrent dosya seçimi dahil, konsol hatası yok |
-| Telefon arayüzü | `node tools/web-ui-check.mjs` → PASS (yt-dlp + torrent dosya seçimi + retry) |
-| **Yeniden deneme** | 503×2→başarı, `Retry-After` beklendi, 404 → tekrar yok; canlı 0.2.4'te sha256 doğru |
-| **Yol okuma açığı (kapandı)** | Canlı: `GET /C:/Windows/win.ini` → 400, kaynak dosya → 400, `/..%2f..%2fAGENTS.md` → 400 |
-| **Güvenlik taraması** | `node tools/security-check.mjs` → PASS (koruma regresyonu + sır/yol) |
-| **cargo audit** | `cd src-tauri && cargo audit` → exit 0 (1 gerekçeli istisna: ringbuf/librqbit-utp) |
-| e2e 503 senaryosu | `tools/e2e.mjs` → 16 MB + 503'lü 2 MB kaynak, iki hash de doğru |
-| **Tray (canlı, kurulu 0.3.0)** | `/health` → `"tray":true`; WM_CLOSE → pencere gizlendi, süreç + API yaşamaya devam etti (indirmeler sürer) |
-| **Geçmişte arama/sıralama (0.3.1)** | `ui-harness` → arama 1 kayda indi, `ARSİV` → 2, Esc temizledi, boyut/ad sırası doğru, tercih kalıcı |
-| **Telefon araması (0.3.1)** | `web-ui-check.mjs` → arama 1 karta indi, sayaç daraldı, eşleşmeyende bilgi metni |
-| **Ayarlar hızı (0.3.2)** | yt-dlp `--version` 2,2 sn sürüyordu → 5 dk önbellek + çekmece anında: **58 ms** |
-| **HLS (0.3.3)** | `cargo test` → 13 HLS testi (master/varyant, AES-128 NIST vektörü, DRM reddi, EXT-X-MAP, BYTERANGE reddi) |
-| **HLS canlı (0.3.3)** | yerel sunucu: şifresiz 3×64 KB sha256 ✓, AES-128 çözüldü ✓, DRM → 400, duraklat→devam→completed ✓ |
-| **DASH (0.3.4)** | `cargo test` → 9 MPD testi (SegmentTemplate/Timeline/List, BaseURL zinciri, DRM reddi) |
-| **Depo sağlığı (0.3.4)** | `tools/hygiene.mjs` → temiz ağaç, .git 2,8 MB, izlenen büyük dosya yok |
-| **Torrent yükleme (0.3.5)** | `web-ui-check.mjs` → dosya seçici `.torrent` gönderdi, "Eklendi: arsiv-2026" ipucu |
-| **Tohum oranı (0.3.5)** | `cargo test` → oran hesabı + eski kayıt uyumu (eksik alanlar `0`, oran "—") |
-| **Orphan .torrent (0.3.5)** | Canlı testte bulundu: kayıt silinince `.torrent` diskte kalıyordu → `remove_uploaded_torrent` (yalnız `torrents/` altı) |
-| **Ağ yakalama (0.3.6)** | `net-capture-check.mjs` gerçek Edge+eklenti: m3u8/mpd/mp4 yakalandı, ts/css/js/png/json elendi, yakalanan HLS completed — 16/16 |
-| **Eklenti birim (0.3.6)** | `test-extension.mjs` → **30 geçti** (9 yeni netlog testi) |
-| **HTTPS (0.3.7)** | `check-web-tls.mjs`: HTTP→HTTPS geçişi, SAN'lar, http reddi, token 401→200, sertifika sabit — **21/21** |
-| **Toplu içe aktarma (0.3.8)** | `test-links.mjs` 27; ui-harness + web-ui-check yeni senaryolar; canlı: 3 dosya indi, sha256 ✓ — **12/12** |
-| **Sanal liste (0.3.9)** | `test-virtual.mjs` 28; ui-harness: 300 kayıtta DOM'da **14 satır**, sona kaydırma son kaydı çizdi, seçim→duraklat API'ye gitti |
-| **yt-dlp güncelleme (0.4.0)** | canlı: kontrol 571 ms → ikinci 4 ms (önbellek), gerçek güncelleme 13 sn → "güncelleme yok" |
-| Rust testleri | `cargo test` → **142 passed** (1 ağ testi `#[ignore]`); 6 yeni sürüm karşılaştırma testi |
+| Yerelleştirme | `test-i18n` 25/25, `audit-i18n` envanter 293/293; canlı `PUT /settings {language}` kalıcı |
+| **yt-dlp kurulumu / YouTube** | kurulum 7 sn (`2026.10.21`); 4K probe 49 format; 360p 33 MB MP4 indi |
+| **Torrent (yasal)** | Ubuntu 24.04 3.1 GB @5 MB/s, 800 peer; Big Buck Bunny magnet 264 MB; 4 yarım indirmeyle çökmeden devam |
+| **Torrent duraklat/devam** | `paused` → hız 0, `resume` → sürdü |
+| LAN erişimi | `http://<LAN-IP>:6790/health` → 200 |
+| Masaüstü UI | `tools/ui-harness` → dil senaryosu + torrent dosya seçimi, konsol hatası yok |
+| Telefon arayüzü | `node tools/web-ui-check.mjs` → PASS (EN→TR, yt-dlp, torrent, retry) |
+| **Yeniden deneme** | 503×2→başarı, `Retry-After` beklendi, 404 → tekrar yok |
+| **Yol okuma açığı (kapandı)** | `GET /C:/Windows/win.ini` → 400, `/..%2f..%2fAGENTS.md` → 400 |
+| **Güvenlik taraması** | `node tools/security-check.mjs` → PASS |
+| **cargo audit** | exit 0 (1 gerekçeli istisna: ringbuf/librqbit-utp) |
+| **Tray (canlı)** | `/health` → `"tray":true`; WM_CLOSE → pencere gizlendi, indirmeler sürdü |
+| **Geçmişte arama/sıralama** | masaüstü + telefon harness: süzme, sıralama, tercih kalıcı |
+| **Ayarlar hızı** | yt-dlp `--version` 2,2 sn → 5 dk önbellek + anında çekmece: **58 ms** |
+| **HLS / DASH** | 13 HLS + 9 MPD testi; canlı HLS: şifresiz, AES-128, DRM→400, duraklat→devam |
+| **Ağ yakalama** | `net-capture-check.mjs` gerçek Edge: m3u8/mpd/mp4 yakalandı, 16/16 |
+| **HTTPS** | `check-web-tls.mjs` → 21/21 (SAN, http reddi, token 401→200) |
+| **Toplu içe aktarma / sanal liste** | `test-links` 27, `test-virtual` 28; 300 kayıtta DOM'da **14 satır** |
+| **Dayanıklılık (0.6.x)** | kopan bağlantı, atomik bitiş, `.hydra-tmp` sızıntısı, disk dolu, HLS parça retry; `soak.mjs` 20 dosya / 122 MB sha256 ✓ |
 
 ## Bu oturumda düzeltilen gerçek hatalar
 
@@ -133,8 +121,13 @@ kurulup** denenmeli — `tauri dev` yetmez (`docs/TRAPS.md`).
    dosya farklı desen+boyut, sha256 birebir; 20 dosya / 122 MB / 1.1 sn. Test artıkları
    artık geçmişte birikmiyor (e2e + soak kendi kayıtlarını siler, kullanıcınınkine
    dokunmaz). `cargo test` 165.
-6. **Dayanıklılık — sırada:** HLS/DASH parça kopması, yeniden başlatma sonrası kuyruk
-   tutarlılığı (çoklu yarım indirme), yavaş/askıda kalan sunucu (zaman aşımı).
+6. **HLS/DASH parça dayanıklılığı (0.6.2) — BİTTİ.** `engine/fetch.rs` ortak segment
+   yoluna yeniden deneme eklendi: geçici hata (ağ, gövde kesintisi, 5xx, 429) → 4 denemeye
+   kadar üstel geri çekilme (200/400/800 ms); kalıcı hata (404/403, sınır aşımı) hemen
+   döner. Önceden HLS'te tek parça hatası tüm indirmeyi öldürüyordu. `is_transient` saf +
+   testli; uçtan uca test: 503×2 → parça indi. `cargo test` 167.
+7. **Dayanıklılık — sırada:** yeniden başlatma sonrası kuyruk tutarlılığı (çoklu yarım
+   indirme), yavaş/askıda kalan sunucu (zaman aşımı).
 7. **v1.0 sırada:** otomatik güncelleme (imzalı manifest, anahtar kullanıcıda) → kod
    imzalı NSIS.
 8. Küçükler: `ringbuf` muafiyeti `librqbit-utp` 0.4.9+/0.5.2+ çıkınca kalkar; torrent proxy
