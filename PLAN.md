@@ -91,7 +91,11 @@ v0.2 = "IDM'den iyi" temeli. Sıra bağımlılığa göre; üstteki bitmeden alt
       yedek anahtarı silmez), değerler normalize edilir, klasör oluşturulamazsa önceki
       korunur. Masaüstü dosya seçici, telefonda indirme + dosya seçici.
 - [x] TR/EN yerelleştirme (v0.5.0 — `webapp/i18n.js`, envanter 293/293)
-- [ ] Dayanıklılık: güç kesintisi, disk dolu, ağ değişimi otomatik testleri
+- [x] **Dayanıklılık testleri** (v0.6.0–0.6.4): kopan bağlantı, atomik bitiş, `.hydra-tmp`
+      sızıntısı, disk dolu, HLS/DASH parça yeniden denemesi, yeniden başlatma tutarlılığı,
+      askıda kalan sunucu zaman aşımı, eşzamanlı soak (`tools/soak.mjs`). `cargo test` 170.
+- [ ] Otomatik güncelleme (imzalı manifest)
+- [ ] Kod imzalı NSIS
 - [ ] Linux/macOS deneysel hedefler
 
 ## Bilinçli olarak yapılmayacaklar
