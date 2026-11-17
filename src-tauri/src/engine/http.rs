@@ -26,6 +26,12 @@ pub const MAX_ATTEMPTS: u32 = 5;
 const BASE_BACKOFF: Duration = Duration::from_millis(500);
 /// Tek bir beklemenin ust siniri (`Retry-After` dahil).
 const MAX_BACKOFF: Duration = Duration::from_secs(30);
+/// Yanit basliklarinin gelmesini beklerken ust sinir. Baglanti kuruldu ama
+/// sunucu konusmuyorsa indirme sonsuza kadar asili kalmasin.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+/// Govde akarken iki parca arasindaki en uzun sessizlik. Sunucu baglantiyi
+/// acik tutup veri gondermezse bu sinirda vazgeceriz (gecici hata → yeniden dene).
+const IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Gecici sunucu hatasi mi? 408/425/429 ve 5xx (501 haric) tekrar denenir.
 pub fn is_retryable_status(status: StatusCode) -> bool {
@@ -412,7 +418,15 @@ async fn download_one(
     let mut attempt = 0u32;
     loop {
         match attempt_once(
-            client, url, headers, seg, parts_dir, cancel, progress, limiter,
+            client,
+            url,
+            headers,
+            seg,
+            parts_dir,
+            cancel,
+            progress,
+            limiter,
+            Timeouts::default(),
         )
         .await
         {
@@ -443,6 +457,24 @@ async fn download_one(
 }
 
 /// Tek bir deneme: kaldigi yerden Range ile indirir.
+/// Tek bir denemenin zaman sinirlari. Testler kisa degerlerle calisir.
+#[derive(Clone, Copy, Debug)]
+pub struct Timeouts {
+    /// Yanit basliklari gelene kadar.
+    pub request: Duration,
+    /// Govde akarken iki parca arasindaki en uzun sessizlik.
+    pub idle: Duration,
+}
+
+impl Default for Timeouts {
+    fn default() -> Self {
+        Self {
+            request: REQUEST_TIMEOUT,
+            idle: IDLE_TIMEOUT,
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn attempt_once(
     client: &Client,
@@ -453,6 +485,7 @@ async fn attempt_once(
     cancel: &CancelToken,
     progress: &AtomicU64,
     limiter: &RateLimiter,
+    timeouts: Timeouts,
 ) -> Result<(), HttpError> {
     let part = parts_dir.join(format!("{}.part", seg.index));
     let expected = seg.total_len();
@@ -503,9 +536,14 @@ async fn attempt_once(
         request = request.header(RANGE, range);
     }
 
-    let response = request
-        .send()
+    let response = tokio::time::timeout(timeouts.request, request.send())
         .await
+        .map_err(|_| {
+            HttpError::Network(format!(
+                "sunucu {} sn icinde yanit vermedi",
+                timeouts.request.as_secs().max(1)
+            ))
+        })?
         .map_err(|e| HttpError::Network(e.to_string()))?;
     let status = response.status();
     let retry_after = response
@@ -536,7 +574,21 @@ async fn attempt_once(
         .map_err(|e| HttpError::Io(e.to_string()))?;
 
     let mut stream = response.bytes_stream();
-    while let Some(chunk) = stream.next().await {
+    loop {
+        // Bosda kalma zaman asimi: sunucu baglantiyi acik tutup veri gondermezse
+        // indirme sonsuza kadar asili kalmasin (gecici hata → yeniden denenir).
+        let next = tokio::time::timeout(timeouts.idle, stream.next()).await;
+        let chunk = match next {
+            Err(_) => {
+                let _ = file.flush().await;
+                return Err(HttpError::Network(format!(
+                    "sunucu {} sn boyunca veri gondermedi",
+                    timeouts.idle.as_secs().max(1)
+                )));
+            }
+            Ok(None) => break,
+            Ok(Some(chunk)) => chunk,
+        };
         if cancel.is_cancelled() {
             let _ = file.flush().await;
             return Err(HttpError::Cancelled);
@@ -1386,6 +1438,77 @@ mod tests {
             .filter(|name| name.ends_with(".hydra-tmp"))
             .collect();
         assert!(leftovers.is_empty(), "gecici dosya kaldi: {leftovers:?}");
+    }
+
+    /// Sunucu baglanip hic veri gondermezse indirme sonsuza kadar asili kalmamali.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn askida_kalan_sunucu_zaman_asimina_ugrar() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            if let Ok((mut socket, _)) = listener.accept().await {
+                let mut buf = [0u8; 2048];
+                let _ = socket.read(&mut buf).await;
+                // Basliklari gonder ama govdeyi ASLA gonderme (askida kal).
+                let _ = socket
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 1000\r\nConnection: keep-alive\r\n\r\n",
+                    )
+                    .await;
+                tokio::time::sleep(std::time::Duration::from_secs(120)).await;
+            }
+        });
+
+        let client = build_client();
+        let url = format!("http://{addr}/file");
+        let seg = Segment {
+            index: 0,
+            start: 0,
+            end: Some(999),
+            done: 0,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancelToken::new();
+        let limiter = RateLimiter::new(0);
+        let progress = AtomicU64::new(0);
+        let started = std::time::Instant::now();
+
+        // Testte kisa sinirlar: 1 sn yanit + 1 sn bosta kalma.
+        let timeouts = Timeouts {
+            request: std::time::Duration::from_secs(1),
+            idle: std::time::Duration::from_secs(1),
+        };
+        let err = attempt_once(
+            &client,
+            &url,
+            RequestHeaders::default(),
+            &seg,
+            dir.path(),
+            &cancel,
+            &progress,
+            &limiter,
+            timeouts,
+        )
+        .await
+        .expect_err("askida kalan sunucu hata vermeli");
+
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < std::time::Duration::from_secs(10),
+            "zaman asimi makul olmali, gecen: {elapsed:?}"
+        );
+        let text = format!("{err}");
+        assert!(
+            text.contains("veri gondermedi") || text.contains("yanit vermedi"),
+            "hata mesaji zaman asimini anlatmali: {text}"
+        );
+        // Gecici hata sayilmali: tekrar denenebilir.
+        assert!(
+            err.retry_after().is_some(),
+            "zaman asimi yeniden denenebilir olmali"
+        );
     }
 
     #[test]

@@ -130,7 +130,11 @@ kurulup** denenmeli — `tauri dev` yetmez (`docs/TRAPS.md`).
    yalnız `downloading` olanlar kuyruğa döner, `paused`/`queued` dokunulmaz, indirilen bayt
    ve segment ilerlemesi korunur, hiçbiri sahte `completed` olmaz. Ayrıca kaydet/yükle
    döngüsü idempotent (her açılışta durum daha fazla bozulmaz). `cargo test` 169.
-8. **Dayanıklılık — sırada:** yavaş/askıda kalan sunucu (zaman aşımı davranışı).
+8. **Askıda kalan sunucu (0.6.4) — BİTTİ.** Gerçek açık: sunucu bağlanıp gövde göndermezse
+   indirme **sonsuza kadar asılı kalıyordu** (testte 136 sn asıldı). Artık iki sınır var:
+   yanıt başlıkları için 30 sn, gövde akarken parçalar arası sessizlik için 30 sn. İkisi de
+   geçici hata sayılır → yeniden denenir. `Timeouts` yapısı testlerde kısa değer alır.
+   `cargo test` 170.
 7. **v1.0 sırada:** otomatik güncelleme (imzalı manifest, anahtar kullanıcıda) → kod
    imzalı NSIS.
 8. Küçükler: `ringbuf` muafiyeti `librqbit-utp` 0.4.9+/0.5.2+ çıkınca kalkar; torrent proxy
