@@ -111,10 +111,8 @@ Açık kaynak ve **LAN'a açılan HTTP sunucusu**: aşağıdakiler pazarlık kon
 6. **Sır/kişisel yol commit etme.** `security-check` token, anahtar ve `C:\Users\…` arar.
    Test mock'larında örnek yol kullan (`C:\Users\ornek\…`).
 7. **CI yeşil olmadan merge yok:** test + clippy + fmt + `security-check` + `npm audit` +
-   `cargo audit` + CodeQL. `cargo audit` muafiyeti yalnız `src-tauri/.cargo/audit.toml`
-   içinde **gerekçesiyle**; upstream düzelince kaldır.
-8. **Yıkıcı işlemler varsayılan kapalı:** `deleteFile`, toplu temizlik → parametre
-   verilmedikçe yapılmaz.
+   `cargo audit` + CodeQL. `cargo audit` muafiyeti yalnız gerekçesiyle `audit.toml`'da.
+8. **Yıkıcı işlemler varsayılan kapalı:** `deleteFile`, toplu temizlik → parametresiz yapılmaz.
 
 ## Kurallar (kullanıcı talebi)
 
