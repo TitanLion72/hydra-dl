@@ -22,6 +22,12 @@ pub const DEFAULT_UA: &str =
 
 /// Gecici hatada ust uste kac kez denenecegi (ilk deneme dahil).
 pub const MAX_ATTEMPTS: u32 = 5;
+/// Sunucu askida kaldiysa (30 sn boyunca tek bayt yok) kac kez denenir.
+///
+/// Neden 1: gercek askida kalma anlik bir blip degildir (o "connection reset"
+/// olarak gelir, `Network` sayilir). Ayni sunucuya tekrar sormak kullaniciyi
+/// 30 sn daha bekletmekten baska ise yaramaz; kullanici isterse elle dener.
+const STALL_ATTEMPTS: u32 = 1;
 /// Ilk tekrar denemeden onceki bekleme; her denemede ikiye katlanir.
 const BASE_BACKOFF: Duration = Duration::from_millis(500);
 /// Tek bir beklemenin ust siniri (`Retry-After` dahil).
@@ -121,6 +127,28 @@ impl HttpError {
             _ => None,
         }
     }
+
+    /// Sunucu askida mi kaldi (veri/yanit gelmedi)?
+    ///
+    /// Neden ayri: bu durumda tekrar denemek genelde sonuc vermez, bu yuzden
+    /// daha az denenir (bkz. `attempt_budget`).
+    pub fn is_stall(&self) -> bool {
+        match self {
+            HttpError::Network(message) => {
+                message.contains("veri gondermedi") || message.contains("yanit vermedi")
+            }
+            _ => false,
+        }
+    }
+
+    /// Bu hata icin en fazla kac deneme yapilir (ilk deneme dahil).
+    pub fn attempt_budget(&self) -> u32 {
+        if self.is_stall() {
+            STALL_ATTEMPTS
+        } else {
+            MAX_ATTEMPTS
+        }
+    }
 }
 
 impl std::error::Error for HttpError {}
@@ -203,15 +231,20 @@ pub async fn probe_with(
 ) -> Result<Probe, String> {
     let mut attempt = 0u32;
     loop {
-        match probe_once(client, url, headers).await {
+        match probe_once(client, url, headers, Timeouts::default()).await {
             Ok(probe) => return Ok(probe),
             Err(err) => {
                 let Some(retry_after) = err.retry_after() else {
                     return Err(err.to_string());
                 };
                 attempt += 1;
-                if attempt >= MAX_ATTEMPTS {
-                    return Err(format!("{err} ({attempt} deneme sonrası vazgeçildi)"));
+                if attempt >= err.attempt_budget() {
+                    // Kullaniciya durumu acik soyle: sessizce bekletmek kotu.
+                    return Err(if err.is_stall() {
+                        format!("{err} (sunucu yanit vermedi, tekrar denenmedi)")
+                    } else {
+                        format!("{err} ({attempt} deneme sonrası vazgeçildi)")
+                    });
                 }
                 let delay = backoff_delay(attempt - 1, retry_after, jitter_for(0, attempt));
                 tokio::time::sleep(delay).await;
@@ -220,11 +253,13 @@ pub async fn probe_with(
     }
 }
 
-/// Tek bir probe denemesi (HEAD, olmazsa 1 baytlik Range).
+/// Tek bir probe denemesi (HEAD, olmazsa 1 baytlik Range). Zaman sinirlari
+/// disaridan verilir: asida kalan sunucu probe'u da kilitlememeli.
 async fn probe_once(
     client: &Client,
     url: &str,
     headers: RequestHeaders<'_>,
+    timeouts: Timeouts,
 ) -> Result<Probe, HttpError> {
     let mut head_req = client.head(url).header(ACCEPT_ENCODING, "identity");
     if let Some(referer) = RequestHeaders::safe_value(headers.referer.unwrap_or("")) {
@@ -233,7 +268,10 @@ async fn probe_once(
     if let Some(cookie) = RequestHeaders::safe_value(headers.cookie.unwrap_or("")) {
         head_req = head_req.header(COOKIE, cookie);
     }
-    let head = head_req.send().await;
+    let head = tokio::time::timeout(timeouts.request, head_req.send())
+        .await
+        .map_err(|_| timed_out(timeouts.request))
+        .and_then(|result| result.map_err(|e| HttpError::Network(e.to_string())));
 
     if let Ok(resp) = head {
         let retry_after = resp
@@ -283,9 +321,9 @@ async fn probe_once(
     if let Some(cookie) = RequestHeaders::safe_value(headers.cookie.unwrap_or("")) {
         range_req = range_req.header(COOKIE, cookie);
     }
-    let resp = range_req
-        .send()
+    let resp = tokio::time::timeout(timeouts.request, range_req.send())
         .await
+        .map_err(|_| timed_out(timeouts.request))?
         .map_err(|e| HttpError::Network(format!("baglanti kurulamadi: {e}")))?;
 
     let status = resp.status();
@@ -435,8 +473,10 @@ async fn download_one(
                 let Some(retry_after) = err.retry_after() else {
                     return Err(err);
                 };
+                // Askida kalma 5 kez degil 3 kez denenir (kullaniciyi bekletmemek icin).
+                let budget = err.attempt_budget();
                 attempt += 1;
-                if attempt >= MAX_ATTEMPTS {
+                if attempt >= budget {
                     // Kullaniciya kac deneme yapildigini soyle.
                     return Err(HttpError::Network(format!(
                         "{err} ({attempt} deneme sonrası vazgeçildi)"
@@ -444,7 +484,7 @@ async fn download_one(
                 }
                 let delay = backoff_delay(attempt - 1, retry_after, jitter_for(seg.index, attempt));
                 if let Some(hook) = on_retry {
-                    hook(attempt + 1, MAX_ATTEMPTS, delay);
+                    hook(attempt + 1, budget, delay);
                 }
                 // Beklerken iptal edilirse uyanmadan cik.
                 tokio::select! {
@@ -457,6 +497,14 @@ async fn download_one(
 }
 
 /// Tek bir deneme: kaldigi yerden Range ile indirir.
+/// Zaman asimini standart bir ag hatasina cevirir (mesaj kullaniciya net).
+fn timed_out(limit: Duration) -> HttpError {
+    HttpError::Network(format!(
+        "sunucu {} sn icinde yanit vermedi",
+        limit.as_secs().max(1)
+    ))
+}
+
 /// Tek bir denemenin zaman sinirlari. Testler kisa degerlerle calisir.
 #[derive(Clone, Copy, Debug)]
 pub struct Timeouts {
@@ -1509,6 +1557,69 @@ mod tests {
             err.retry_after().is_some(),
             "zaman asimi yeniden denenebilir olmali"
         );
+    }
+
+    /// Askida kalma (zaman asimi) yeniden denenebilir ama sinirli olmali:
+    /// 5 deneme x 30 sn = 2,5 dk bekletmek kullanici icin kabul edilemez.
+    #[test]
+    fn askida_kalma_kisaltilmis_butceyle_denenir() {
+        let stall_idle = HttpError::Network("sunucu 20 sn boyunca veri gondermedi".into());
+        let stall_headers = HttpError::Network("sunucu 30 sn icinde yanit vermedi".into());
+        assert!(stall_idle.is_stall(), "bosta kalma askida kalma sayilmali");
+        assert!(
+            stall_headers.is_stall(),
+            "yanit gelmemesi askida kalma sayilmali"
+        );
+
+        // Diger ag hatalari normal butceyi kullanir (gecici olabilir).
+        let reset = HttpError::Network("error sending request: connection reset".into());
+        assert!(!reset.is_stall());
+        assert!(!HttpError::Status(503, None).is_stall());
+        assert!(!HttpError::Io("disk dolu".into()).is_stall());
+
+        // Butce: normal 5, askida kalma tek deneme.
+        assert_eq!(stall_idle.attempt_budget(), STALL_ATTEMPTS);
+        assert_eq!(reset.attempt_budget(), MAX_ATTEMPTS);
+        assert_eq!(STALL_ATTEMPTS, 1, "askida kalan sunucu tekrar denenmemeli");
+    }
+
+    /// Asida kalan sunucu probe'u da kilitlememeli (HEAD yaniti gelmezse zaman asimi).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn askida_kalan_sunucuda_probe_zaman_asimina_ugrar() {
+        use tokio::io::AsyncReadExt;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            if let Ok((mut socket, _)) = listener.accept().await {
+                let mut buf = [0u8; 2048];
+                let _ = socket.read(&mut buf).await;
+                // Hic yanit verme: HEAD de asili kalir.
+                tokio::time::sleep(std::time::Duration::from_secs(120)).await;
+            }
+        });
+
+        let client = build_client();
+        let url = format!("http://{addr}/file");
+        let started = std::time::Instant::now();
+        let err = probe_once(
+            &client,
+            &url,
+            RequestHeaders::default(),
+            Timeouts {
+                request: std::time::Duration::from_secs(1),
+                idle: std::time::Duration::from_secs(1),
+            },
+        )
+        .await
+        .expect_err("asili sunucuda probe hata vermeli");
+
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(10),
+            "probe zaman asimi makul olmali: {:?}",
+            started.elapsed()
+        );
+        assert!(err.is_stall(), "zaman asimi askida kalma sayilmali: {err}");
     }
 
     #[test]

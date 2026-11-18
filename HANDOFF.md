@@ -50,11 +50,11 @@ girdisi temizlendi, kullanıcının indirmeleri korundu). Kurulum paketi:
 
 Tam liste ve kök nedenler: [`docs/HISTORY.md`](docs/HISTORY.md) (25 madde).
 
-- **Güvenlik**: web sunucusu kök dışını servis ediyordu (`/C:/Windows/win.ini` → 200);
-  token koruması prefix listesi yüzünden 2 ucu atlıyordu; localhost CSRF açıktı.
-- Geçici sunucu hatalarında yeniden deneme (429/503 + `Retry-After`).
-- Torrent'te dosya seçimi, bağlantı bütçesi 64, DHT'siz devam.
-- Ağ yakalama: paralel istekler aynı listeyi ezmesin diye sekme başına yazma kuyruğu.
+- **Güvenlik**: web sunucusu kök dışını servis ediyordu; token koruması 2 ucu atlıyordu;
+  localhost CSRF açıktı.
+- **Dayanıklılık (0.6.x)**: `.hydra-tmp` sızıntısı, HLS/DASH'te hiç yeniden deneme
+  olmaması, askıda kalan sunucuda sonsuz asılma (indirme **ve** probe).
+- Diğer: 429/503 + `Retry-After`, torrent dosya seçimi, ağ yakalamada sekme başına kuyruk.
 
 ## Bilinen açık uçlar
 
@@ -130,15 +130,16 @@ kurulup** denenmeli — `tauri dev` yetmez (`docs/TRAPS.md`).
    yalnız `downloading` olanlar kuyruğa döner, `paused`/`queued` dokunulmaz, indirilen bayt
    ve segment ilerlemesi korunur, hiçbiri sahte `completed` olmaz. Ayrıca kaydet/yükle
    döngüsü idempotent (her açılışta durum daha fazla bozulmaz). `cargo test` 169.
-8. **Askıda kalan sunucu (0.6.4) — BİTTİ.** Gerçek açık: sunucu bağlanıp gövde göndermezse
-   indirme **sonsuza kadar asılı kalıyordu** (testte 136 sn asıldı). Artık iki sınır var:
-   yanıt başlıkları için 30 sn, gövde akarken parçalar arası sessizlik için 30 sn. İkisi de
-   geçici hata sayılır → yeniden denenir. `Timeouts` yapısı testlerde kısa değer alır.
-   `cargo test` 170.
-7. **v1.0 sırada:** otomatik güncelleme (imzalı manifest, anahtar kullanıcıda) → kod
+8. **Askıda kalan sunucu (0.6.4–0.6.7) — BİTTİ, canlı doğrulandı.** Sunucu bağlanıp gövde
+   göndermezse indirme **sonsuza kadar asılı kalıyordu** (testte 136 sn). Sınırlar: yanıt
+   başlıkları 30 sn, gövde sessizliği 30 sn, **probe da zaman aşımlı** (probe hiç sınırsızdı;
+   canlı ölçümün uzamasının sebebi). Askıda kalmada **tekrar denenmez** (30 sn sessizlik
+   anlık blip değildir; mesaj: "sunucu yanıt vermedi, tekrar denenmedi"). `tools/hang-check.mjs`
+   gerçek asılı sunucuyu senaryolaştırır. `cargo test` 172.
+9. **v1.0 sırada:** otomatik güncelleme (imzalı manifest, anahtar kullanıcıda) → kod
    imzalı NSIS.
-8. Küçükler: `ringbuf` muafiyeti `librqbit-utp` 0.4.9+/0.5.2+ çıkınca kalkar; torrent proxy
-   desteği librqbit proxy kazanınca `proxyUrl`'e bağlanır.
+10. Küçükler: `ringbuf` muafiyeti `librqbit-utp` 0.4.9+/0.5.2+ çıkınca kalkar; torrent proxy
+    desteği librqbit proxy kazanınca `proxyUrl`'e bağlanır.
 
 ## Oturum kesilirse ilk komut
 

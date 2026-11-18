@@ -19,12 +19,13 @@ node tools/security-check.mjs                                        # sır/yol/
 node tools/hygiene.mjs                                               # depo/disk sağlığı (uyarı varsa 1)
 node tools/build-extension.mjs                                       # eklenti paketleri
 node tools/ui-harness/run.mjs                                        # masaüstü UI (mock API)
-node tools/test-links.mjs                                           # toplu içe aktarma ayrıştırıcısı
-node tools/test-virtual.mjs                                         # sanal liste yerleşimi
-node tools/test-i18n.mjs                                            # i18n motoru + envanter tamlığı
-node tools/audit-i18n.mjs                                           # eksik/tekrar çeviri denetimi
-node tools/soak.mjs --capture-port 6712 --count 10                  # eşzamanlı indirme soak (uygulama açıkken)
-node tools/net-capture-check.mjs                                     # eklenti ağ yakalama (gerçek tarayıcı)
+node tools/test-links.mjs                             # toplu içe aktarma ayrıştırıcısı
+node tools/test-virtual.mjs                           # sanal liste yerleşimi
+node tools/test-i18n.mjs                              # i18n motoru + envanter tamlığı
+node tools/audit-i18n.mjs                             # eksik/tekrar çeviri denetimi
+node tools/soak.mjs --capture-port 6712 --count 10    # eşzamanlı indirme (uygulama açıkken)
+node tools/hang-check.mjs                             # askıda sunucu → zaman aşımı (uygulama açıkken)
+node tools/net-capture-check.mjs                      # eklenti ağ yakalama (gerçek tarayıcı)
 ```
 
 **Bitiş tanımı:** `cargo test` + `cargo clippy -D warnings` + `cargo fmt --check` +
@@ -55,11 +56,10 @@ node tools/net-capture-check.mjs                                     # eklenti a
 | `webapp/i18n.js` | **yerelleştirme motoru (tek kaynak, saf)**: `t`/`tt`, `localizeDom`; `i18n-en.js` sözlük, `i18n.d.ts` tipler |
 | `src/virtual.ts` | **sanal liste matematiği** (saf): satır ofsetleri, görünen pencere, kaydırma kırpma |
 | `webapp/` | telefonda çalışan statik arayüz (derleme yok, SSE) |
-| `webapp/links.js` | **toplu içe aktarma ayrıştırıcısı** (saf, tek kaynak): satır/virgül/boşluk, `<sarmal>`, noktalama, `magnet`, yinelenen eleme, 500 sınırı |
-| `extension/` | Chrome/Edge MV3: panel, avcı modu, **ağdan medya yakalama** (`webRequest`), sağ tık. **Tek kaynak**; `node tools/build-extension.mjs` ile `build/extensions/{chrome,firefox}` üretilir |
-| `extension/netlog.js` | **medya isteği sınıflandırıcı** (saf): m3u8/mpd/mp4/ses; segment ve medya-dışı istekleri eler |
-| `tools/build-extension.mjs` | Chrome (service_worker) ve Firefox (background.scripts + gecko id) manifestlerini üretir ve dosya bütünlüğünü doğrular |
-| `tools/` | ikon üretici, e2e, web smoke, web UI kontrolü |
+| `webapp/links.js` | **toplu içe aktarma ayrıştırıcısı** (saf): satır/virgül, `<sarmal>`, noktalama, `magnet`, yinelenen eleme, 500 sınırı |
+| `extension/` | Chrome/Edge MV3: panel, avcı modu, **ağdan medya yakalama**; **tek kaynak**, `tools/build-extension.mjs` üretir |
+| `extension/netlog.js` | **medya isteği sınıflandırıcı** (saf): m3u8/mpd/mp4/ses; segment/medya-dışı elenir |
+| `tools/` | e2e, soak, hang-check, UI harness, güvenlik/hijyen denetimleri |
 | `docs/API.md` | **API sözleşmesi — kırıcı değişiklik önce buraya** |
 
 ## Değişmezler (bozulursa indirmeler bozulur)
@@ -86,10 +86,12 @@ node tools/net-capture-check.mjs                                     # eklenti a
 12. **Ağ yakalama varsayılan kapalı** (`netCapture`): açıkken yalnız medya uzantılı/türlü
     istekler saklanır, sekme başına tutulur, sekme kapanınca silinir. Kayıt asla dışarı
     gönderilmez.
-13. **Yerelleştirme tek kaynak**: yeni kullanıcı metni eklerken ya mevcut Türkçe metni
-    kullan (sözlükte varsa kendiliğinden çevrilir) ya da `webapp/i18n-en.js`'e anahtar
-    ekle. `node tools/audit-i18n.mjs` eksik/tekrar anahtarı ve `tt` şablon kapsamını
-    zorlar. Varsayılan dil **Türkçe**; dil değişimi sayfa yenilemez (SSE kopmasın).
+13. **Askıda kalan sunucu sınırsız beklenmez**: yanıt 30 sn, gövde sessizliği 30 sn,
+    probe zaman aşımlı; askıda kalmada **tekrar denenmez** (`http::Timeouts`).
+14. **Yerelleştirme tek kaynak**: yeni metin eklerken mevcut Türkçe metni kullan (sözlükte
+    varsa kendiliğinden çevrilir) ya da `webapp/i18n-en.js`'e anahtar ekle.
+    `node tools/audit-i18n.mjs` kapsamı zorlar. Varsayılan dil **Türkçe**; dil değişimi
+    sayfa yenilemez (SSE kopmasın).
 
 ## Güvenlik değişmezleri (ihlal = merge yok)
 
@@ -136,16 +138,16 @@ değil. Ayrıntı ve tehdit modeli: `SECURITY.md`. Kontrol: `node tools/security
 
 ## Tuzaklar (özet — ayrıntı `docs/TRAPS.md`)
 
-- `npm.ps1` engelli → `npm.cmd`.
+- `npm.ps1` engelli → `npm.cmd`. `.ps1` ASCII; UTF-8 kaynak `write`/`edit` ile.
 - Disk dolunca derleme garip düşer (`failed to build archive`, `no space on device`);
-  `hygiene --clean` + `cargo clean`.
+  `hygiene --clean` + `cargo clean`. Sunucu kesintisi sonrası bozuk PDB/incremental
+  görülebilir → `target\debug\deps\hydra_dl-*` ve `target\debug\incremental` sil.
 - `setup()` ana thread'de: orada `tokio::spawn` **yasak** → süreç sessizce kapanır.
 - `panic = "abort"`: panic tüm süreci öldürür; yeni bağımlılık eklerken stderr'i yakala.
 - Vite 1420 `strictPort`; yakalama 6712 (loopback), web 6790 (LAN).
 - Paketlenen `webapp/` ayrı test edilmeli; `tauri dev` yeşilken NSIS bozuk olabilir.
 - Eklenti `HX.api.` kullanır (`compat.js` ilk yüklenir); `chrome.*` callback ekleme.
 - `build/extensions/*` üretilen çıktı; kaynağı `extension/`.
-- `.ps1` ASCII; UTF-8 kaynak `write`/`edit` ile.
 
 ## Yeni özellik akışı
 
