@@ -36,9 +36,9 @@ node tools/net-capture-check.mjs                      # eklenti ağ yakalama (ge
 
 | Yol | Sorumluluk |
 |---|---|
-| `src-tauri/src/model.rs` | `Download`, `Segment`, `Status`, `Kind`; **segment planlama saf fonksiyonu** |
+| `src-tauri/src/model.rs` | `Download`, `Segment`, `Status`, `Kind`; **segment planlama + parça doğrulama (saf)** |
 | `src-tauri/src/store.rs` | `downloads.json`, `Settings`, kuyruk seçimi; **ayar dışa/içe aktarma (saf)** |
-| `src-tauri/src/engine/http.rs` | probe, Range indirme, parça birleştirme |
+| `src-tauri/src/engine/http.rs` | probe, Range indirme, parça birleştirme, **zaman aşımları** |
 | `src-tauri/src/engine/hls.rs` | **HLS indirme**: playlist çözümü, paralel segment, AES-128, DRM reddi |
 | `src-tauri/src/engine/dash.rs` | **DASH indirme**: manifest → sıralı birleştirme, ses/video ayrımı |
 | `src-tauri/src/engine/fetch.rs` | HLS/DASH ortak segment indirme (Range + başlıklar + **geçici hatada yeniden deneme**) |
@@ -118,18 +118,17 @@ Açık kaynak ve **LAN'a açılan HTTP sunucusu**: aşağıdakiler pazarlık kon
 
 ## Kurallar (kullanıcı talebi)
 
-- **Commit/push yalnız kayda değer gelişmede.** Her küçük denemede commit yok; çalışan,
-  doğrulanmış bir dilim bitince tek anlamlı commit.
-- **Proje dizininden çıkma.** Tüm komutlar `hydra-dl/` içinde; `..\` altındaki diğer
-  projelere dokunma, onları commit etme.
+- **Commit/push yalnız kayda değer gelişmede.** Çalışan, doğrulanmış bir dilim bitince
+  tek anlamlı commit.
+- **Proje dizininden çıkma.** Komutlar `hydra-dl/` içinde; `..\` altındaki diğer projelere
+  dokunma, onları commit etme.
 - **Workspace şişmesin.** `target/`, `node_modules/`, `dist/`, loglar, ekran görüntüleri
-  repoya girmez. Geçici çıktı `%TEMP%` altına. `git status` temiz okunmalı.
+  repoya girmez. Geçici çıktı `%TEMP%` altına; `git status` temiz okunmalı.
 - **AGENTS/PLAN/HANDOFF güncel ve kısa** (150 satırı geçmesin; uzun kısım `docs/`a).
   Yeni oturum → önce `HANDOFF.md` oku; bitince 10 satır yaz.
 - **Lisans AGPL-3.0-or-later.** "Ticari kullanılamaz" yazma; ticari kullanım serbest,
-  kapalı dağıtım yasak. Katkılar aynı lisansla gelir (DCO, imza zorunlu değil).
-- **Yasal sınır**: DRM kırma, ödeme duvarı/reklam atlatma, kaynak gizleme yok. Torrent
-  için "yalnız izin verilen içerik" uyarısı arayüzde durur.
+  kapalı dağıtım yasak.
+- **Yasal sınır**: DRM kırma, ödeme duvarı/reklam atlatma, kaynak gizleme yok.
 - **Arayüz Türkçe, kod İngilizce.** Kullanıcıya görünen her metin Türkçe ve doğru yazım.
 
 ## Tuzaklar (özet — ayrıntı `docs/TRAPS.md`)
