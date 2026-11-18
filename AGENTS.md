@@ -30,7 +30,7 @@ node tools/net-capture-check.mjs                      # eklenti ağ yakalama (ge
 
 **Bitiş tanımı:** `cargo test` + `cargo clippy -D warnings` + `cargo fmt --check` +
 `npm run build` + `npm run test:security` yeşil. Ağ/indirme davranışına dokunduysan
-`tools/e2e.mjs` de koşar. Bunlardan biri kırmızıysa iş bitmedi.
+`tools/e2e.mjs` de koşar. Biri kırmızıysa iş bitmedi.
 
 ## Mimari (tek cümlede her dosya)
 
@@ -98,25 +98,25 @@ node tools/net-capture-check.mjs                      # eklenti ağ yakalama (ge
 Açık kaynak ve **LAN'a açılan HTTP sunucusu** olan bir proje: aşağıdakiler pazarlık konusu
 değil. Ayrıntı ve tehdit modeli: `SECURITY.md`. Kontrol: `node tools/security-check.mjs`.
 
-1. **Varsayılan reddet.** Yeni HTTP yolu eklemek onu **otomatik** token korumasına sokar
-   (`needs_token`). Serbest bırakma yalnız `/health` + gerçek statik dosya için, açıkça.
-   "İzinli prefix listesi" **yasak** — bir kez `/torrent/files` ve `/notify/test` bu yüzden
-   korumasız kaldı. Yeni yol eklerken `token_varsayilan_olarak_her_yolu_korur` testine ekle.
-2. **Kullanıcı girdisinden dosya yolu kurma.** `Path::join` tek başına yetmez (Windows'ta
-   `C:/…` kökü ezer). Her yerde `resolve_static_path` deseni: `..`, `\`, sürücü öneki, UNC
-   reddedilir + `canonicalize` ile kök altı doğrulanır. Testsiz kabul edilmez.
-3. **Origin kontrolü kaldırılmaz** (`origin_guard`): tarayıcıdan gelen isteklerde aynı köken
-   veya eklenti şeması; `null`/`data:`/`file:` reddedilir.
-4. **HTML'e dış veri yazma:** `innerHTML` yalnız sabit şablon; dış veri `textContent`
-   veya `escapeHtml`/`escapeAttr`. `security-check` bunu denetler.
+1. **Varsayılan reddet.** Yeni HTTP yolu **otomatik** token korumasına girer (`needs_token`).
+   Serbest bırakma yalnız `/health` + gerçek statik dosya için, açıkça. "İzinli prefix
+   listesi" **yasak** — bir kez `/torrent/files` ve `/notify/test` bu yüzden korumasız
+   kaldı. Yeni yol eklerken `token_varsayilan_olarak_her_yolu_korur` testine ekle.
+2. **Kullanıcı girdisinden dosya yolu kurma.** `Path::join` yetmez (Windows'ta `C:/…` kökü
+   ezer). Her yerde `resolve_static_path` deseni: `..`, `\`, sürücü öneki, UNC reddedilir +
+   `canonicalize` ile kök altı doğrulanır. Testsiz kabul edilmez.
+3. **Origin kontrolü kaldırılmaz** (`origin_guard`): aynı köken veya eklenti şeması;
+   `null`/`data:`/`file:` reddedilir.
+4. **HTML'e dış veri yazma:** `innerHTML` yalnız sabit şablon; dış veri `textContent` veya
+   `escapeHtml`/`escapeAttr`. `security-check` denetler.
 5. **Kabuk yok:** `Command::new("cmd"/"powershell"/"sh")` yasak; dış süreçler `arg` listesiyle.
-6. **Sır/kişisel yol commit etme.** `tools/security-check.mjs` izlenen dosyalarda token,
-   anahtar ve `C:\Users\…` arar. Test mock'larında örnek yol kullan (`C:\Users\ornek\…`).
+6. **Sır/kişisel yol commit etme.** `security-check` token, anahtar ve `C:\Users\…` arar.
+   Test mock'larında örnek yol kullan (`C:\Users\ornek\…`).
 7. **CI yeşil olmadan merge yok:** test + clippy + fmt + `security-check` + `npm audit` +
    `cargo audit` + CodeQL. `cargo audit` muafiyeti yalnız `src-tauri/.cargo/audit.toml`
    içinde **gerekçesiyle**; upstream düzelince kaldır.
-8. **Yıkıcı işlemler varsayılan kapalı:** `deleteFile`, dosya silme, toplu temizlik →
-   parametre verilmedikçe yapılmaz.
+8. **Yıkıcı işlemler varsayılan kapalı:** `deleteFile`, toplu temizlik → parametre
+   verilmedikçe yapılmaz.
 
 ## Kurallar (kullanıcı talebi)
 
@@ -126,10 +126,8 @@ değil. Ayrıntı ve tehdit modeli: `SECURITY.md`. Kontrol: `node tools/security
   projelere dokunma, onları commit etme.
 - **Workspace şişmesin.** `target/`, `node_modules/`, `dist/`, loglar, ekran görüntüleri
   repoya girmez. Geçici çıktı `%TEMP%` altına. `git status` temiz okunmalı.
-- **AGENTS/PLAN/HANDOFF her zaman güncel ve kısa.** Bir kural ölürse sil; dosya büyüyorsa
-  `docs/`a taşı. Üç dosya da 150 satırı geçmesin.
-- **Oturum büyüse de yönetilebilir kal.** Yeni oturum → önce `HANDOFF.md` oku; bitince
-  10 satır yaz. Uzun geçmişi yapıştırma.
+- **AGENTS/PLAN/HANDOFF güncel ve kısa** (150 satırı geçmesin; uzun kısım `docs/`a).
+  Yeni oturum → önce `HANDOFF.md` oku; bitince 10 satır yaz.
 - **Lisans AGPL-3.0-or-later.** "Ticari kullanılamaz" yazma; ticari kullanım serbest,
   kapalı dağıtım yasak. Katkılar aynı lisansla gelir (DCO, imza zorunlu değil).
 - **Yasal sınır**: DRM kırma, ödeme duvarı/reklam atlatma, kaynak gizleme yok. Torrent
@@ -151,9 +149,7 @@ değil. Ayrıntı ve tehdit modeli: `SECURITY.md`. Kontrol: `node tools/security
 
 ## Yeni özellik akışı
 
-1. Saf mantıksa `model`/`util`/`extract` içinde **önce test**.
-2. Ağ katmanı `engine`/`torrent`/`ytdlp`.
-3. Komut + olay `manager`/`commands`.
-4. API sözleşmesi `docs/API.md` + `web.rs`.
-5. Arayüzler: `src/` (masaüstü), `webapp/` (mobil), `extension/` (tarayıcı).
-6. Doğrula: üç komut + e2e; sonra `HANDOFF.md`'ye yaz.
+1. Saf mantıksa `model`/`util`/`extract` içinde **önce test**. 2. Ağ katmanı
+`engine`/`torrent`/`ytdlp`. 3. Komut + olay `manager`/`commands`. 4. API sözleşmesi
+`docs/API.md` + `web.rs`. 5. Arayüzler: `src/`, `webapp/`, `extension/`. 6. Doğrula:
+üç komut + e2e; sonra `HANDOFF.md`'ye yaz.
