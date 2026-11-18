@@ -146,7 +146,6 @@ Açık kaynak ve **LAN'a açılan HTTP sunucusu**: aşağıdakiler pazarlık kon
 
 ## Yeni özellik akışı
 
-1. Saf mantıksa `model`/`util`/`extract` içinde **önce test**. 2. Ağ katmanı
-`engine`/`torrent`/`ytdlp`. 3. Komut + olay `manager`/`commands`. 4. API sözleşmesi
-`docs/API.md` + `web.rs`. 5. Arayüzler: `src/`, `webapp/`, `extension/`. 6. Doğrula:
-üç komut + e2e; sonra `HANDOFF.md`'ye yaz.
+Saf mantıksa `model`/`util`/`extract` içinde **önce test**; ağ katmanı `engine`/`torrent`/
+`ytdlp`; komut+olay `manager`/`commands`; API sözleşmesi `docs/API.md` + `web.rs`;
+arayüzler `src/`, `webapp/`, `extension/`; doğrula (üç komut + e2e), sonra `HANDOFF.md`.
