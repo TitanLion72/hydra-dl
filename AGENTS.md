@@ -41,14 +41,14 @@ node tools/net-capture-check.mjs                      # eklenti ağ yakalama (ge
 | `src-tauri/src/engine/http.rs` | probe, Range indirme, parça birleştirme |
 | `src-tauri/src/engine/hls.rs` | **HLS indirme**: playlist çözümü, paralel segment, AES-128, DRM reddi |
 | `src-tauri/src/engine/dash.rs` | **DASH indirme**: manifest → sıralı birleştirme, ses/video ayrımı |
-| `src-tauri/src/engine/fetch.rs` | HLS/DASH ortak segment indirme (Range + başlıklar) |
+| `src-tauri/src/engine/fetch.rs` | HLS/DASH ortak segment indirme (Range + başlıklar + **geçici hatada yeniden deneme**) |
 | `src-tauri/src/dash.rs` | **MPD çözümü (saf)**: SegmentTemplate/List/Base, BaseURL zinciri, DRM reddi |
-| `src-tauri/src/extract.rs` | **akıllı kaynak bulucu**: HTML/JSON-LD/meta/video tarama, HLS varyantları, yt-dlp format listesi |
+| `src-tauri/src/extract.rs` | **akıllı kaynak bulucu**: HTML/JSON-LD/meta/video, HLS varyantları, yt-dlp formatları |
 | `src-tauri/src/ytdlp.rs` | yt-dlp bulma, `-J` format listesi, süreç + ilerleme |
-| `src-tauri/src/torrent.rs` | librqbit motoru: magnet/.torrent, pause/resume, swarm, **dosya listesi/seçimi** |
-| `src-tauri/src/manager.rs` | kuyruk/eşzamanlılık/ticker, HTTP+medya+torrent yönlendirme, olaylar |
-| `src-tauri/src/web.rs` | **tek API yönlendiricisi** + statik `webapp/` servisi + token/CORS (+ isteğe bağlı HTTPS) |
-| `src-tauri/src/tls.rs` | **kendinden imzalı TLS**: sertifika üretimi, LAN adlarını kapsama, yeniden kullanım |
+| `src-tauri/src/torrent.rs` | librqbit: magnet/.torrent, pause/resume, swarm, **dosya listesi/seçimi** |
+| `src-tauri/src/manager.rs` | kuyruk/eşzamanlılık/ticker, yönlendirme, olaylar |
+| `src-tauri/src/web.rs` | **tek API yönlendiricisi** + statik `webapp/` + token/CORS (+ HTTPS) |
+| `src-tauri/src/tls.rs` | **kendinden imzalı TLS**: üretim, LAN adları, yeniden kullanım |
 | `src-tauri/src/capture.rs` | aynı yönlendiriciyi `127.0.0.1:6712`'de açar (eklenti) |
 | `src-tauri/src/commands.rs` | Tauri komut yüzeyi |
 | `src/` | masaüstü arayüzü (vanilla TS); durum yalnız `downloads:changed` |
@@ -64,13 +64,12 @@ node tools/net-capture-check.mjs                      # eklenti ağ yakalama (ge
 
 ## Değişmezler (bozulursa indirmeler bozulur)
 
-1. **Segment planı**: parçalar arasında boşluk/çakışma yok, `end` dahil, toplam = `total`.
-   `model::tests` korur.
+1. **Segment planı**: boşluk/çakışma yok, `end` dahil, toplam = `total` (`model::tests`).
 2. **Parça dosyaları**: `parts/<id>/<index>.part`, sıralı ekleme; kayıt/diskop uyuşmazsa
    diskteki gerçek boy esas.
 3. **Duraklat ≠ iptal**: duraklatma parçaları saklar, iptal siler.
 4. **Atomik bitiş**: `<hedef>.hydra-tmp` → rename; bitişte parça boyutları **diskten**
-   doğrulanır, eksikse `failed` ve parçalar korunur.
+   doğrulanır, eksikse `failed` ve parçalar korunur (hata yolunda `.hydra-tmp` silinir).
 5. **Olay sözleşmesi**: `downloads:changed` her zaman tam `Download[]` (camelCase).
 6. **Durum şeması**: `downloads.json` alanları `#[serde(default)]` ile geriye uyumlu;
    alan sil/yeniden adlandır → `STATE_VERSION` + migrasyon.
@@ -86,17 +85,16 @@ node tools/net-capture-check.mjs                      # eklenti ağ yakalama (ge
 12. **Ağ yakalama varsayılan kapalı** (`netCapture`): açıkken yalnız medya uzantılı/türlü
     istekler saklanır, sekme başına tutulur, sekme kapanınca silinir. Kayıt asla dışarı
     gönderilmez.
-13. **Askıda kalan sunucu sınırsız beklenmez**: yanıt 30 sn, gövde sessizliği 30 sn,
-    probe zaman aşımlı; askıda kalmada **tekrar denenmez** (`http::Timeouts`).
-14. **Yerelleştirme tek kaynak**: yeni metin eklerken mevcut Türkçe metni kullan (sözlükte
-    varsa kendiliğinden çevrilir) ya da `webapp/i18n-en.js`'e anahtar ekle.
-    `node tools/audit-i18n.mjs` kapsamı zorlar. Varsayılan dil **Türkçe**; dil değişimi
-    sayfa yenilemez (SSE kopmasın).
+13. **Askıda kalan sunucu sınırsız beklenmez**: yanıt 30 sn, gövde sessizliği 30 sn, probe
+    zaman aşımlı; askıda kalmada **tekrar denenmez** (`http::Timeouts`).
+14. **Yerelleştirme tek kaynak**: yeni metin ya mevcut Türkçe metni kullanır ya
+    `webapp/i18n-en.js`'e anahtar ekler; `audit-i18n` kapsamı zorlar. Varsayılan **Türkçe**,
+    dil değişimi sayfa yenilemez (SSE kopmasın).
 
 ## Güvenlik değişmezleri (ihlal = merge yok)
 
-Açık kaynak ve **LAN'a açılan HTTP sunucusu** olan bir proje: aşağıdakiler pazarlık konusu
-değil. Ayrıntı ve tehdit modeli: `SECURITY.md`. Kontrol: `node tools/security-check.mjs`.
+Açık kaynak ve **LAN'a açılan HTTP sunucusu**: aşağıdakiler pazarlık konusu değil. Ayrıntı:
+`SECURITY.md`. Kontrol: `node tools/security-check.mjs`.
 
 1. **Varsayılan reddet.** Yeni HTTP yolu **otomatik** token korumasına girer (`needs_token`).
    Serbest bırakma yalnız `/health` + gerçek statik dosya için, açıkça. "İzinli prefix
