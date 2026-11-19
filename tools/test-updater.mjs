@@ -25,10 +25,8 @@ const bad = (name, extra = "") => {
   console.error(`FAIL ${name}${extra ? ` — ${extra}` : ""}`);
 };
 const eq = (name, actual, expected) => {
-  const a = JSON.stringify(actual);
-  const e = JSON.stringify(expected);
-  if (a === e) ok(name);
-  else bad(name, `beklenen ${e}, gelen ${a}`);
+  if (Object.is(actual, expected)) ok(name);
+  else bad(name, `beklenen ${JSON.stringify(expected)}, gelen ${JSON.stringify(actual)}`);
 };
 
 function memory() {
@@ -59,8 +57,8 @@ eq("atlanan yoksa serit var", shouldPrompt("0.8.1", null), true);
   clearPending(s);
   eq("bekleyen temizlenir", readPending(s), null);
 }
-eq("kurulum basarisiz: ayni surum + isaret", installLooksFailed("0.8.1", "0.8.0"), true);
-eq("kurulum basarili: surum degisti", installLooksFailed("0.8.1", "0.8.1"), false);
+eq("kurulum basarisiz: surum hala eski + isaret", installLooksFailed("0.8.1", "0.8.0"), true);
+eq("kurulum basarili: surum eslesti", installLooksFailed("0.8.1", "0.8.1"), false);
 eq("isaret yoksa basarisiz sayilmaz", installLooksFailed(null, "0.8.0"), false);
 
 // --- yüzde ------------------------------------------------------------------
@@ -69,6 +67,8 @@ eq("yuzde tam sayi", percent(1, 3), 33);
 eq("toplam yoksa yuzde yok", percent(42, null), null);
 eq("toplam sifirsa yuzde yok", percent(0, 0), null);
 eq("%100 ustune cikmaz", percent(120, 100), 100);
+eq("gecersiz toplam yuzde uretmez", percent(50, Number.NaN), null);
+eq("negatif indirme sifira kirpilir", percent(-5, 100), 0);
 
 console.log(`\nSONUC: ${fail === 0 ? "PASS" : `FAIL (${fail})`} (${pass} geçti, ${fail} kaldı)`);
 process.exit(fail === 0 ? 0 : 1);

@@ -13,10 +13,11 @@ export type Storage = {
 };
 
 /** Kullanıcının "Sonra" dediği sürüm. */
-export const SKIPPED_KEY = "hydra.update.skipped";
+const SKIPPED_KEY = "hydra.update.skipped";
 /** Kurulum başlatıldı ama tamamlanmadı işareti. */
-export const PENDING_KEY = "hydra.update.pending";
+const PENDING_KEY = "hydra.update.pending";
 
+/** Okuma; boş metin "işaret yok" sayılır. */
 const read = (storage: Storage, key: string): string | null => {
   const value = storage.getItem(key);
   return value && value.length > 0 ? value : null;
@@ -58,7 +59,11 @@ export function percent(downloaded: number, total: number | null): number | null
   return raw;
 }
 
-/** Kurulum işareti hâlâ duruyorsa ve sürüm değişmediyse kurulum başarısız sayılır. */
+/**
+ * İşaret varsa ve uygulama hâlâ işaretli sürümde değilse (yükseltme
+ * gerçekleşmedi) kurulum başarısız sayılır. Sürüm işaretli sürüme ulaştıysa
+ * `false` döner ve çağıran `clearPending` yapmalı.
+ */
 export function installLooksFailed(pending: string | null, currentVersion: string): boolean {
   if (!pending) return false;
   return pending !== currentVersion;
