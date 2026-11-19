@@ -1447,6 +1447,7 @@ const setConnections = $<HTMLInputElement>("#set-connections");
 const setSpeed = $<HTMLInputElement>("#set-speed");
 const setAutoResume = $<HTMLInputElement>("#set-autoresume");
 const setNotify = $<HTMLInputElement>("#set-notify");
+const setUpdateCheck = $<HTMLInputElement>("#set-update-check");
 const setProxy = $<HTMLInputElement>("#set-proxy");
 const setCapture = $<HTMLInputElement>("#set-capture");
 const setCapturePort = $<HTMLInputElement>("#set-capture-port");
@@ -1478,6 +1479,7 @@ function bindSettingsForm(source: Settings, appInfo: AppInfo | null) {
   setSpeed.value = String(source.speedLimitKbps);
   setAutoResume.checked = source.autoResume;
   setNotify.checked = source.notifyOnFinish;
+  setUpdateCheck.checked = source.updateCheck;
   setProxy.value = source.proxyUrl ?? "";
   setCapture.checked = source.captureEnabled;
   setCapturePort.value = String(source.capturePort);
@@ -1564,6 +1566,7 @@ async function saveSettings() {
     speedLimitKbps: clampNumber(setSpeed.value, 0, 10_000_000, 0),
     autoResume: setAutoResume.checked,
     notifyOnFinish: setNotify.checked,
+    updateCheck: setUpdateCheck.checked,
     proxyUrl: setProxy.value.trim(),
     captureEnabled: setCapture.checked,
     capturePort: clampNumber(setCapturePort.value, 1024, 65535, 6712),
@@ -1824,6 +1827,7 @@ const SETTING_LABELS: Record<string, string> = {
   webTls: "HTTPS",
   torrentEnabled: "torrent",
   notifyOnFinish: "bildirimler",
+  updateCheck: "güncelleme kontrolü",
   proxyUrl: "proxy",
   language: "dil",
 };

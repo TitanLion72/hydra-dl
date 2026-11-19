@@ -28,6 +28,7 @@ const SETTINGS = {
   webTls: false,
   torrentEnabled: true,
   notifyOnFinish: true,
+  updateCheck: true,
   proxyUrl: "",
   language: "tr",
 };

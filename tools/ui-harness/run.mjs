@@ -316,6 +316,10 @@ export async function confirm() { return true; }
       "#set-notify mock ayariyla uyumlu",
     );
     check(
+      (await page.locator("#set-update-check").isChecked()) === true,
+      "#set-update-check varsayilan acik",
+    );
+    check(
       (await page.locator("#set-proxy").inputValue()) === expected.proxyUrl,
       "#set-proxy mock ayariyla uyumlu",
     );
@@ -372,6 +376,7 @@ export async function confirm() { return true; }
     check(saved.downloadDir === expected.downloadDir, "kaydetme dogru klasorle mock'a gitti");
     check(saved.webEnabled === expected.webEnabled, "kaydetme dogru web ayariyla mock'a gitti");
     check(saved.notifyOnFinish === expected.notifyOnFinish, "kaydetme bildirim ayarini korudu");
+    check(saved.updateCheck === true, "kaydetme guncelleme kontrolunu korudu");
     check(saved.torrentEnabled === expected.torrentEnabled, "kaydetme torrent ayarini korudu");
     await page.waitForSelector("#settings-drawer", { state: "hidden", timeout: 10_000 });
     ok("ayarlar kaydedildikten sonra cekmece kapandi");

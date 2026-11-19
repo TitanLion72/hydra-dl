@@ -242,6 +242,7 @@ export const EN = {
   "dinleme adresi": "listen address",
   "torrent": "torrent",
   "bildirimler": "notifications",
+  "güncelleme kontrolü": "update check",
   "proxy": "proxy",
   "hız sınırı": "speed limit",
   "HTTPS": "HTTPS",
@@ -325,6 +326,9 @@ export const EN = {
   "Bağlantı sayısı": "Connection count",
   "Hız limiti (KB/sn)": "Speed limit (KB/s)",
   "Bildirim göster": "Show notifications",
+  "Güncellemeleri otomatik kontrol et": "Check for updates automatically",
+  "Açılışta yeni sürüm var mı diye sessizce bakar. Kapalıysa hiçbir ağ isteği gitmez.":
+    "Silently checks for a new version at startup. When off, no network request is made.",
   "Yarım kalanları sürdür": "Resume unfinished",
   "İndirme klasörü": "Download folder",
   "Erişim anahtarı": "Access token",
