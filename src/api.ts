@@ -111,6 +111,8 @@ export interface Settings {
   proxyUrl: string;
   /** Arayüz dili: "tr" | "en". */
   language: string;
+  /** Açılışta otomatik güncelleme kontrolü. */
+  updateCheck: boolean;
 }
 
 export interface CaptureStatus {
