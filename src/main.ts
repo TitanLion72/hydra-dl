@@ -1479,7 +1479,7 @@ function bindSettingsForm(source: Settings, appInfo: AppInfo | null) {
   setSpeed.value = String(source.speedLimitKbps);
   setAutoResume.checked = source.autoResume;
   setNotify.checked = source.notifyOnFinish;
-  setUpdateCheck.checked = source.updateCheck;
+  setUpdateCheck.checked = source.updateCheck !== false;
   setProxy.value = source.proxyUrl ?? "";
   setCapture.checked = source.captureEnabled;
   setCapturePort.value = String(source.capturePort);

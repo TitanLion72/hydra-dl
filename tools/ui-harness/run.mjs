@@ -319,6 +319,12 @@ export async function confirm() { return true; }
       (await page.locator("#set-update-check").isChecked()) === true,
       "#set-update-check varsayilan acik",
     );
+    // Masaustu girdisi opacity:0/pointer-events:none; sarmalayan etiket tiklanir.
+    await page.locator("label.switch:has(#set-update-check)").click();
+    check(
+      (await page.locator("#set-update-check").isChecked()) === false,
+      "#set-update-check etiketle kapatildi",
+    );
     check(
       (await page.locator("#set-proxy").inputValue()) === expected.proxyUrl,
       "#set-proxy mock ayariyla uyumlu",
@@ -376,7 +382,7 @@ export async function confirm() { return true; }
     check(saved.downloadDir === expected.downloadDir, "kaydetme dogru klasorle mock'a gitti");
     check(saved.webEnabled === expected.webEnabled, "kaydetme dogru web ayariyla mock'a gitti");
     check(saved.notifyOnFinish === expected.notifyOnFinish, "kaydetme bildirim ayarini korudu");
-    check(saved.updateCheck === true, "kaydetme guncelleme kontrolunu korudu");
+    check(saved.updateCheck === false, "kaydetme guncelleme kontrolunu kapali gonderdi");
     check(saved.torrentEnabled === expected.torrentEnabled, "kaydetme torrent ayarini korudu");
     await page.waitForSelector("#settings-drawer", { state: "hidden", timeout: 10_000 });
     ok("ayarlar kaydedildikten sonra cekmece kapandi");
@@ -384,6 +390,16 @@ export async function confirm() { return true; }
     // Test bildirimi dugmesi api.notifyTest cagirmali.
     await page.click("#settings-btn");
     await page.waitForSelector("#settings-drawer:not([hidden])", { timeout: 20_000 });
+    // Testin biraktigi durum varsayilan olmali. Cekmece yeniden acilinca form, kaydedilen
+    // ayarlarla baglanir (updateCheck=false); mock GET varsayilani (true) ise tazeler.
+    await page.waitForTimeout(500); // olasi GET tazelemesinin oturmasini bekle
+    if (!(await page.locator("#set-update-check").isChecked())) {
+      await page.locator("label.switch:has(#set-update-check)").click();
+    }
+    check(
+      await page.locator("#set-update-check").isChecked(),
+      "#set-update-check varsayilan duruma dondu",
+    );
     await page.waitForSelector("#notify-test:visible", { timeout: 20_000 });
     await page.click("#notify-test");
     await page.waitForFunction(() => (window.__hydraCalls.notifyTest ?? 0) > 0, null, {
