@@ -517,7 +517,7 @@ kalması için). Anahtarlar: `"hydra.update.skipped"`, `"hydra.update.pending"`.
 node tools/test-updater.mjs
 ```
 
-Beklenen: `SONUC: PASS (15 geçti, 0 kaldı)`.
+Beklenen: `SONUC: PASS (17 geçti, 0 kaldı)`.
 
 - [ ] **Step 5: `package.json`'a kısa yol ekle**
 
