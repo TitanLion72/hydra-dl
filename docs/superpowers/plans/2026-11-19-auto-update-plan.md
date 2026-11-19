@@ -445,7 +445,11 @@ export function shouldPrompt(version: string, skipped: string | null): boolean;
 /** İndirme yüzdesi; toplam bilinmiyorsa null. */
 export function percent(downloaded: number, total: number | null): number | null;
 
-/** Kurulum işareti hâlâ duruyorsa ve sürüm değişmediyse kurulum başarısız sayılır. */
+/**
+ * Kurulum başarısız mı? İşaret varsa ve uygulama hâlâ **eski** sürümdeyse
+ * (yani yükseltme gerçekleşmediyse) `true`. Sürüm işaretli sürüme ulaştıysa
+ * kurulum başarılıdır → `false` (ve çağıran `clearPending` yapmalı).
+ */
 export function installLooksFailed(pending: string | null, currentVersion: string): boolean;
 ```
 
@@ -483,8 +487,8 @@ eq("atlanan yoksa serit var", shouldPrompt("0.8.1", null), true);
   clearPending(s);
   eq("bekleyen temizlenir", readPending(s), null);
 }
-eq("kurulum basarisiz: ayni surum + isaret", installLooksFailed("0.8.1", "0.8.0"), true);
-eq("kurulum basarili: surum degisti", installLooksFailed("0.8.1", "0.8.1"), false);
+eq("kurulum basarisiz: surum hala eski + isaret", installLooksFailed("0.8.1", "0.8.0"), true);
+eq("kurulum basarili: surum eslesti", installLooksFailed("0.8.1", "0.8.1"), false);
 eq("isaret yoksa basarisiz sayilmaz", installLooksFailed(null, "0.8.0"), false);
 eq("yuzde hesaplanir", percent(42, 100), 42);
 eq("yuzde tam sayi", percent(1, 3), 33);
@@ -847,7 +851,7 @@ Sonra **elle** kur (updater'lı ilk sürüm; eski sürüm endpoint'i bilmiyor):
 
 ```powershell
 Start-Process "src-tauri\target\release\bundle\nsis\Hydra DL_0.8.0_x64-setup.exe" `
-  -ArgumentList '/S','/D=C:\Users\titan\AppData\Local\Hydra DL' -Wait
+  -ArgumentList '/S',"/D=$env:LOCALAPPDATA\Hydra DL" -Wait
 ```
 
 - [ ] **Step 4: v0.8.1'i yayınla (gerçek E2E)**
