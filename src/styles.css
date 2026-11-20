@@ -67,8 +67,8 @@ svg {
 
 .app {
   display: grid;
-  /* topbar · ekleme · araç çubuğu · liste (esner) · seçim çubuğu · durum */
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+  /* şerit · topbar · ekleme · araç çubuğu · liste (esner) · seçim çubuğu · durum */
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto auto;
   height: 100vh;
   max-width: 1240px;
   margin: 0 auto;
@@ -1300,4 +1300,41 @@ svg {
   .chip b {
     display: none;
   }
+}
+
+/* ------------------------------------------------------- güncelleme şeridi */
+
+.update-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+/* `display: flex` gizlemeyi ezmesin. */
+.update-strip[hidden] {
+  display: none;
+}
+
+.update-strip.error {
+  border-left-color: var(--err);
+  background: rgba(248, 113, 113, 0.12);
+}
+
+.update-strip .update-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.update-strip .update-actions [hidden] {
+  display: none;
 }

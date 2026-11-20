@@ -117,6 +117,19 @@ async function main() {
     });
     const page = await context.newPage();
 
+    // Mock durumu sayfa yenilemesinden sağ çıksın: `globalThis` sıfırlanır,
+    // bu yüzden updater senaryosunun durumu `localStorage` üzerinden taşınır.
+    await page.addInitScript(() => {
+      let updater = { available: false };
+      try {
+        const raw = window.localStorage.getItem("__hydraUpdaterMock");
+        if (raw) updater = JSON.parse(raw);
+      } catch {
+        // localStorage henüz yok (about:blank) — varsayılanla devam
+      }
+      globalThis.__hydraUpdater = updater;
+    });
+
     const consoleErrors = [];
     page.on("console", (message) => {
       if (message.type() === "error") consoleErrors.push(`console: ${message.text()}`);
@@ -125,12 +138,15 @@ async function main() {
       consoleErrors.push(`pageerror: ${error.message}`);
     });
 
+    // Sahte api kaynağına senaryo gereği küçük bir yama eklenebilir
+    // (ör. `SETTINGS.updateCheck = false;`).
+    let apiPatch = "";
     const mockSource = await readFile(path.join(here, "mock-api.mjs"), "utf8");
     await page.route("**/src/api.ts*", (route) =>
       route.fulfill({
         status: 200,
         contentType: "text/javascript; charset=utf-8",
-        body: mockSource,
+        body: mockSource + apiPatch,
       }),
     );
     ok("`/src/api.ts` sahte modul ile karsilandi");
@@ -156,6 +172,37 @@ export async function confirm() { return true; }
       }),
     );
     ok("diyalog eklentisi sahte modulle karsilandi");
+
+    // Güncelleme eklentisi de tarayıcıda yok; davranışı `__hydraUpdater` sürer.
+    // `check()` her çağrıldığında `checks` sayacı artar (ayar kapalı senaryosu
+    // "hiç çağrılmadı"yı bununla doğrular).
+    const updaterStub = `
+export async function check() {
+  const u = globalThis.__hydraUpdater ?? {};
+  u.checks = (u.checks ?? 0) + 1;
+  if (!u.available) return null;
+  return {
+    version: u.version ?? "0.0.0",
+    body: u.notes ?? "",
+    downloadAndInstall: async (cb) => {
+      u.installed = (u.installed ?? 0) + 1;
+      cb?.({ event: "Started", data: { contentLength: 100 } });
+      cb?.({ event: "Progress", data: { chunkLength: 40, contentLength: 100 } });
+      cb?.({ event: "Progress", data: { chunkLength: 60, contentLength: 100 } });
+      cb?.({ event: "Finished" });
+    },
+    close: async () => { u.closed = (u.closed ?? 0) + 1; },
+  };
+}
+`;
+    await page.route(/plugin-updater/, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "text/javascript; charset=utf-8",
+        body: updaterStub,
+      }),
+    );
+    ok("guncelleme eklentisi sahte modulle karsilandi");
 
     const shot = async (name) => {
       const file = path.join(artifactsDir, name);
@@ -723,6 +770,78 @@ export async function confirm() { return true; }
       !(await page.evaluate(() => document.querySelector("#list")?.classList.contains("virtual"))),
       "liste artik sanal degil",
     );
+
+    // --- 6h. Güncelleme şeridi ---------------------------------------------
+    // Eklenti sahte; davranış `__hydraUpdater` (sayfa yenilemede localStorage
+    // üzerinden taşınır). Kontrol açılıştan 3 sn sonra çalışır.
+    const setUpdateMock = (state) =>
+      page.evaluate((next) => {
+        window.localStorage.setItem("__hydraUpdaterMock", JSON.stringify(next));
+      }, state);
+
+    // 1) Sürüm yok → şerit gizli, ama kontrol gerçekten çağrıldı.
+    check(await page.locator("#update-strip").isHidden(), "surum yokken serit gizli");
+    const autoChecks = await page.evaluate(() => globalThis.__hydraUpdater?.checks ?? 0);
+    check(autoChecks > 0, `acilista guncelleme kontrolu cagrildi (${autoChecks})`);
+
+    // 2) Sürüm var → şerit görünür, metin sürümü içerir.
+    await setUpdateMock({ available: true, version: "0.8.1" });
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForSelector("#update-strip:not([hidden])", { timeout: 10_000 });
+    const stripText = ((await page.locator("#update-text").textContent()) ?? "").trim();
+    check(stripText.includes("0.8.1"), `serit surumu gosteriyor ('${stripText}')`);
+    check(await page.locator("#update-install").isVisible(), "Guncelle dugmesi gorunur");
+    check(await page.locator("#update-later").isVisible(), "Sonra dugmesi gorunur");
+    await shot("05-update-strip.png");
+
+    // 3) "Sonra" → gizlenir ve aynı sürüm için hatırlanır.
+    await page.click("#update-later");
+    check(await page.locator("#update-strip").isHidden(), "Sonra seridi kapatti");
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(3500);
+    const skippedChecks = await page.evaluate(() => globalThis.__hydraUpdater?.checks ?? 0);
+    check(skippedChecks > 0, `atlanan surumde kontrol yine calisti (${skippedChecks})`);
+    check(await page.locator("#update-strip").isHidden(), "ayni surum icin tekrar sorulmadi");
+
+    // 4) Yeni sürüm → "Güncelle" indirir; şerit kurulum metnini gösterir.
+    await setUpdateMock({ available: true, version: "0.9.0" });
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForSelector("#update-strip:not([hidden])", { timeout: 10_000 });
+    await page.click("#update-install");
+    await page.waitForFunction(() => (globalThis.__hydraUpdater?.installed ?? 0) > 0, null, {
+      timeout: 10_000,
+    });
+    const installingText = ((await page.locator("#update-text").textContent()) ?? "").trim();
+    check(installingText.includes("Kuruluyor"), `kurulum metni gosterildi ('${installingText}')`);
+    check(await page.locator("#update-install").isHidden(), "kurulumda Guncelle dugmesi gizli");
+    const pendingMarker = await page.evaluate(() => window.localStorage.getItem("hydra.update.pending"));
+    check(pendingMarker === "0.9.0", `kurulum oncesi isaret yazildi (${pendingMarker})`);
+
+    // 5) Yarım kalan kurulum açılışta bildirilir (sürüm 0.2.0'da kaldı).
+    //    Sahte eklenti sürüm sunmuyor ki 3 sn sonraki kontrol metni ezmesin.
+    await setUpdateMock({ available: false });
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForSelector("#update-strip:not([hidden])", { timeout: 10_000 });
+    const failedText = ((await page.locator("#update-text").textContent()) ?? "").trim();
+    check(
+      failedText.includes("Güncelleme tamamlanmadı"),
+      `yarim kurulum bildirildi ('${failedText}')`,
+    );
+    check(
+      (await page.locator("#update-strip").getAttribute("class")).includes("error"),
+      "yarim kurulum seridi hata tonunda",
+    );
+    await page.evaluate(() => window.localStorage.removeItem("hydra.update.pending"));
+
+    // 6) Ayar kapalı → kontrol hiç çağrılmaz (yeni sayfa: sayaç sıfırdan başlar).
+    apiPatch = "\nSETTINGS.updateCheck = false;\n";
+    await setUpdateMock({ available: true, version: "0.9.9" });
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(3500);
+    const disabledChecks = await page.evaluate(() => globalThis.__hydraUpdater?.checks ?? 0);
+    check(disabledChecks === 0, `ayar kapaliyken kontrol cagrilmadi (${disabledChecks})`);
+    check(await page.locator("#update-strip").isHidden(), "ayar kapaliyken serit gizli");
+    apiPatch = "";
 
     // --- 7. Konsol ---------------------------------------------------------
     if (consoleErrors.length === 0) {

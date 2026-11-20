@@ -448,5 +448,15 @@ export const EN = {
   "Her satıra bir bağlantı\nhttps://ornek.com/a.zip\nmagnet:?xt=urn:btih:…":
     "One link per line\nhttps://example.com/a.zip\nmagnet:?xt=urn:btih:…",
 
+  // --- Güncelleme şeridi --------------------------------------------------
+  "Hydra DL hazır": "Hydra DL is ready",
+  "Hydra DL %1 hazır": "Hydra DL %1 is ready",
+  "Sonra": "Later",
+  "Kuruluyor, uygulama yeniden açılacak": "Installing, the app will restart",
+  "Güncelleme indirilemedi — internet bağlantını kontrol et":
+    "Could not download the update — check your internet connection",
+  "Güncelleme tamamlanmadı — yeniden dene": "Update did not complete — try again",
+  "Güncelleme aranıyor…": "Checking for updates…",
+  "Güncelleme yok": "No updates",
 
 };
