@@ -176,6 +176,11 @@ export async function confirm() { return true; }
     // Güncelleme eklentisi de tarayıcıda yok; davranışı `__hydraUpdater` sürer.
     // `check()` her çağrıldığında `checks` sayacı artar (ayar kapalı senaryosu
     // "hiç çağrılmadı"yı bununla doğrular).
+    //
+    // Adres iki biçimde gelebilir: Vite paketi ön-derlediğinde
+    // `/node_modules/.vite/deps/@tauri-apps_plugin-updater.js` (alt çizgi!),
+    // ön-derleme yoksa `/node_modules/@tauri-apps/plugin-updater/...`. Bu
+    // yüzden desen hem `-` hem `_` kabul eder.
     const updaterStub = `
 export async function check() {
   const u = globalThis.__hydraUpdater ?? {};
@@ -187,15 +192,15 @@ export async function check() {
     downloadAndInstall: async (cb) => {
       u.installed = (u.installed ?? 0) + 1;
       cb?.({ event: "Started", data: { contentLength: 100 } });
-      cb?.({ event: "Progress", data: { chunkLength: 40, contentLength: 100 } });
-      cb?.({ event: "Progress", data: { chunkLength: 60, contentLength: 100 } });
+      cb?.({ event: "Progress", data: { chunkLength: 40 } });
+      cb?.({ event: "Progress", data: { chunkLength: 60 } });
       cb?.({ event: "Finished" });
     },
     close: async () => { u.closed = (u.closed ?? 0) + 1; },
   };
 }
 `;
-    await page.route(/plugin-updater/, (route) =>
+    await page.route(/plugin[-_]updater/, (route) =>
       route.fulfill({
         status: 200,
         contentType: "text/javascript; charset=utf-8",
@@ -779,10 +784,22 @@ export async function check() {
         window.localStorage.setItem("__hydraUpdaterMock", JSON.stringify(next));
       }, state);
 
+    /**
+     * Açılış kontrolünün gerçekten koşmasını bekler (3 sn gecikme + pay).
+     * Sayaç sıfırlanmışsa (az önce yenilendiyse) hemen okumak yanıltıcı olur.
+     */
+    const seenUpdaterCheck = () =>
+      page
+        .waitForFunction(() => (globalThis.__hydraUpdater?.checks ?? 0) > 0, null, {
+          timeout: 8_000,
+        })
+        .then(() => true)
+        .catch(() => false);
+
     // 1) Sürüm yok → şerit gizli, ama kontrol gerçekten çağrıldı.
     check(await page.locator("#update-strip").isHidden(), "surum yokken serit gizli");
-    const autoChecks = await page.evaluate(() => globalThis.__hydraUpdater?.checks ?? 0);
-    check(autoChecks > 0, `acilista guncelleme kontrolu cagrildi (${autoChecks})`);
+    check(await seenUpdaterCheck(), "acilista guncelleme kontrolu cagrildi");
+    check(await page.locator("#update-strip").isHidden(), "kontrol sonrasi serit hala gizli");
 
     // 2) Sürüm var → şerit görünür, metin sürümü içerir.
     await setUpdateMock({ available: true, version: "0.8.1" });
@@ -798,9 +815,7 @@ export async function check() {
     await page.click("#update-later");
     check(await page.locator("#update-strip").isHidden(), "Sonra seridi kapatti");
     await page.reload({ waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(3500);
-    const skippedChecks = await page.evaluate(() => globalThis.__hydraUpdater?.checks ?? 0);
-    check(skippedChecks > 0, `atlanan surumde kontrol yine calisti (${skippedChecks})`);
+    check(await seenUpdaterCheck(), "atlanan surumde kontrol yine calisti");
     check(await page.locator("#update-strip").isHidden(), "ayni surum icin tekrar sorulmadi");
 
     // 4) Yeni sürüm → "Güncelle" indirir; şerit kurulum metnini gösterir.

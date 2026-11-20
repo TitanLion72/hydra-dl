@@ -4,8 +4,8 @@
 // arayüz bağlantısı var. Tauri dışında (düz tarayıcı, UI harness) eklenti
 // yüklenemez ve her çağrı sessizce döner: tarayıcı asla patlamamalı.
 
+import { check, type DownloadEvent, type Update } from "@tauri-apps/plugin-updater";
 import { api } from "./api";
-import type { DownloadEvent, Update } from "@tauri-apps/plugin-updater";
 import {
   clearPending,
   installLooksFailed,
@@ -21,12 +21,6 @@ import {
 /** Açılıştan sonra ilk kontrol gecikmesi (ms). Harness aynı değeri bekler. */
 export const STARTUP_CHECK_DELAY_MS = 3000;
 
-/**
- * Vite dev sunucusunda paketi çözen adres. Harness bu isteği
- * (`/@id/@tauri-apps/plugin-updater`) sahte modülle karşılar.
- */
-const PLUGIN_DEV_URL = "/@id/@tauri-apps/plugin-updater";
-
 /** Kısa, kullanıcıya gösterilecek mesajlar (i18n anahtarı olarak da geçer). */
 const DOWNLOAD_FAILED = "Güncelleme indirilemedi — internet bağlantını kontrol et";
 
@@ -38,9 +32,6 @@ export type UpdaterHooks = {
   onError(message: string): void;
   onFailedBefore(pendingVersion: string): void;
 };
-
-/** Eklentinin kullandığımız yüzeyi. */
-type UpdaterPlugin = { check(): Promise<Update | null> };
 
 /**
  * `localStorage` sarmalayıcısı: gizli sekmede ya da kapalı depolamada
@@ -74,36 +65,6 @@ const storage: Storage = {
 let available: Update | null = null;
 /** Son kontrolün bağladığı arayüz; ilerleme/hata buraya gider. */
 let hooks: UpdaterHooks | null = null;
-
-/**
- * Eklentiyi çalışma anında yükler.
- *
- * Paket Task 2'de kurulacak; o zamana kadar derleme patlamasın diye iki yol
- * var:
- *
- * 1. **Geliştirme / harness**: `/@id/<paket>` adresi Vite dev sunucusunda
- *    çözülür; paket kurulu değilse istek `tools/ui-harness` tarafından
- *    sahte modülle karşılanır. `@vite-ignore` sayesinde Vite bu dizeyi
- *    çözmeye çalışmaz (paket yokken 500 hatası olmaz).
- * 2. **Derleme**: gerçek paket. Bugün `vite.config.ts`'teki geçici alias
- *    boş bir yer tutucuya yönlendiriyor; Task 2 paketi kurunca alias
- *    kendiliğinden devre dışı kalır.
- *
- * Her iki yol da başarısız olursa `null` döner: güncelleme sessizce kapalı
- * kalır, düz tarayıcı asla patlamaz.
- */
-async function loadPlugin(): Promise<UpdaterPlugin | null> {
-  try {
-    if (import.meta.env.DEV) {
-      const dev = (await import(/* @vite-ignore */ PLUGIN_DEV_URL)) as UpdaterPlugin;
-      if (typeof dev?.check === "function") return dev;
-    }
-    const bundled = (await import("@tauri-apps/plugin-updater")) as UpdaterPlugin;
-    return typeof bundled?.check === "function" ? bundled : null;
-  } catch {
-    return null;
-  }
-}
 
 /** `Update` kaynağını sessizce bırakır. */
 async function closeQuietly(update: Update): Promise<void> {
@@ -139,12 +100,9 @@ async function currentVersion(): Promise<string | null> {
 export async function checkForUpdate(consumer: UpdaterHooks): Promise<void> {
   hooks = consumer;
 
-  const plugin = await loadPlugin();
-  if (!plugin) return;
-
   let update: Update | null;
   try {
-    update = await plugin.check();
+    update = await check();
   } catch {
     return;
   }
@@ -190,15 +148,12 @@ export async function installUpdate(): Promise<void> {
       return;
     }
     if (event.event === "Progress") {
-      downloaded += event.data.chunkLength ?? 0;
-      if (total === null && typeof event.data.contentLength === "number") {
-        total = event.data.contentLength;
-      }
+      // Toplam boyut yalnız `Started` olayında gelir; yoksa yüzde bilinmez.
+      downloaded += event.data.chunkLength;
       consumer?.onProgress(percent(downloaded, total));
       return;
     }
     // Finished: indirme bitti, kurulum başlıyor (uygulama yeniden açılır).
-    downloaded = total ?? downloaded;
     consumer?.onProgress(percent(downloaded, total));
     consumer?.onInstalling();
   };
