@@ -988,6 +988,10 @@ export async function check() {
       pauseAtFailedInstall > 0,
       `basarisiz denemede bile once duraklatildi (kurulum aninda ${pauseAtFailedInstall} cagri)`,
     );
+    // Kurtarma yolu: kurulum düşünce kapanış kilidi açılmalı, yoksa kuyruk
+    // sonsuza dek durur ve kullanıcı "Güncelle"ye basmadan önceki hâline dönemez.
+    const cancelCalls = await page.evaluate(() => window.__hydraCalls.cancelShutdown ?? 0);
+    check(cancelCalls > 0, `basarisiz kurulumda kapanis geri alindi (${cancelCalls} cagri)`);
     const pendingAfterFailure = await page.evaluate(() =>
       window.localStorage.getItem("hydra.update.pending"),
     );

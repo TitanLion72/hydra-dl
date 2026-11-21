@@ -728,7 +728,10 @@ async fn kapanis_icin_duraklatma_calisanlari_durdurur() {
     // ... AppState kur, pause_all_for_shutdown(&state).await ...
 
     let items = state.downloads();
-    assert_eq!(items[0].status, Status::Paused, "calisan duraklatildi");
+    // Durum `Queued` olur (Paused DEĞİL): kapanış duraklatması bizim, kullanıcının
+    // değil. Böylece açılışta `resume_pending` kaldığı yerden devam ettirir ve
+    // kurulum başarısız olursa `cancel_shutdown` kuyruğu yeniden başlatabilir.
+    assert_eq!(items[0].status, Status::Queued, "kaldigi yerden devam edecek");
     assert_eq!(items[0].downloaded_bytes, 4096, "parca baytlari korundu");
     assert_eq!(items[1].status, Status::Queued, "kuyruktakine dokunulmadi");
     assert!(

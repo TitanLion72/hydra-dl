@@ -195,8 +195,13 @@ async function runInstall(): Promise<void> {
   try {
     await update.downloadAndInstall(onEvent);
   } catch {
-    // İndirme/kurulum tamamlanmadı: kullanıcıya hemen söyle, işareti temizle
-    // ki bir sonraki açılışta aynı hata ikinci kez gösterilmesin.
+    // İndirme/kurulum tamamlanmadı: kapanış kilidini aç, kapanışın kuyruğa
+    // aldığı işleri ve duraklattığı torrent'leri geri başlat — uygulama
+    // "Güncelle"ye basılmadan önceki hâline dönsün. Kurtarma başarısız olsa
+    // bile hata mesajını göstermeliyiz, bu yüzden hata yutuluyor.
+    await api.cancelShutdown().catch(() => {});
+    // Kullanıcıya hemen söyle, işareti temizle ki bir sonraki açılışta aynı
+    // hata ikinci kez gösterilmesin.
     clearPending(storage);
     consumer?.onError(DOWNLOAD_FAILED);
   } finally {

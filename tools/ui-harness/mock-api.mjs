@@ -343,6 +343,10 @@ export const api = {
   pauseAllForShutdown: async () => {
     calls.pauseAllForShutdown = (calls.pauseAllForShutdown ?? 0) + 1;
   },
+  // Kurulum başarısız olunca kurtarma yolu: kilit açılır, kuyruk devam eder.
+  cancelShutdown: async () => {
+    calls.cancelShutdown = (calls.cancelShutdown ?? 0) + 1;
+  },
   resume: async (id) => {
     calls.resume.push(id);
   },

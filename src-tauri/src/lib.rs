@@ -134,6 +134,7 @@ pub fn run() {
             commands::test_notification,
             commands::pause_download,
             commands::pause_all_for_shutdown,
+            commands::cancel_shutdown,
             commands::resume_download,
             commands::cancel_download,
             commands::remove_download,
