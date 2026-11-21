@@ -66,6 +66,8 @@ const storage: Storage = {
 let available: Update | null = null;
 /** Son kontrolün bağladığı arayüz; ilerleme/hata buraya gider. */
 let hooks: UpdaterHooks | null = null;
+/** Kurulum sürüyor mu? İkinci `installUpdate()` çağrısı erken döner. */
+let installing = false;
 
 /** `Update` kaynağını sessizce bırakır. */
 async function closeQuietly(update: Update): Promise<void> {
@@ -133,6 +135,18 @@ export async function checkForUpdate(consumer: UpdaterHooks): Promise<void> {
  * gerçekleşmediğini anlar.
  */
 export async function installUpdate(): Promise<void> {
+  // Yeniden giriş koruması: iki tıklama/iki çağrı iki paralel kurulum
+  // başlatmasın (ikinci `downloadAndInstall` ölü kaynakla uğraşırdı).
+  if (installing) return;
+  installing = true;
+  try {
+    await runInstall();
+  } finally {
+    installing = false;
+  }
+}
+
+async function runInstall(): Promise<void> {
   if (!available) {
     // Önceki oturumdan kalan "tamamlanmadı" işareti olabilir: önce yeniden bak.
     if (!hooks) return;
@@ -142,6 +156,10 @@ export async function installUpdate(): Promise<void> {
   if (!update) return;
 
   const consumer = hooks;
+
+  // Şerit hemen "çalışıyor" görünsün: temiz kapanış duraklatmadan önce
+  // ilerleme alanı temizlenir (yoksa eski yüzde donmuş gibi durur).
+  consumer?.onProgress(null);
 
   // Kurulumdan **önce** temiz kapanış: çalışan indirmeler duraklatılır ve
   // durum kaydedilir (iptal değil — parçalar diskte kalır, yeni sürüm
@@ -175,7 +193,6 @@ export async function installUpdate(): Promise<void> {
   };
 
   try {
-    consumer?.onProgress(null);
     await update.downloadAndInstall(onEvent);
   } catch {
     // İndirme/kurulum tamamlanmadı: kullanıcıya hemen söyle, işareti temizle

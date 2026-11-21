@@ -100,12 +100,12 @@ pub async fn pause_download(state: St<'_>, id: String) -> Result<(), String> {
     manager::pause(state.inner(), &id).await
 }
 
-/// Güncelleme kurulumundan önce temiz kapanış: çalışan indirmeleri duraklat,
-/// durumu kaydet, torrent oturumunu kapat. Pencere kapanışıyla **aynı** yol.
+/// Güncelleme kurulumundan önce temiz kapanış: çalışan indirmeleri duraklat ve
+/// durumu kaydet. Torrent motoru **kapatılmaz** (indirme başarısız olursa
+/// torrent'ler çalışmaya devam etmeli); motor yalnız süreç çıkışında kapanır.
 #[tauri::command]
 pub async fn pause_all_for_shutdown(state: St<'_>) -> Result<(), String> {
-    let state = state.inner().clone();
-    crate::shutdown_state(state).await;
+    manager::pause_all_for_shutdown(state.inner()).await;
     Ok(())
 }
 

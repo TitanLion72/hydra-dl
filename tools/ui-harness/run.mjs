@@ -211,6 +211,9 @@ export async function check() {
     version: u.version ?? "0.0.0",
     body: u.notes ?? "",
     downloadAndInstall: async (cb) => {
+      // Kurulum anındaki temiz kapanış sayacı: sıra doğrulanabilsin
+      // (duraklatma indirmeden **önce** yapılmalı).
+      u.pauseCallsAtInstall = globalThis.__hydraCalls?.pauseAllForShutdown ?? 0;
       u.installed = (u.installed ?? 0) + 1;
       cb?.({ event: "Started", data: { contentLength: 100 } });
       // Arayüzün arada boyayabilmesi için küçük bir bekleme: gerçek indirme
@@ -948,6 +951,14 @@ export async function check() {
     // (Rust `pause_all_for_shutdown`). Çağrı yoksa yükseltme indirmeleri keser.
     const pauseCalls = await page.evaluate(() => window.__hydraCalls.pauseAllForShutdown ?? 0);
     check(pauseCalls > 0, `kurulum oncesi temiz kapanis istendi (${pauseCalls} cagri)`);
+    // Sıra da doğru olmalı: `downloadAndInstall` **çağrıldığı anda** sayaç > 0.
+    const pauseAtInstall = await page.evaluate(
+      () => globalThis.__hydraUpdater?.pauseCallsAtInstall ?? -1,
+    );
+    check(
+      pauseAtInstall > 0,
+      `duraklatma kurulumdan once yapildi (kurulum aninda ${pauseAtInstall} cagri)`,
+    );
 
     // 4b) Kurulum reddederse → hata metni + "Yeniden dene", pending silinir.
     await page.evaluate(() => window.localStorage.removeItem("hydra.update.pending"));
@@ -968,6 +979,14 @@ export async function check() {
     check(
       ((await page.locator("#update-install").textContent()) ?? "").trim() === "Yeniden dene",
       "basarisiz kurulumda dugme 'Yeniden dene' oldu",
+    );
+    // Başarısız yolda da sıra: indirme **denenirken** duraklatma çoktan olmuştu.
+    const pauseAtFailedInstall = await page.evaluate(
+      () => globalThis.__hydraUpdater?.pauseCallsAtInstall ?? -1,
+    );
+    check(
+      pauseAtFailedInstall > 0,
+      `basarisiz denemede bile once duraklatildi (kurulum aninda ${pauseAtFailedInstall} cagri)`,
     );
     const pendingAfterFailure = await page.evaluate(() =>
       window.localStorage.getItem("hydra.update.pending"),

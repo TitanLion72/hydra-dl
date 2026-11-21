@@ -18,17 +18,23 @@ use std::sync::Arc;
 use store::Store;
 use tauri::{Manager, WindowEvent};
 
-/// Kapanış/kurulum öncesi ortak temizlik.
+/// Kapanış/kurulum öncesi ortak temizlik — **senkron** kısım.
 ///
-/// Pencere kapanışı ve güncelleme kurulumu **aynı** yolu kullanır: çalışan
-/// indirmeler duraklatılır (iptal değil — parçalar diskte kalır), durum
-/// kaydedilir, torrent oturumu kapatılır. Böylece güncelleme yolu bu adımı
-/// atlayamaz ve yeni sürüm açılışta kaldığı yerden devam eder.
-pub async fn shutdown_state(state: Arc<AppState>) {
-    manager::pause_all_for_shutdown(&state).await;
-    // Duraklatma turu kendi kaydını yapar; burada yine kaydediyoruz ki
-    // ileride tur kısalırsa "kapanışta kaydet" garantisi aynen kalsın.
+/// Çalışan indirmeleri duraklatır (iptal değil — parçalar diskte kalır) ve
+/// durumu **çağıran thread'de** kaydeder. Süreç kapanırken kaydın bitmiş
+/// olması gerekir; bu yüzden `persist()` burada, async kısımdan önce koşar.
+/// Güncelleme komutu da aynı fonksiyonu (`manager::pause_http_for_shutdown`)
+/// kullanır → kayıt adımı atlanamaz.
+pub fn shutdown_persist(state: &Arc<AppState>) {
+    manager::pause_http_for_shutdown(state);
     state.persist();
+}
+
+/// Kapanışın **async** kalanı: yalnız süreç çıkışında torrent oturumunu kapatır.
+///
+/// Güncelleme kurulumu bu kısmı **çağırmaz**: indirme başarısız olursa
+/// torrent'lerin çalışmaya devam edebilmesi gerekir.
+pub async fn shutdown_finish(state: Arc<AppState>) {
     state.torrent.shutdown().await;
 }
 
@@ -108,12 +114,15 @@ pub fn run() {
                     let _ = window.hide();
                 }
             }
-            // Pencere kapanirken indirmeleri duraklat, durumu kaydet ve torrent
-            // oturumunu duzgun kapat (DHT/peer'lar). Guncelleme yolu da ayni
-            // `shutdown_state` fonksiyonunu kullanir.
+            // Pencere kapanirken: indirmeleri duraklat + durumu **senkron**
+            // kaydet (surec kapaniyor, kayit bitmis olmali), sonra torrent
+            // oturumunu arka planda kapat (DHT/peer'lar). Guncelleme yolu da
+            // ayni duraklat+kaydet fonksiyonunu kullanir.
             if matches!(event, WindowEvent::Destroyed) {
                 if let Some(state) = window.try_state::<Arc<AppState>>() {
-                    tauri::async_runtime::spawn(shutdown_state(state.inner().clone()));
+                    let state = state.inner().clone();
+                    shutdown_persist(&state);
+                    tauri::async_runtime::spawn(shutdown_finish(state));
                 }
             }
         })
