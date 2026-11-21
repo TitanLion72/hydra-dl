@@ -75,6 +75,21 @@ svg {
   padding: 0 26px;
 }
 
+/*
+ * Satırları **açıkça** sabitle. `#update-strip` ve `.selectbar` gizliyken
+ * `display:none` olduklarından grid öğesi sayılmazlar; otomatik yerleştirmeye
+ * bırakılırsa çocuklar bir satır yukarı kayar — `.content` `auto` satıra,
+ * `.statusbar` `1fr` satıra düşer ve durum çubuğu ekranı kaplar. Bu yüzden
+ * görünürlükten bağımsız, isimli satırlar kullanıyoruz.
+ */
+.app > .update-strip { grid-row: 1; }
+.app > .topbar      { grid-row: 2; }
+.app > .addbar      { grid-row: 3; }
+.app > .toolbar     { grid-row: 4; }
+.app > .content     { grid-row: 5; }
+.app > .selectbar   { grid-row: 6; }
+.app > .statusbar   { grid-row: 7; }
+
 /* ---------------------------------------------------------------- topbar */
 
 .topbar {

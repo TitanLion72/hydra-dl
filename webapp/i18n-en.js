@@ -456,7 +456,5 @@ export const EN = {
   "Güncelleme indirilemedi — internet bağlantını kontrol et":
     "Could not download the update — check your internet connection",
   "Güncelleme tamamlanmadı — yeniden dene": "Update did not complete — try again",
-  "Güncelleme aranıyor…": "Checking for updates…",
-  "Güncelleme yok": "No updates",
 
 };

@@ -106,6 +106,16 @@ async function main() {
     output = started.output;
     ok(`Vite dev sunucusu hazir (${BASE})`);
 
+    // Vite, yeni bir bağımlılığı ilk gördüğünde ön-derler ve istemciyi
+    // "optimized dependencies changed" diyerek **tam sayfa yeniler**. Bu,
+    // senaryoların ortasına denk gelirse şerit kaybolur (flaky). Sunucu
+    // hazır olur olmaz bir kez ısıtıp ön-derlemenin oturmasını bekliyoruz.
+    await fetch(`${BASE}/src/main.ts`).catch(() => {});
+    await sleep(1500);
+    await fetch(`${BASE}/src/main.ts`).catch(() => {});
+    await sleep(400);
+    ok("Vite bagimlilik onbellegi isindi");
+
     const launched = await launchBrowser();
     browser = launched.browser;
     ok(`Tarayici acildi (channel: ${launched.channel})`);
@@ -175,7 +185,9 @@ export async function confirm() { return true; }
 
     // Güncelleme eklentisi de tarayıcıda yok; davranışı `__hydraUpdater` sürer.
     // `check()` her çağrıldığında `checks` sayacı artar (ayar kapalı senaryosu
-    // "hiç çağrılmadı"yı bununla doğrular).
+    // "hiç çağrılmadı"yı bununla doğrular). `failWith` verilirse indirme
+    // reddeder; `closed` sayacı "Sonra"/başarısız kurulumda kaynağın bırakılıp
+    // bırakılmadığını gösterir.
     //
     // Adres iki biçimde gelebilir: Vite paketi ön-derlediğinde
     // `/node_modules/.vite/deps/@tauri-apps_plugin-updater.js` (alt çizgi!),
@@ -192,7 +204,12 @@ export async function check() {
     downloadAndInstall: async (cb) => {
       u.installed = (u.installed ?? 0) + 1;
       cb?.({ event: "Started", data: { contentLength: 100 } });
+      // Arayüzün arada boyayabilmesi için küçük bir bekleme: gerçek indirme
+      // saniyeler sürer, anlık çözülen bir stub yüzde metnini görünmez kılar.
+      await new Promise((r) => setTimeout(r, 120));
       cb?.({ event: "Progress", data: { chunkLength: 40 } });
+      await new Promise((r) => setTimeout(r, 120));
+      if (u.failWith) throw new Error(u.failWith);
       cb?.({ event: "Progress", data: { chunkLength: 60 } });
       cb?.({ event: "Finished" });
     },
@@ -209,11 +226,70 @@ export async function check() {
     );
     ok("guncelleme eklentisi sahte modulle karsilandi");
 
+    // `getVersion()` (eklentiyle aynı sürüm kaynağı: `tauri.conf.json`).
+    // Gerçek modül tarayıcıda `invoke` çağırıp patlar; mock'un uygulama
+    // sürümünü (`APP_INFO.version`) döndürüyoruz ki yarım kurulum senaryosu
+    // gerçek davranışı yansıtsın.
+    //
+    // Desen hem çıplak import yolunu (`@tauri-apps/api/app`) hem de Vite'ın
+    // ön-derlenmiş adını (`@tauri-apps_api_app.js`) yakalar.
+    await page.route(/tauri-apps[/_]api[/_]app/, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "text/javascript; charset=utf-8",
+        body: `export async function getVersion() {
+  return globalThis.__hydraMock?.appInfo?.version ?? "0.0.0";
+}`,
+      }),
+    );
+    ok("`getVersion` sahte modulle karsilandi");
+
     const shot = async (name) => {
       const file = path.join(artifactsDir, name);
       await page.screenshot({ path: file, fullPage: true });
       const info = await stat(file);
       check(info.size > 15 * 1024, `ekran goruntusu ${name} (${Math.round(info.size / 1024)} KB)`);
+    };
+
+    /**
+     * Yerleşim geometrisi.
+     *
+     * `.app` 7 satırlı bir grid; şerit ve seçim çubuğu gizliyken `display:none`
+     * oldukları için **grid öğesi değiller**. Satırlar açıkça sabitlenmezse
+     * öğeler kayar: `.content` `auto` satıra, `.statusbar` `1fr` satıra düşer
+     * ve durum çubuğu ekranın altına yapışmaz. Bu kontrol o kaymayı yakalar.
+     */
+    const checkLayoutPinned = async (label) => {
+      const geom = await page.evaluate(() => {
+        const bar = document.querySelector(".statusbar");
+        const content = document.querySelector(".content");
+        const topbar = document.querySelector(".topbar");
+        const viewport = window.innerHeight;
+        if (!bar || !content || !topbar) return null;
+        return {
+          viewport,
+          barBottom: Math.round(bar.getBoundingClientRect().bottom * 10) / 10,
+          barHeight: Math.round(bar.getBoundingClientRect().height),
+          contentHeight: Math.round(content.getBoundingClientRect().height),
+          topbarTop: Math.round(topbar.getBoundingClientRect().top * 10) / 10,
+        };
+      });
+      if (!geom) {
+        fail(`${label}: yerlesim olculemedi`);
+        return;
+      }
+      check(
+        Math.abs(geom.barBottom - geom.viewport) <= 2,
+        `${label}: durum cubugu ekranin altina sabit (alt=${geom.barBottom}, ekran=${geom.viewport})`,
+      );
+      check(
+        geom.contentHeight > 200,
+        `${label}: liste alani makul yukseklikte (${geom.contentHeight}px)`,
+      );
+      check(
+        geom.barHeight < 120,
+        `${label}: durum cubugu sismedi (${geom.barHeight}px)`,
+      );
     };
 
     // --- 1. Ana ekran ------------------------------------------------------
@@ -225,6 +301,8 @@ export async function check() {
     check(await page.locator("#empty").isVisible(), "bos durum gorunur");
     check((await page.locator("#empty h2").textContent()).trim() === "Henüz indirme yok", "bos durum metni dogru");
     check((await page.locator("#list .row").count()) === 0, "liste baslangicta bos");
+    // Şerit gizliyken (normal durum) yerleşim kaymamalı.
+    await checkLayoutPinned("serit gizli");
     await shot("01-empty.png");
 
     // --- 2. Inceleme paneli ------------------------------------------------
@@ -809,28 +887,100 @@ export async function check() {
     check(stripText.includes("0.8.1"), `serit surumu gosteriyor ('${stripText}')`);
     check(await page.locator("#update-install").isVisible(), "Guncelle dugmesi gorunur");
     check(await page.locator("#update-later").isVisible(), "Sonra dugmesi gorunur");
+    // Şerit görünürken de satırlar kaymamalı (7. satır gerçekten ekleniyor).
+    await checkLayoutPinned("serit gorunur");
     await shot("05-update-strip.png");
 
     // 3) "Sonra" → gizlenir ve aynı sürüm için hatırlanır.
     await page.click("#update-later");
     check(await page.locator("#update-strip").isHidden(), "Sonra seridi kapatti");
+    // Kaynak bırakılmalı: aksi hâlde eklenti tarafında rid sızar.
+    const closedAfterSkip = await page.evaluate(() => globalThis.__hydraUpdater?.closed ?? 0);
+    check(closedAfterSkip > 0, `Sonra guncelleme kaynagini birakti (closed=${closedAfterSkip})`);
     await page.reload({ waitUntil: "domcontentloaded" });
     check(await seenUpdaterCheck(), "atlanan surumde kontrol yine calisti");
     check(await page.locator("#update-strip").isHidden(), "ayni surum icin tekrar sorulmadi");
 
-    // 4) Yeni sürüm → "Güncelle" indirir; şerit kurulum metnini gösterir.
+    // 4) Yeni sürüm → "Güncelle" indirir; önce yüzde, sonra kurulum metni.
     await setUpdateMock({ available: true, version: "0.9.0" });
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForSelector("#update-strip:not([hidden])", { timeout: 10_000 });
     await page.click("#update-install");
+    // Yüzde metni gerçekten geçmeli: `Started` (0 byte) → `Progress` (40/100).
+    // Yüzde bağlantısı ters çevrilse (downloaded/total yerine total/downloaded)
+    // bu bekleme zaman aşımına düşer.
+    const sawPercent = await page
+      .waitForFunction(
+        () => {
+          const text = document.querySelector("#update-text")?.textContent ?? "";
+          return text.includes("%") && text.includes("40");
+        },
+        null,
+        { timeout: 10_000 },
+      )
+      .then(() => true)
+      .catch(() => false);
+    check(sawPercent, "indirme yuzdesi seritte gorundu (%40)");
+
     await page.waitForFunction(() => (globalThis.__hydraUpdater?.installed ?? 0) > 0, null, {
       timeout: 10_000,
     });
+    await page.waitForFunction(
+      () => (document.querySelector("#update-text")?.textContent ?? "").includes("Kuruluyor"),
+      null,
+      { timeout: 10_000 },
+    );
     const installingText = ((await page.locator("#update-text").textContent()) ?? "").trim();
     check(installingText.includes("Kuruluyor"), `kurulum metni gosterildi ('${installingText}')`);
     check(await page.locator("#update-install").isHidden(), "kurulumda Guncelle dugmesi gizli");
     const pendingMarker = await page.evaluate(() => window.localStorage.getItem("hydra.update.pending"));
     check(pendingMarker === "0.9.0", `kurulum oncesi isaret yazildi (${pendingMarker})`);
+
+    // 4b) Kurulum reddederse → hata metni + "Yeniden dene", pending silinir.
+    await page.evaluate(() => window.localStorage.removeItem("hydra.update.pending"));
+    await setUpdateMock({ available: true, version: "0.9.1", failWith: "agl hatasi" });
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForSelector("#update-strip:not([hidden])", { timeout: 10_000 });
+    await page.click("#update-install");
+    await page.waitForFunction(
+      () => (document.querySelector("#update-strip")?.getAttribute("class") ?? "").includes("error"),
+      null,
+      { timeout: 10_000 },
+    );
+    const errorText = ((await page.locator("#update-text").textContent()) ?? "").trim();
+    check(
+      errorText.includes("indirilemedi"),
+      `basarisiz kurulum hatayi gosterdi ('${errorText}')`,
+    );
+    check(
+      ((await page.locator("#update-install").textContent()) ?? "").trim() === "Yeniden dene",
+      "basarisiz kurulumda dugme 'Yeniden dene' oldu",
+    );
+    const pendingAfterFailure = await page.evaluate(() =>
+      window.localStorage.getItem("hydra.update.pending"),
+    );
+    check(pendingAfterFailure === null, `basarisiz kurulum isareti temizledi (${pendingAfterFailure})`);
+
+    // 4c) "Yeniden dene" taze kaynak alır (ölü rid ile sonsuz döngü olmaz).
+    const checksBeforeRetry = await page.evaluate(() => globalThis.__hydraUpdater?.checks ?? 0);
+    // Bu kez başarılı olsun: sahte eklentinin canlı nesnesinden hatayı kaldır
+    // (localStorage yalnız yenilemede okunuyor).
+    await page.evaluate(() => {
+      delete globalThis.__hydraUpdater.failWith;
+    });
+    await page.click("#update-install");
+    await page.waitForFunction(
+      (before) => (globalThis.__hydraUpdater?.checks ?? 0) > before,
+      checksBeforeRetry,
+      { timeout: 10_000 },
+    );
+    ok("Yeniden dene yeni bir check() cagirdi (taze kaynak)");
+    await page.waitForFunction(
+      () => (globalThis.__hydraUpdater?.installed ?? 0) >= 2,
+      null,
+      { timeout: 10_000 },
+    );
+    ok("Yeniden dene indirmeyi yeniden baslatti");
 
     // 5) Yarım kalan kurulum açılışta bildirilir (sürüm 0.2.0'da kaldı).
     //    Sahte eklenti sürüm sunmuyor ki 3 sn sonraki kontrol metni ezmesin.
@@ -845,6 +995,19 @@ export async function check() {
     check(
       (await page.locator("#update-strip").getAttribute("class")).includes("error"),
       "yarim kurulum seridi hata tonunda",
+    );
+
+    // 5b) Bu durumda "Sonra" da kalıcı olmalı: aksi hâlde 3 sn sonraki
+    //     kontrol şeridi aynı oturumda geri getirir.
+    await setUpdateMock({ available: true, version: "0.9.1" });
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForSelector("#update-strip:not([hidden])", { timeout: 10_000 });
+    await page.click("#update-later");
+    check(await page.locator("#update-strip").isHidden(), "yarim kurulumda Sonra kapatti");
+    check(await seenUpdaterCheck(), "yarim kurulumdan sonra kontrol kostu");
+    check(
+      await page.locator("#update-strip").isHidden(),
+      "yarim kurulumda Sonra kalici oldu (serit geri gelmedi)",
     );
     await page.evaluate(() => window.localStorage.removeItem("hydra.update.pending"));
 

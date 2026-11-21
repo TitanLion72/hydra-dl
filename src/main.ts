@@ -2078,7 +2078,11 @@ const updateHooks: UpdaterHooks = {
     setStripButtons(t("Yeniden dene"), true);
     showUpdateStrip(t(message), "error");
   },
-  onFailedBefore() {
+  onFailedBefore(pendingVersion) {
+    // Yarım kalmış kurulumun sürümü "sunulan" sayılsın: "Sonra"ya basılırsa
+    // `skipVersion` bunu hatırlar ve aynı oturumdaki 3 sn'lik kontrol şeridi
+    // yeniden açmaz.
+    offeredVersion = pendingVersion;
     setStripButtons(t("Yeniden dene"), true);
     showUpdateStrip(t("Güncelleme tamamlanmadı — yeniden dene"), "error");
   },
@@ -2119,7 +2123,12 @@ async function bootstrap() {
   applyLanguage(settings?.language ?? "tr");
   // Açılışta sessiz güncelleme kontrolü (ayar açıksa) + yarım kalan kurulum.
   if (settings?.updateCheck !== false) {
-    setTimeout(() => void checkForUpdate(updateHooks), STARTUP_CHECK_DELAY_MS);
+    // Arayüz geri çağrısı içinde bir hata fırlarsa bu, yakalanmamış bir
+    // promise reddine dönüşmesin (harness/CI konsolu temiz kalsın).
+    setTimeout(
+      () => void checkForUpdate(updateHooks).catch(() => {}),
+      STARTUP_CHECK_DELAY_MS,
+    );
   }
   reportPendingFailure(updateHooks);
   urlInput.focus();

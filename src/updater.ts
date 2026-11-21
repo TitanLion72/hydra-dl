@@ -4,8 +4,8 @@
 // arayüz bağlantısı var. Tauri dışında (düz tarayıcı, UI harness) eklenti
 // yüklenemez ve her çağrı sessizce döner: tarayıcı asla patlamamalı.
 
+import { getVersion } from "@tauri-apps/api/app";
 import { check, type DownloadEvent, type Update } from "@tauri-apps/plugin-updater";
-import { api } from "./api";
 import {
   clearPending,
   installLooksFailed,
@@ -78,13 +78,17 @@ async function closeQuietly(update: Update): Promise<void> {
 /**
  * Çalışan uygulamanın sürümü; Tauri dışında `null`.
  *
- * `getVersion` yerine uygulamanın kendi `appInfo` komutu: aynı sürümü verir,
- * ayrıca tarayıcıda (harness) hata atmadan taklit edilebilir.
+ * **Neden `api.appInfo()` değil:** eklenti, sürümü `app.package_info().version`
+ * üzerinden okur (bkz. `tauri-plugin-updater/src/updater.rs:228`), yani
+ * `tauri.conf.json`'daki sürümü. Bizim `get_app_info` komutu ise
+ * `env!("CARGO_PKG_VERSION")` kullanıyor (`src-tauri/src/commands.rs:168`).
+ * İkisi ayrı kaynak; `Cargo.toml` ile `tauri.conf.json` sürümleri kayarsa
+ * başarılı kurulum "tamamlanmadı" gibi görünürdü. Aynı kaynağı okumak için
+ * `getVersion()` kullanıyoruz.
  */
 async function currentVersion(): Promise<string | null> {
   try {
-    const info = await api.appInfo();
-    return info.version || null;
+    return (await getVersion()) || null;
   } catch {
     return null;
   }
@@ -167,13 +171,29 @@ export async function installUpdate(): Promise<void> {
     clearPending(storage);
     consumer?.onError(DOWNLOAD_FAILED);
   } finally {
+    // `close()` kaynağı bırakır; `available` hâlâ o ölü kaynağı gösterirse
+    // "Yeniden dene" serbest bırakılmış rid ile kurulum denemeye çalışıp
+    // sonsuza dek başarısız olur. Bu yüzden her denemeden sonra sıfırla:
+    // yeniden deneme `check()` ile taze bir kaynak alır. (Zaten yeniden
+    // başlatılan süreçte de bu modül durumu sıfırdan kurulur.)
+    available = null;
     await closeQuietly(update);
   }
 }
 
-/** "Sonra": bu sürüm için bir daha sorulmasın. */
+/**
+ * "Sonra": bu sürüm için bir daha sorulmasın.
+ *
+ * Sunulan kaynak da bırakılır: kullanıcı bu sürümü istemedi, `Update`
+ * nesnesinin tuttuğu Rust tarafı rid açık kalmasın.
+ */
 export function skipVersion(version: string): void {
   writeSkipped(storage, version);
+  if (available?.version === version) {
+    const stale = available;
+    available = null;
+    void closeQuietly(stale);
+  }
 }
 
 /**
