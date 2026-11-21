@@ -110,11 +110,20 @@ async function main() {
     // "optimized dependencies changed" diyerek **tam sayfa yeniler**. Bu,
     // senaryoların ortasına denk gelirse şerit kaybolur (flaky). Sunucu
     // hazır olur olmaz bir kez ısıtıp ön-derlemenin oturmasını bekliyoruz.
-    await fetch(`${BASE}/src/main.ts`).catch(() => {});
-    await sleep(1500);
-    await fetch(`${BASE}/src/main.ts`).catch(() => {});
-    await sleep(400);
-    ok("Vite bagimlilik onbellegi isindi");
+    // Isıtma başarısızsa sessizce geç: senaryolar gerçek davranışı zaten sınar,
+    // başarısız bir ısıtmaya "OK" yazmayız.
+    let warmed = false;
+    try {
+      const first = await fetch(`${BASE}/src/main.ts`);
+      await sleep(1500);
+      const second = await fetch(`${BASE}/src/main.ts`);
+      warmed = first.ok && second.ok;
+      await sleep(400);
+    } catch {
+      warmed = false;
+    }
+    if (warmed) ok("Vite bagimlilik onbellegi isindi");
+    else console.warn("[ui-harness] Vite onbellegi isitilamadi (onemsiz)");
 
     const launched = await launchBrowser();
     browser = launched.browser;
