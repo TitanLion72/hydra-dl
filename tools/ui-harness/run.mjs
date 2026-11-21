@@ -944,6 +944,10 @@ export async function check() {
     check(await page.locator("#update-install").isHidden(), "kurulumda Guncelle dugmesi gizli");
     const pendingMarker = await page.evaluate(() => window.localStorage.getItem("hydra.update.pending"));
     check(pendingMarker === "0.9.0", `kurulum oncesi isaret yazildi (${pendingMarker})`);
+    // Temiz kapanış: kurulumdan önce çalışanlar duraklatılıp durum kaydedilir
+    // (Rust `pause_all_for_shutdown`). Çağrı yoksa yükseltme indirmeleri keser.
+    const pauseCalls = await page.evaluate(() => window.__hydraCalls.pauseAllForShutdown ?? 0);
+    check(pauseCalls > 0, `kurulum oncesi temiz kapanis istendi (${pauseCalls} cagri)`);
 
     // 4b) Kurulum reddederse → hata metni + "Yeniden dene", pending silinir.
     await page.evaluate(() => window.localStorage.removeItem("hydra.update.pending"));

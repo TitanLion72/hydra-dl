@@ -18,6 +18,20 @@ use std::sync::Arc;
 use store::Store;
 use tauri::{Manager, WindowEvent};
 
+/// Kapanış/kurulum öncesi ortak temizlik.
+///
+/// Pencere kapanışı ve güncelleme kurulumu **aynı** yolu kullanır: çalışan
+/// indirmeler duraklatılır (iptal değil — parçalar diskte kalır), durum
+/// kaydedilir, torrent oturumu kapatılır. Böylece güncelleme yolu bu adımı
+/// atlayamaz ve yeni sürüm açılışta kaldığı yerden devam eder.
+pub async fn shutdown_state(state: Arc<AppState>) {
+    manager::pause_all_for_shutdown(&state).await;
+    // Duraklatma turu kendi kaydını yapar; burada yine kaydediyoruz ki
+    // ileride tur kısalırsa "kapanışta kaydet" garantisi aynen kalsın.
+    state.persist();
+    state.torrent.shutdown().await;
+}
+
 pub fn run() {
     // rustls saglayicisini en basta kur: TLS kullanimi herhangi bir noktadan
     // baslarsa (web sunucusu acilista) varsayilan hazir olsun. Kurulmazsa rustls
@@ -94,14 +108,12 @@ pub fn run() {
                     let _ = window.hide();
                 }
             }
-            // Pencere kapanirken torrent oturumunu duzgun kapat (DHT/peer'lar).
+            // Pencere kapanirken indirmeleri duraklat, durumu kaydet ve torrent
+            // oturumunu duzgun kapat (DHT/peer'lar). Guncelleme yolu da ayni
+            // `shutdown_state` fonksiyonunu kullanir.
             if matches!(event, WindowEvent::Destroyed) {
                 if let Some(state) = window.try_state::<Arc<AppState>>() {
-                    let state = state.inner().clone();
-                    state.persist();
-                    tauri::async_runtime::spawn(async move {
-                        state.torrent.shutdown().await;
-                    });
+                    tauri::async_runtime::spawn(shutdown_state(state.inner().clone()));
                 }
             }
         })
@@ -112,6 +124,7 @@ pub fn run() {
             commands::set_torrent_files,
             commands::test_notification,
             commands::pause_download,
+            commands::pause_all_for_shutdown,
             commands::resume_download,
             commands::cancel_download,
             commands::remove_download,

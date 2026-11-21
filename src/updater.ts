@@ -6,6 +6,7 @@
 
 import { getVersion } from "@tauri-apps/api/app";
 import { check, type DownloadEvent, type Update } from "@tauri-apps/plugin-updater";
+import { api } from "./api";
 import {
   clearPending,
   installLooksFailed,
@@ -141,6 +142,17 @@ export async function installUpdate(): Promise<void> {
   if (!update) return;
 
   const consumer = hooks;
+
+  // Kurulumdan **önce** temiz kapanış: çalışan indirmeler duraklatılır ve
+  // durum kaydedilir (iptal değil — parçalar diskte kalır, yeni sürüm
+  // açılışta kaldığı yerden devam eder). Temizlik başarısız olursa kurulum
+  // yine denenir: bu adım yükseltmeyi engellememeli.
+  try {
+    await api.pauseAllForShutdown();
+  } catch {
+    // sessiz: kapanış temizliği yapılamadı ama güncelleme sürmeli
+  }
+
   writePending(storage, update.version);
 
   let downloaded = 0;

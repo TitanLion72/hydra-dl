@@ -339,6 +339,10 @@ export const api = {
   pause: async (id) => {
     calls.pause.push(id);
   },
+  // Kurulumdan önce arayüz bunu çağırır; hızlı dönmeli (senaryo beklemesin).
+  pauseAllForShutdown: async () => {
+    calls.pauseAllForShutdown = (calls.pauseAllForShutdown ?? 0) + 1;
+  },
   resume: async (id) => {
     calls.resume.push(id);
   },

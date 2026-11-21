@@ -1127,6 +1127,34 @@ async fn add_torrent(
     Ok(updated)
 }
 
+/// Kapanış öncesi duraklatılacak indirmeler: **yalnız çalışanlar**.
+///
+/// Kuyruktakiler hedef değil (başlamamış iş, durumu değişmeden kalır);
+/// duraklatılmış/bitmiş/iptal edilmişler zaten duruyor.
+fn shutdown_pause_targets(items: &[Download]) -> Vec<String> {
+    items
+        .iter()
+        .filter(|d| d.status == Status::Downloading)
+        .map(|d| d.id.clone())
+        .collect()
+}
+
+/// Duraklatmanın saf çekirdeği: kaydı `Paused` yapar, **parçalara dokunmaz**.
+///
+/// `pause` ile kapanış yolu aynı kuralı paylaşsın diye ayrı duruyor; saf
+/// olduğu için `AppState` kurmadan test edilebiliyor.
+fn pause_item(store: &mut Store, id: &str) -> Result<(), String> {
+    let item = store.find_mut(id).ok_or("Indirme bulunamadi")?;
+    match item.status {
+        Status::Downloading | Status::Queued => {
+            item.status = Status::Paused;
+            item.speed_bps = 0;
+        }
+        other => return Err(format!("Bu durumda duraklatilamaz: {other:?}")),
+    }
+    Ok(())
+}
+
 pub async fn pause(state: &Arc<AppState>, id: &str) -> Result<(), String> {
     let kind = state.item(id).map(|d| d.kind).ok_or("Indirme bulunamadi")?;
     if kind == Kind::Torrent {
@@ -1141,14 +1169,7 @@ pub async fn pause(state: &Arc<AppState>, id: &str) -> Result<(), String> {
     }
     let token = {
         let mut store = state.store.lock().unwrap();
-        let item = store.find_mut(id).ok_or("Indirme bulunamadi")?;
-        match item.status {
-            Status::Downloading | Status::Queued => {
-                item.status = Status::Paused;
-                item.speed_bps = 0;
-            }
-            other => return Err(format!("Bu durumda duraklatilamaz: {other:?}")),
-        }
+        pause_item(&mut store, id)?;
         let _ = store.save();
         drop(store);
         state.cancel_token(id)
@@ -1158,6 +1179,21 @@ pub async fn pause(state: &Arc<AppState>, id: &str) -> Result<(), String> {
     }
     state.emit_downloads();
     Ok(())
+}
+
+/// Güncelleme kurulumundan/kapanıştan önce: çalışan indirmeleri duraklat,
+/// durumu kaydet. **İptal değil** — parçalar korunur, kuyruktakilere
+/// dokunulmaz, açılışta kaldığı yerden devam eder.
+///
+/// Tek tek `pause` çağırır (ikinci bir duraklatma kopyası yok); biri hata
+/// verirse loglanır ve devam edilir: kapanış yolu asla bloke olmamalı.
+pub async fn pause_all_for_shutdown(state: &Arc<AppState>) {
+    for id in shutdown_pause_targets(&state.snapshot()) {
+        if let Err(err) = pause(state, &id).await {
+            eprintln!("[hydra] kapanis oncesi duraklatilamadi ({id}): {err}");
+        }
+    }
+    state.persist();
 }
 
 pub async fn resume(state: &Arc<AppState>, id: &str) -> Result<(), String> {
@@ -1518,6 +1554,70 @@ pub fn start_ticker(state: &Arc<AppState>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sample(id: &str) -> Download {
+        Download {
+            id: id.into(),
+            url: "https://example.com/f.bin".into(),
+            filename: "f.bin".into(),
+            dir: PathBuf::from("C:/ornek/indirilenler"),
+            kind: Kind::Http,
+            status: Status::Queued,
+            total_bytes: Some(8192),
+            downloaded_bytes: 0,
+            segments: Vec::new(),
+            resumable: true,
+            speed_bps: 0,
+            progress: None,
+            error: None,
+            created_at: 0,
+            finished_at: None,
+            connections: 4,
+            referer: None,
+            cookie: None,
+            mime: None,
+            file_path: None,
+            format: None,
+            swarm: None,
+            source: None,
+            torrent_files: None,
+            retry: None,
+        }
+    }
+
+    /// Kapanış yolu: çalışanlar duraklatılır; baytlar ve kuyruk korunur.
+    ///
+    /// Kapanışta "iptal" değil "duraklat" gerekir — parçalar diskte kalmalı ki
+    /// uygulama yeniden açıldığında kaldığı yerden devam etsin.
+    #[test]
+    fn kapanis_icin_duraklatma_calisanlari_durdurur() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::load(dir.path());
+        let mut running = sample("a");
+        running.status = Status::Downloading;
+        running.downloaded_bytes = 4096;
+        let mut queued = sample("b");
+        queued.status = Status::Queued;
+        store.items = vec![running, queued];
+        store.save().unwrap();
+
+        let targets = shutdown_pause_targets(&store.items);
+        assert_eq!(targets, vec!["a".to_string()], "yalniz calisan hedef");
+        for id in &targets {
+            pause_item(&mut store, id).unwrap();
+        }
+        store.save().unwrap();
+
+        // Diskten oku: kapanistan sonra acilis ayni durumu gormeli.
+        let items = Store::load(dir.path()).items;
+        assert_eq!(items[0].status, Status::Paused, "calisan duraklatildi");
+        assert_eq!(items[0].downloaded_bytes, 4096, "parca baytlari korundu");
+        assert_eq!(items[1].status, Status::Queued, "kuyruktakine dokunulmadi");
+        assert!(
+            items.iter().all(|d| d.status != Status::Cancelled),
+            "iptal edilmedi (parcalar silinmedi)"
+        );
+    }
 
     #[test]
     fn bildirim_govdesi_dosya_adini_tasir() {
