@@ -77,6 +77,7 @@ const els = {
   setSpeed: $("#setSpeed"),
   setAutoResume: $("#setAutoResume"),
   setNotify: $("#setNotify"),
+  setUpdateCheck: $("#setUpdateCheck"),
   setProxy: $("#setProxy"),
   setLanguage: $("#setLanguage"),
   setCapture: $("#setCapture"),
@@ -1406,6 +1407,7 @@ function applySettings(settings) {
   els.setCapture.checked = Boolean(data.captureEnabled);
   els.setAutoResume.checked = Boolean(data.autoResume);
   if (els.setNotify) els.setNotify.checked = data.notifyOnFinish !== false;
+  if (els.setUpdateCheck) els.setUpdateCheck.checked = data.updateCheck !== false;
   if (els.setProxy) els.setProxy.value = data.proxyUrl || "";
   if (els.setLanguage) els.setLanguage.value = normalizeLanguage(data.language);
   applyLanguage(data.language);
@@ -1611,6 +1613,7 @@ const SETTING_LABELS = {
   webTls: "HTTPS",
   torrentEnabled: "torrent",
   notifyOnFinish: "bildirimler",
+  updateCheck: "güncelleme kontrolü",
   proxyUrl: "proxy",
   language: "dil",
 };
@@ -1697,6 +1700,7 @@ async function saveSettings() {
   next.captureEnabled = els.setCapture.checked;
   next.autoResume = els.setAutoResume.checked;
   if (els.setNotify) next.notifyOnFinish = els.setNotify.checked;
+  if (els.setUpdateCheck) next.updateCheck = els.setUpdateCheck.checked;
   if (els.setProxy) next.proxyUrl = els.setProxy.value.trim();
   if (els.setLanguage) next.language = normalizeLanguage(els.setLanguage.value);
   if (Object.prototype.hasOwnProperty.call(next, "webToken")) {

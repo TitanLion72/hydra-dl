@@ -83,7 +83,13 @@ v0.2 = "IDM'den iyi" temeli. Sıra bağımlılığa göre; üstteki bitmeden alt
 
 ## v1.0 — dağıtım
 
-- [ ] Otomatik güncelleme (tauri-plugin-updater + imzalı manifest)
+- [~] Otomatik güncelleme (tauri-plugin-updater + imzalı manifest) — **kod tamam**,
+      yayın bekliyor: `Settings.updateCheck` (varsayılan açık, masaüstü+telefon),
+      açılışta sessiz kontrol, "v… hazır · Güncelle / Sonra" şeridi, imzalı indirme +
+      sessiz kurulum, kurulum öncesi temiz kapanış (duraklat → `Queued` → açılışta devam),
+      başarısız kurulumda kuyruk geri açılır, yarım kurulum kırmızı şerit,
+      `tools/release.mjs` (tek komut, `--dry-run`). **Kalan (kullanıcı):** anahtar üretimi,
+      v0.8.0 elle kurulum, v0.8.1 canlı E2E.
 - [ ] Kod imzalı NSIS kurulumu, sürüm notları
 - [x] **Ayarların dışa/içe aktarımı** (0.4.1): `GET /settings/export` +
       `POST /settings/import`, `hydra-dl-settings` imzası + sürüm, token varsayılan
@@ -94,7 +100,7 @@ v0.2 = "IDM'den iyi" temeli. Sıra bağımlılığa göre; üstteki bitmeden alt
 - [x] **Dayanıklılık testleri** (v0.6.0–0.6.4): kopan bağlantı, atomik bitiş, `.hydra-tmp`
       sızıntısı, disk dolu, HLS/DASH parça yeniden denemesi, yeniden başlatma tutarlılığı,
       askıda kalan sunucu zaman aşımı, eşzamanlı soak (`tools/soak.mjs`). `cargo test` 170.
-- [ ] Otomatik güncelleme (imzalı manifest)
+- [~] Otomatik güncelleme (imzalı manifest) — kod tamam, anahtar + yayın kullanıcıda
 - [ ] Kod imzalı NSIS
 - [ ] Linux/macOS deneysel hedefler
 

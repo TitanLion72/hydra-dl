@@ -18,6 +18,7 @@
     "test:links": "node tools/test-links.mjs",
     "test:virtual": "node tools/test-virtual.mjs",
     "test:i18n": "node tools/test-i18n.mjs && node tools/audit-i18n.mjs",
+    "test:updater": "node tools/test-updater.mjs",
     "test:security": "node tools/security-check.mjs",
     "test:net": "node tools/build-extension.mjs && node tools/net-capture-check.mjs",
     "hygiene": "node tools/hygiene.mjs"
@@ -25,7 +26,8 @@
   "dependencies": {
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",
-    "@tauri-apps/plugin-opener": "^2"
+    "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-updater": "2.14.1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

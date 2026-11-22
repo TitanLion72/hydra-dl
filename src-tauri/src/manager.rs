@@ -8,7 +8,7 @@ use crate::torrent::TorrentJob;
 use crate::util;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::async_runtime::JoinHandle;
@@ -46,6 +46,14 @@ pub struct AppState {
     /// Proxy ayarı değişince yeniden kurulur (klonu ucuz).
     http: Mutex<reqwest::Client>,
     started: Instant,
+    /// Kapanış/kurulum başladı: kuyruk bir daha iş başlatmaz (`schedule` erken
+    /// döner). Aksi hâlde duraklatmanın boşalttığı yuvaya kuyruk terfi eder,
+    /// indirme başlar ve kurulum onu keser.
+    shutting_down: AtomicBool,
+    /// Kapanış yolunun motor tarafında duraklattığı torrent id'leri.
+    /// `cancel_shutdown` yalnız bunları geri başlatır (kullanıcının kendi
+    /// duraklattıklarına dokunulmaz).
+    shutdown_torrents: Mutex<Vec<String>>,
     pub capture: Mutex<Option<crate::capture::CaptureHandle>>,
     pub web: Mutex<Option<crate::web::WebHandle>>,
     pub torrent: crate::torrent::TorrentEngine,
@@ -69,6 +77,8 @@ impl AppState {
             limiter,
             http: Mutex::new(http::build_client_with_proxy(&proxy)),
             started: Instant::now(),
+            shutting_down: AtomicBool::new(false),
+            shutdown_torrents: Mutex::new(Vec::new()),
             capture: Mutex::new(None),
             web: Mutex::new(None),
             torrent: crate::torrent::TorrentEngine::new(),
@@ -142,6 +152,40 @@ impl AppState {
         let store = self.store.lock().unwrap();
         if let Err(e) = store.save() {
             eprintln!("[hydra] durum kaydedilemedi: {e}");
+        }
+    }
+
+    /// Kapanış/kurulum yolunu kilitler: bundan sonra `schedule()` kuyruktan
+    /// **hiç** iş başlatmaz. Bir kez açılır ve açık kalır (süreç kapanıyor).
+    ///
+    /// İleride "kurulumdan vazgeç, çalışmaya devam et" gibi bir yol eklenirse
+    /// burada açıkça `AtomicBool::store(false, Ordering::SeqCst)` ile sıfırlanmalı
+    /// ve `schedule(state)` yeniden çağrılmalı; yoksa kuyruk sonsuza dek durur.
+    pub fn begin_shutdown(&self) {
+        self.shutting_down.store(true, Ordering::SeqCst);
+    }
+
+    pub fn is_shutting_down(&self) -> bool {
+        self.shutting_down.load(Ordering::SeqCst)
+    }
+
+    /// Kurulumdan vazgeçildi: kilidi açar (kuyruk yeniden çalışabilir).
+    ///
+    /// `begin_shutdown`'ın yorumunda sözü edilen sıfırlama yolu budur.
+    pub fn clear_shutdown(&self) {
+        self.shutting_down.store(false, Ordering::SeqCst);
+    }
+
+    /// Kapanışın motor tarafında duraklattığı torrent'leri devralır
+    /// (liste bir kez teslim edilir: ikinci `cancel_shutdown` boş görür).
+    fn take_shutdown_torrents(&self) -> Vec<String> {
+        std::mem::take(&mut *self.shutdown_torrents.lock().unwrap())
+    }
+
+    fn remember_shutdown_torrent(&self, id: &str) {
+        let mut list = self.shutdown_torrents.lock().unwrap();
+        if !list.iter().any(|existing| existing == id) {
+            list.push(id.to_string());
         }
     }
 
@@ -252,6 +296,18 @@ fn now_ts() -> i64 {
     chrono::Utc::now().timestamp()
 }
 
+/// Kuyruktan başlatılacaklar — kapanış kilidi açıkken **hiç terfi yok**.
+///
+/// Saf: `schedule` store kilidinin içinde çağırır, böylece `begin_shutdown`
+/// ile terfi arasında yarış kalmaz. Kapanışta duraklatma yuva boşaltır;
+/// burada engellenmezse kuyruk terfi eder, indirme başlar ve kurulum onu keser.
+fn take_queued_for_schedule(store: &mut Store, limit: usize, shutting_down: bool) -> Vec<String> {
+    if shutting_down {
+        return Vec::new();
+    }
+    store.take_queued(limit)
+}
+
 /// Kuyruktaki isleri bos kapasite kadar baslat.
 pub fn schedule(state: &Arc<AppState>) {
     let ids = {
@@ -261,7 +317,7 @@ pub fn schedule(state: &Arc<AppState>) {
         if running >= max {
             return;
         }
-        let ids = store.take_queued(max - running);
+        let ids = take_queued_for_schedule(&mut store, max - running, state.is_shutting_down());
         if ids.is_empty() {
             return;
         }
@@ -1127,6 +1183,69 @@ async fn add_torrent(
     Ok(updated)
 }
 
+/// Kapanış işareti — **saf**, `AppState` yok.
+///
+/// Çalışan **HTTP/HLS/DASH** kayıtlarını `Queued`'ya çeker; `Paused` **yapmaz**.
+/// Gerekçe: bu duraklatma bizim, kullanıcının değil. `Queued` işaretlenince
+/// açılışta `resume_pending()` onları kendiliğinden yeniden başlatır (eskiden
+/// `Paused` kalıp sonsuza dek duruyorlardı) ve başarısız kurulumda kuyruğu
+/// yeniden açmak (`cancel_shutdown`) için özel "geri al" mantığı gerekmez.
+///
+/// Segmentler, `downloaded_bytes` ve parça dosyaları **olduğu gibi** kalır;
+/// iptal yok, silme yok. Kullanıcının kendi `Paused` kayıtlarına dokunulmaz.
+///
+/// Torrent'ler dışarıda: motorun kendi `pause`'u gerekir (`pause_all_for_shutdown`).
+/// Döndürdüğü id'ler, işçisi durdurulacak (cancel token) kayıtlardır.
+pub fn pause_for_shutdown(store: &mut Store) -> Vec<String> {
+    let targets: Vec<String> = store
+        .items
+        .iter()
+        .filter(|d| d.kind != Kind::Torrent && d.status == Status::Downloading)
+        .map(|d| d.id.clone())
+        .collect();
+    for id in &targets {
+        if let Some(item) = store.find_mut(id) {
+            item.status = Status::Queued;
+            item.speed_bps = 0;
+        }
+    }
+    targets
+}
+
+/// `cancel_shutdown` sonrası motordan yeniden başlatılacak torrent'ler — **saf**.
+///
+/// Yalnızca **bizim** kapanışta duraklattığımız id'ler (`paused_by_shutdown`)
+/// ve hâlâ `Paused` olan torrent'ler döner. Kullanıcının kendi duraklattığı
+/// torrent bu listede olmadığı için **asla** kendiliğinden başlamaz.
+pub fn restore_after_cancel(store: &Store, paused_by_shutdown: &[String]) -> Vec<String> {
+    paused_by_shutdown
+        .iter()
+        .filter(|id| {
+            store
+                .find(id)
+                .map(|d| d.kind == Kind::Torrent && d.status == Status::Paused)
+                .unwrap_or(false)
+        })
+        .cloned()
+        .collect()
+}
+
+/// Duraklatmanın saf çekirdeği: kaydı `Paused` yapar, **parçalara dokunmaz**.
+///
+/// `pause` ile kapanış yolu aynı kuralı paylaşsın diye ayrı duruyor; saf
+/// olduğu için `AppState` kurmadan test edilebiliyor.
+fn pause_item(store: &mut Store, id: &str) -> Result<(), String> {
+    let item = store.find_mut(id).ok_or("Indirme bulunamadi")?;
+    match item.status {
+        Status::Downloading | Status::Queued => {
+            item.status = Status::Paused;
+            item.speed_bps = 0;
+        }
+        other => return Err(format!("Bu durumda duraklatilamaz: {other:?}")),
+    }
+    Ok(())
+}
+
 pub async fn pause(state: &Arc<AppState>, id: &str) -> Result<(), String> {
     let kind = state.item(id).map(|d| d.kind).ok_or("Indirme bulunamadi")?;
     if kind == Kind::Torrent {
@@ -1141,14 +1260,7 @@ pub async fn pause(state: &Arc<AppState>, id: &str) -> Result<(), String> {
     }
     let token = {
         let mut store = state.store.lock().unwrap();
-        let item = store.find_mut(id).ok_or("Indirme bulunamadi")?;
-        match item.status {
-            Status::Downloading | Status::Queued => {
-                item.status = Status::Paused;
-                item.speed_bps = 0;
-            }
-            other => return Err(format!("Bu durumda duraklatilamaz: {other:?}")),
-        }
+        pause_item(&mut store, id)?;
         let _ = store.save();
         drop(store);
         state.cancel_token(id)
@@ -1158,6 +1270,100 @@ pub async fn pause(state: &Arc<AppState>, id: &str) -> Result<(), String> {
     }
     state.emit_downloads();
     Ok(())
+}
+
+/// Kapanışın **senkron** kısmı: kilidi kur, çalışan HTTP/HLS/DASH indirmelerini
+/// `Queued` işaretle, işçilerini durdur, durumu kaydet.
+///
+/// Pencere kapanışı bunu doğrudan (senkron) çağırır — süreç kapanırken kaydın
+/// bitmiş olması gerekir. Güncelleme yolu `pause_all_for_shutdown` üzerinden
+/// **aynı** fonksiyonu kullanır, yani kayıt adımı atlanamaz.
+///
+/// Torrent'lere dokunmaz: motor yolunda kapanışı `pause_all_for_shutdown`
+/// (güncelleme) veya `torrent.shutdown()` (süreç çıkışı) yapar.
+pub fn pause_http_for_shutdown(state: &Arc<AppState>) {
+    // 1) Önce kilitle. İşaretleme yuva boşaltacağı için `schedule()` kuyruğu
+    //    terfi ettirmemeli; yoksa indirme başlar, kurulum onu keser.
+    state.begin_shutdown();
+
+    let released = {
+        let mut store = state.store.lock().unwrap();
+        let released = pause_for_shutdown(&mut store);
+        if let Err(e) = store.save() {
+            eprintln!("[hydra] durum kaydedilemedi: {e}");
+        }
+        released
+    };
+
+    // 2) Çalışan işçileri durdur: kayıt `Queued` kalır (kullanıcı duraklatması
+    //    değil), işçi sessizce döner (bkz. `run_http` iptal kontrolü) —
+    //    parçalar diskte. Kilit açılınca veya açılışta kuyruk devam eder.
+    for id in &released {
+        if let Some(token) = state.cancel_token(id) {
+            token.cancel();
+        }
+    }
+
+    state.emit_downloads();
+}
+
+/// Güncelleme kurulumundan/kapanıştan önce: çalışan indirmeleri `Queued`
+/// işaretle, durumu kaydet. **İptal değil** — parçalar ve baytlar korunur,
+/// açılışta kaldığı yerden devam eder.
+///
+/// **Torrent motoru burada kapatılmaz.** Kurulum indirmesi başarısız olursa
+/// `cancel_shutdown` kuyruğu ve torrent'leri geri açar; motorun kapanışı yalnız
+/// süreç çıkışında (`lib.rs` → `WindowEvent::Destroyed`) yapılır.
+pub async fn pause_all_for_shutdown(state: &Arc<AppState>) {
+    pause_http_for_shutdown(state);
+
+    let torrents: Vec<String> = {
+        let store = state.store.lock().unwrap();
+        store
+            .items
+            .iter()
+            .filter(|d| d.kind == Kind::Torrent && d.status == Status::Downloading)
+            .map(|d| d.id.clone())
+            .collect()
+    };
+    for id in torrents {
+        if let Err(err) = pause(state, &id).await {
+            eprintln!("[hydra] kapanis oncesi torrent duraklatilamadi ({id}): {err}");
+        } else {
+            // Yalnizca gercekten duraklattiklarimiz: `cancel_shutdown` bunlari
+            // geri baslatir.
+            state.remember_shutdown_torrent(&id);
+        }
+    }
+
+    state.persist();
+    state.emit_downloads();
+}
+
+/// Kapanıştan vazgeç (kurulum indirmesi başarısız oldu / kullanıcı iptal etti).
+///
+/// Sıra: kilidi aç → kapanışın duraklattığı torrent'leri motordan geri başlat →
+/// kuyruğu hareket ettir → kaydet + arayüze duyur. HTTP indirmeleri zaten
+/// `Queued` işaretlendiği için `schedule` onları kendiliğinden başlatır;
+/// kullanıcının kendi `Paused` kayıtlarına dokunulmaz.
+pub async fn cancel_shutdown(state: &Arc<AppState>) {
+    state.clear_shutdown();
+
+    let tracked = state.take_shutdown_torrents();
+    let resume_ids = {
+        let store = state.store.lock().unwrap();
+        restore_after_cancel(&store, &tracked)
+    };
+    for id in resume_ids {
+        if let Err(err) = resume(state, &id).await {
+            eprintln!("[hydra] kapanistan donuste torrent baslatilamadi ({id}): {err}");
+        }
+    }
+
+    state.persist();
+    state.emit_downloads();
+    // En son: kuyruk terfi edebilsin (kilit artik acik).
+    schedule(state);
 }
 
 pub async fn resume(state: &Arc<AppState>, id: &str) -> Result<(), String> {
@@ -1518,6 +1724,216 @@ pub fn start_ticker(state: &Arc<AppState>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::Segment;
+
+    fn sample(id: &str) -> Download {
+        Download {
+            id: id.into(),
+            url: "https://example.com/f.bin".into(),
+            filename: "f.bin".into(),
+            dir: PathBuf::from("C:/ornek/indirilenler"),
+            kind: Kind::Http,
+            status: Status::Queued,
+            total_bytes: Some(8192),
+            downloaded_bytes: 0,
+            segments: Vec::new(),
+            resumable: true,
+            speed_bps: 0,
+            progress: None,
+            error: None,
+            created_at: 0,
+            finished_at: None,
+            connections: 4,
+            referer: None,
+            cookie: None,
+            mime: None,
+            file_path: None,
+            format: None,
+            swarm: None,
+            source: None,
+            torrent_files: None,
+            retry: None,
+        }
+    }
+
+    /// Kapanış yolu: çalışanlar `Queued`'ya çekilir; baytlar, segmentler ve
+    /// kuyruk korunur; kullanıcının kendi `Paused` kaydına dokunulmaz.
+    ///
+    /// `Paused` **değil** `Queued` işaretlenir: bu duraklatma bizim, kullanıcının
+    /// değil. Açılışta `resume_pending()` yalnız `Queued`'ları başlatır; `Paused`
+    /// bırakmak "kaldığı yerden devam eder" sözünü yalan yapardı (HTTP indirmeleri
+    /// sonsuza dek dururdu) ve başarısız kurulumda kurtarma için özel mantık
+    /// gerekirdi.
+    ///
+    /// Test **sevk edilen fonksiyonu** (`pause_for_shutdown`) çağırır ve
+    /// `Store`'u doğrudan okur: `Store::load` yolu `Downloading → Queued`
+    /// normalize ettiği için yanlışlıkla başlatılmış bir kaydı gizleyebilirdi.
+    #[test]
+    fn kapanis_icin_duraklatma_calisanlari_durdurur() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::load(dir.path());
+
+        let mut running = sample("a");
+        running.status = Status::Downloading;
+        running.downloaded_bytes = 4096;
+        running.speed_bps = 1_000;
+        running.segments = vec![
+            Segment {
+                index: 0,
+                start: 0,
+                end: Some(4095),
+                done: 4096,
+            },
+            Segment {
+                index: 1,
+                start: 4096,
+                end: Some(8191),
+                done: 0,
+            },
+        ];
+        let mut queued = sample("b");
+        queued.status = Status::Queued;
+        let mut cancelled = sample("c");
+        cancelled.status = Status::Cancelled;
+        let mut torrent = sample("d");
+        torrent.kind = Kind::Torrent;
+        torrent.status = Status::Downloading;
+        // Kullanicinin kendi duraklattigi kayit: bizim isaretimiz degil.
+        let mut user_paused = sample("e");
+        user_paused.status = Status::Paused;
+        store.items = vec![running, queued, cancelled, torrent, user_paused];
+        store.save().unwrap();
+
+        let segment_before = store.items[0].segments.clone();
+        let released = pause_for_shutdown(&mut store);
+
+        assert_eq!(
+            released,
+            vec!["a".to_string()],
+            "yalniz calisan HTTP hedefi"
+        );
+        assert_eq!(
+            store.items[0].status,
+            Status::Queued,
+            "kapanis isareti Queued (Paused degil)"
+        );
+        assert_eq!(store.items[0].downloaded_bytes, 4096, "baytlar korundu");
+        assert_eq!(store.items[0].speed_bps, 0, "hiz sifirlandi");
+        assert_eq!(
+            store.items[0].segments, segment_before,
+            "segment plani/ilerlemesi bozulmadi"
+        );
+        assert_eq!(
+            store.items[1].status,
+            Status::Queued,
+            "kuyruktakine dokunulmadi"
+        );
+        assert_eq!(
+            store.items[2].status,
+            Status::Cancelled,
+            "iptal edilmis kayit geri diriltilmedi"
+        );
+        assert_eq!(
+            store.items[3].status,
+            Status::Downloading,
+            "torrent motor yoluna birakildi (burada duraklatilmaz)"
+        );
+        assert_eq!(
+            store.items[4].status,
+            Status::Paused,
+            "kullanicinin duraklattigi kayit duraklatilmis kalir"
+        );
+        // Iptal sayisi degismedi: kapanis yolu hicbir kaydi iptal etmez
+        // (parcalar silinmesin).
+        assert_eq!(
+            store
+                .items
+                .iter()
+                .filter(|d| d.status == Status::Cancelled)
+                .count(),
+            1,
+            "yalniz onceden iptal edilmis kayit iptal"
+        );
+
+        // Kapanistan sonraki acilisin gordugu durum: kalicilik da dogru.
+        store.save().unwrap();
+        let reloaded = Store::load(dir.path());
+        assert_eq!(reloaded.items[0].status, Status::Queued);
+        assert_eq!(reloaded.items[0].downloaded_bytes, 4096);
+        assert_eq!(reloaded.items[0].segments[0].done, 4096);
+        assert_eq!(
+            reloaded.items[4].status,
+            Status::Paused,
+            "kullanici kaydi korunur"
+        );
+    }
+
+    /// `cancel_shutdown`'ın saf parçası: yalnız **bizim** duraklattığımız
+    /// torrent'ler geri başlatılır; kullanıcının kendi `Paused` torrent'i asla.
+    #[test]
+    fn kapanistan_donuste_yalniz_bizim_torrentler_baslar() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::load(dir.path());
+        let mut ours = sample("bizim");
+        ours.kind = Kind::Torrent;
+        ours.status = Status::Paused;
+        let mut theirs = sample("kullanici");
+        theirs.kind = Kind::Torrent;
+        theirs.status = Status::Paused;
+        let mut already_running = sample("calisan");
+        already_running.kind = Kind::Torrent;
+        already_running.status = Status::Downloading;
+        store.items = vec![ours, theirs, already_running];
+
+        let resume_ids = restore_after_cancel(
+            &store,
+            &[
+                "bizim".to_string(),
+                "calisan".to_string(),
+                "yok".to_string(),
+            ],
+        );
+        assert_eq!(
+            resume_ids,
+            vec!["bizim".to_string()],
+            "yalniz bizim torrent"
+        );
+        assert_eq!(
+            store.find("kullanici").unwrap().status,
+            Status::Paused,
+            "kullanici torrent'i kendiliginden baslamaz"
+        );
+    }
+
+    /// Kapanış kilidi açıkken kuyruk terfi etmez — düzeltilen hata buydu:
+    /// duraklatma yuva bosaltiyor, `schedule` yeni is baslatiyor, kurulum
+    /// onu kesiyordu. `schedule` `AppState` (Tauri `AppHandle`) istedigi icin
+    /// test, `schedule`'in cagirdigi **ayni** yardimciyi dogrular.
+    #[test]
+    fn kapanis_kilidi_kuyrugu_terfi_ettirmez() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::load(dir.path());
+        let mut queued = sample("b");
+        queued.status = Status::Queued;
+        store.items = vec![queued];
+
+        assert!(
+            take_queued_for_schedule(&mut store, 4, true).is_empty(),
+            "kapanista kuyruktan is secilmedi"
+        );
+        assert_eq!(
+            store.items[0].status,
+            Status::Queued,
+            "kuyruk yerinde kaldi"
+        );
+        assert_eq!(store.running_count(), 0, "calisan is yok");
+
+        // Kilit yokken ayni yardimci normal calisir (kapi hep kapali degil).
+        assert_eq!(
+            take_queued_for_schedule(&mut store, 4, false),
+            vec!["b".to_string()]
+        );
+    }
 
     #[test]
     fn bildirim_govdesi_dosya_adini_tasir() {

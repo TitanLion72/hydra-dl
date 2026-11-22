@@ -100,6 +100,24 @@ pub async fn pause_download(state: St<'_>, id: String) -> Result<(), String> {
     manager::pause(state.inner(), &id).await
 }
 
+/// Güncelleme kurulumundan önce temiz kapanış: çalışan indirmeleri `Queued`
+/// işaretle ve durumu kaydet. Torrent motoru **kapatılmaz** (indirme başarısız
+/// olursa `cancel_shutdown` her şeyi geri açar); motor yalnız süreç çıkışında
+/// kapanır.
+#[tauri::command]
+pub async fn pause_all_for_shutdown(state: St<'_>) -> Result<(), String> {
+    manager::pause_all_for_shutdown(state.inner()).await;
+    Ok(())
+}
+
+/// Kurulumdan vazgeçildi: kapanış kilidini aç, kapanışın duraklattığı
+/// torrent'leri yeniden başlat, kuyruğu hareket ettir.
+#[tauri::command]
+pub async fn cancel_shutdown(state: St<'_>) -> Result<(), String> {
+    manager::cancel_shutdown(state.inner()).await;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn resume_download(state: St<'_>, id: String) -> Result<(), String> {
     manager::resume(state.inner(), &id).await

@@ -18,6 +18,26 @@ use std::sync::Arc;
 use store::Store;
 use tauri::{Manager, WindowEvent};
 
+/// Kapanış/kurulum öncesi ortak temizlik — **senkron** kısım.
+///
+/// Çalışan indirmeleri duraklatır (iptal değil — parçalar diskte kalır) ve
+/// durumu **çağıran thread'de** kaydeder. Süreç kapanırken kaydın bitmiş
+/// olması gerekir; bu yüzden `persist()` burada, async kısımdan önce koşar.
+/// Güncelleme komutu da aynı fonksiyonu (`manager::pause_http_for_shutdown`)
+/// kullanır → kayıt adımı atlanamaz.
+pub fn shutdown_persist(state: &Arc<AppState>) {
+    manager::pause_http_for_shutdown(state);
+    state.persist();
+}
+
+/// Kapanışın **async** kalanı: yalnız süreç çıkışında torrent oturumunu kapatır.
+///
+/// Güncelleme kurulumu bu kısmı **çağırmaz**: indirme başarısız olursa
+/// torrent'lerin çalışmaya devam edebilmesi gerekir.
+pub async fn shutdown_finish(state: Arc<AppState>) {
+    state.torrent.shutdown().await;
+}
+
 pub fn run() {
     // rustls saglayicisini en basta kur: TLS kullanimi herhangi bir noktadan
     // baslarsa (web sunucusu acilista) varsayilan hazir olsun. Kurulmazsa rustls
@@ -27,6 +47,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
@@ -93,14 +114,15 @@ pub fn run() {
                     let _ = window.hide();
                 }
             }
-            // Pencere kapanirken torrent oturumunu duzgun kapat (DHT/peer'lar).
+            // Pencere kapanirken: indirmeleri duraklat + durumu **senkron**
+            // kaydet (surec kapaniyor, kayit bitmis olmali), sonra torrent
+            // oturumunu arka planda kapat (DHT/peer'lar). Guncelleme yolu da
+            // ayni duraklat+kaydet fonksiyonunu kullanir.
             if matches!(event, WindowEvent::Destroyed) {
                 if let Some(state) = window.try_state::<Arc<AppState>>() {
                     let state = state.inner().clone();
-                    state.persist();
-                    tauri::async_runtime::spawn(async move {
-                        state.torrent.shutdown().await;
-                    });
+                    shutdown_persist(&state);
+                    tauri::async_runtime::spawn(shutdown_finish(state));
                 }
             }
         })
@@ -111,6 +133,8 @@ pub fn run() {
             commands::set_torrent_files,
             commands::test_notification,
             commands::pause_download,
+            commands::pause_all_for_shutdown,
+            commands::cancel_shutdown,
             commands::resume_download,
             commands::cancel_download,
             commands::remove_download,

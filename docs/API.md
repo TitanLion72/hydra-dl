@@ -122,6 +122,7 @@ bir kez daha baştan denenir (parçalar diskte kalır).
 | `notifyOnFinish` | İndirme bitince/hata olunca işletim sistemi bildirimi (varsayılan `true`) |
 | `proxyUrl` | HTTP/SOCKS5 proxy: `http://host:port`, `https://…`, `socks5://…`, `socks5h://…`. Boş = proxy yok. Geçersiz değer kaydedilirken temizlenir |
 | `language` | Arayüz dili: `"tr"` (varsayılan) veya `"en"`. Tanınmayan değer `tr`'ye indirgenir. Eski ayar dosyalarında alan yoksa `tr` kabul edilir |
+| `updateCheck` | Açılışta otomatik güncelleme kontrolü (varsayılan `true`). Eski ayar dosyalarında alan yoksa `true` kabul edilir |
 
 Windows'ta paketsiz uygulama bildirimi için AUMID kaydı gerekir; Hydra bunu ilk
 bildirimde HKCU\\Software\\Classes\\AppUserModelId\\com.hydradl.app altına yazar.

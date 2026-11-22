@@ -7,6 +7,14 @@
   </head>
   <body>
     <div class="app">
+      <div id="update-strip" class="update-strip" hidden>
+        <span id="update-text">Hydra DL hazır</span>
+        <div class="update-actions">
+          <button type="button" class="primary mini" id="update-install">Güncelle</button>
+          <button type="button" class="ghost mini" id="update-later">Sonra</button>
+        </div>
+      </div>
+
       <header class="topbar">
         <div class="brand">
           <div class="mark" aria-hidden="true">
@@ -152,6 +160,11 @@
             <input id="set-notify" type="checkbox" />
             <span class="track"></span>
             <span>Bitince/hata olunca bildirim göster</span>
+          </label>
+          <label class="switch">
+            <input id="set-update-check" type="checkbox" />
+            <span class="track"></span>
+            <span>Güncellemeleri otomatik kontrol et</span>
           </label>
           <button class="ghost small" id="notify-test" type="button">Test bildirimi</button>
           <label class="field">

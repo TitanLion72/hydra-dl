@@ -111,6 +111,8 @@ export interface Settings {
   proxyUrl: string;
   /** Arayüz dili: "tr" | "en". */
   language: string;
+  /** Açılışta otomatik güncelleme kontrolü. */
+  updateCheck: boolean;
 }
 
 export interface CaptureStatus {
@@ -227,6 +229,10 @@ export const api = {
   setTorrentFiles: (id: string, files: number[]) =>
     invoke<void>("set_torrent_files", { id, files }),
   pause: (id: string) => invoke<void>("pause_download", { id }),
+  /** Kurulumdan önce: çalışanları kuyruğa al + durumu kaydet (iptal değil). */
+  pauseAllForShutdown: () => invoke<void>("pause_all_for_shutdown"),
+  /** Kurulumdan vazgeçildi: kapanış kilidini aç, kuyruğu ve torrent'leri geri aç. */
+  cancelShutdown: () => invoke<void>("cancel_shutdown"),
   resume: (id: string) => invoke<void>("resume_download", { id }),
   cancel: (id: string) => invoke<void>("cancel_download", { id }),
   remove: (id: string, deleteFile = false) =>

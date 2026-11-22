@@ -81,6 +81,28 @@ Bu kurallar `AGENTS.md`'de bağlayıcıdır; ihlal eden PR birleştirilmez.
 | `node tools/security-check.mjs` | Repoda sır/kişisel yol taraması + yol koruma regresyonu |
 Kırmızı kontrol **birleştirmeyi engeller**. "Sonra düzeltirim" yok.
 
+## Güncelleme tedarik zinciri
+
+Otomatik güncelleme, makinede **kod çalıştıran** bir kanal açar; kurallar pazarlıksız.
+
+| Kural | Ayrıntı |
+|---|---|
+| **İmza önce** | Hiçbir ikili, `plugins.updater.pubkey` ile imzası doğrulanmadan çalıştırılmaz. Doğrulama `tauri-plugin-updater` içindedir; biz yalnız doğrulama sonrası kurulumu tetikleriz. |
+| **Kullanıcı onayı** | Onaysız indirme/kurulum yok. Şerit çıkar, kullanıcı "Güncelle" demeden hiçbir şey olmaz. |
+| **Özel anahtar repoda değil** | `%USERPROFILE%\.tauri\hydra-dl-updater.key`, parola korumalı. Repoya, CI'ya, `%TEMP%`'e girmez; yalnız build sırasında `TAURI_SIGNING_PRIVATE_KEY` (içerik) + `..._PASSWORD` olarak okunur. |
+| **Yedek zorunlu** | Anahtar kaybolursa eski istemciler yeni imzayı doğrulayamaz; o sürüm elle dağıtılır ve zincir kopar. |
+| **Sürümler sabit** | `tauri-plugin-updater` tam sürümle çakılır (`"2"` gibi gevşek aralık yok); `cargo audit` kapsamındadır. |
+| **Endpoint HTTPS** | `github.com` releases; manifest (`latest.json`) imza taşır. |
+
+**Geri alma (rollback):** bozuk sürüm yayınlandıysa release'i **draft**'a çek (updater 404
+görür, kimse indirmez) ya da düzeltilmiş sürümü **daha yüksek** numarayla yayınla —
+updater yalnız yukarı gider. Kullanıcı tarafında ayarlar `downloads.json`'da olduğu için
+önceki NSIS elle kurulabilir.
+
+**Sessiz başarısız kurulum:** kurulum tamamlanmazsa sonraki açılışta kırmızı şerit
+"güncelleme tamamlanmadı" gösterir; işaret `localStorage`'da tutulur, başarılı yükseltmede
+temizlenir.
+
 ## CodeQL bulguları — kabul edilen riskler
 
 CodeQL `security-and-quality` ile taranıyor. Aşağıdaki bulgular **tasarım gereği** kabul

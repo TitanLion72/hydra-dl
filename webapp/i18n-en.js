@@ -242,6 +242,7 @@ export const EN = {
   "dinleme adresi": "listen address",
   "torrent": "torrent",
   "bildirimler": "notifications",
+  "güncelleme kontrolü": "update check",
   "proxy": "proxy",
   "hız sınırı": "speed limit",
   "HTTPS": "HTTPS",
@@ -325,6 +326,9 @@ export const EN = {
   "Bağlantı sayısı": "Connection count",
   "Hız limiti (KB/sn)": "Speed limit (KB/s)",
   "Bildirim göster": "Show notifications",
+  "Güncellemeleri otomatik kontrol et": "Check for updates automatically",
+  "Açılışta yeni sürüm var mı diye sessizce bakar. Kapalıysa hiçbir ağ isteği gitmez.":
+    "Silently checks for a new version at startup. When off, no network request is made.",
   "Yarım kalanları sürdür": "Resume unfinished",
   "İndirme klasörü": "Download folder",
   "Erişim anahtarı": "Access token",
@@ -444,5 +448,13 @@ export const EN = {
   "Her satıra bir bağlantı\nhttps://ornek.com/a.zip\nmagnet:?xt=urn:btih:…":
     "One link per line\nhttps://example.com/a.zip\nmagnet:?xt=urn:btih:…",
 
+  // --- Güncelleme şeridi --------------------------------------------------
+  "Hydra DL hazır": "Hydra DL is ready",
+  "Hydra DL %1 hazır": "Hydra DL %1 is ready",
+  "Sonra": "Later",
+  "Kuruluyor, uygulama yeniden açılacak": "Installing, the app will restart",
+  "Güncelleme indirilemedi — internet bağlantını kontrol et":
+    "Could not download the update — check your internet connection",
+  "Güncelleme tamamlanmadı — yeniden dene": "Update did not complete — try again",
 
 };

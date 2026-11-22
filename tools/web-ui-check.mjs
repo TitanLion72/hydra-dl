@@ -93,6 +93,7 @@ async function mockApi(
   const torrentUploads = [];
   const latestChecks = [];
   const importCalls = [];
+  const savedSettings = [];
   page.__calls = {
     torrentSources,
     setTorrentFilesCalls,
@@ -100,6 +101,7 @@ async function mockApi(
     torrentUploads,
     latestChecks,
     importCalls,
+    savedSettings,
   };
   await page.route("**/events", (route) =>
     route.fulfill({ status: 200, contentType: "text/event-stream", body: ": mock\n\n" }),
@@ -242,8 +244,14 @@ async function mockApi(
       }),
     });
   });
-  await page.route("**/settings", (route) =>
-    route.fulfill({
+  await page.route("**/settings", async (route) => {
+    if (route.request().method() === "PUT") {
+      const body = JSON.parse(route.request().postData() || "{}");
+      savedSettings.push(body);
+      await route.fulfill({ ...JSON_OK, body: JSON.stringify(body) });
+      return;
+    }
+    await route.fulfill({
       ...JSON_OK,
       body: JSON.stringify({
         downloadDir: "C:\\Users\\test\\Downloads",
@@ -255,13 +263,14 @@ async function mockApi(
         ytdlpPath: "",
         autoResume: true,
         notifyOnFinish: true,
+        updateCheck: true,
         proxyUrl: "",
         webToken: "",
         webTls: false,
         language: "tr",
       }),
-    }),
-  );
+    });
+  });
   await page.route("**/ytdlp/install", async (route) => {
     if (installError) {
       await route.fulfill({
@@ -329,6 +338,15 @@ try {
     check(await page.locator("#installYtdlp").isHidden(), "kurulu iken düğme gizli");
     check(await page.locator("#ytdlpHelp").isHidden(), "kurulu iken yardım metni gizli");
     check(await page.locator("#setNotify").isChecked(), "bildirim anahtarı açık geliyor");
+    check(await page.locator("#setUpdateCheck").isChecked(), "telefonda güncelleme kontrolü açık geliyor");
+    await page.locator("#setUpdateCheck").uncheck();
+    await page.click("#settingsSave");
+    let savedSettingsBody = null;
+    for (let i = 0; i < 50 && !savedSettingsBody; i += 1) {
+      await page.waitForTimeout(100);
+      savedSettingsBody = page.__calls?.savedSettings?.[0] ?? null;
+    }
+    check(savedSettingsBody?.updateCheck === false, "kaydetme güncelleme kontrolünü kapalı gönderdi");
     check((await page.locator("#setProxy").inputValue()) === "", "proxy alanı boş geliyor");
 
     // Dil: TR varsayılan, EN'e geçince metinler çevrilir, geri dönünce Türkçe.

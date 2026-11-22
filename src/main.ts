@@ -21,6 +21,14 @@ import {
 import { MAX_LINKS, parseLinkList } from "./links";
 import { localizeDom, normalizeLanguage, setLanguage, t, tt } from "./i18n";
 import {
+  checkForUpdate,
+  installUpdate,
+  reportPendingFailure,
+  skipVersion,
+  STARTUP_CHECK_DELAY_MS,
+  type UpdaterHooks,
+} from "./updater";
+import {
   buildLayout,
   clampScroll,
   visibleRange,
@@ -1447,6 +1455,7 @@ const setConnections = $<HTMLInputElement>("#set-connections");
 const setSpeed = $<HTMLInputElement>("#set-speed");
 const setAutoResume = $<HTMLInputElement>("#set-autoresume");
 const setNotify = $<HTMLInputElement>("#set-notify");
+const setUpdateCheck = $<HTMLInputElement>("#set-update-check");
 const setProxy = $<HTMLInputElement>("#set-proxy");
 const setCapture = $<HTMLInputElement>("#set-capture");
 const setCapturePort = $<HTMLInputElement>("#set-capture-port");
@@ -1478,6 +1487,7 @@ function bindSettingsForm(source: Settings, appInfo: AppInfo | null) {
   setSpeed.value = String(source.speedLimitKbps);
   setAutoResume.checked = source.autoResume;
   setNotify.checked = source.notifyOnFinish;
+  setUpdateCheck.checked = source.updateCheck !== false;
   setProxy.value = source.proxyUrl ?? "";
   setCapture.checked = source.captureEnabled;
   setCapturePort.value = String(source.capturePort);
@@ -1564,6 +1574,7 @@ async function saveSettings() {
     speedLimitKbps: clampNumber(setSpeed.value, 0, 10_000_000, 0),
     autoResume: setAutoResume.checked,
     notifyOnFinish: setNotify.checked,
+    updateCheck: setUpdateCheck.checked,
     proxyUrl: setProxy.value.trim(),
     captureEnabled: setCapture.checked,
     capturePort: clampNumber(setCapturePort.value, 1024, 65535, 6712),
@@ -1824,6 +1835,7 @@ const SETTING_LABELS: Record<string, string> = {
   webTls: "HTTPS",
   torrentEnabled: "torrent",
   notifyOnFinish: "bildirimler",
+  updateCheck: "güncelleme kontrolü",
   proxyUrl: "proxy",
   language: "dil",
 };
@@ -2013,6 +2025,76 @@ window.addEventListener("keydown", (event) => {
 });
 
 // ---------------------------------------------------------------------------
+// Güncelleme şeridi
+// ---------------------------------------------------------------------------
+
+const updateStrip = $<HTMLElement>("#update-strip");
+const updateText = $("#update-text");
+const updateInstall = $<HTMLButtonElement>("#update-install");
+const updateLater = $<HTMLButtonElement>("#update-later");
+
+/** Şeritte sunulan sürüm; "Sonra" bunu hatırlar. */
+let offeredVersion: string | null = null;
+
+/** Şeridi göster; hata durumunda kırmızı ton uygular. */
+function showUpdateStrip(message: string, tone: "info" | "error" = "info") {
+  updateText.textContent = message;
+  updateStrip.classList.toggle("error", tone === "error");
+  updateStrip.hidden = false;
+}
+
+function hideUpdateStrip() {
+  updateStrip.hidden = true;
+  updateStrip.classList.remove("error");
+}
+
+/** Şeridin düğmelerini tek yerden ayarla. */
+function setStripButtons(install: string | null, later: boolean) {
+  updateInstall.hidden = install === null;
+  if (install !== null) updateInstall.textContent = install;
+  updateLater.hidden = !later;
+}
+
+const updateHooks: UpdaterHooks = {
+  onAvailable(version) {
+    offeredVersion = version;
+    setStripButtons(t("Güncelle"), true);
+    showUpdateStrip(tt`Hydra DL ${version} hazır`);
+  },
+  onProgress(value) {
+    setStripButtons(null, false);
+    if (value === null) {
+      showUpdateStrip(t("İndiriliyor…"));
+      return;
+    }
+    const percentText = `${value}%`;
+    showUpdateStrip(tt`İndiriliyor… ${percentText}`);
+  },
+  onInstalling() {
+    setStripButtons(null, false);
+    showUpdateStrip(t("Kuruluyor, uygulama yeniden açılacak"));
+  },
+  onError(message) {
+    setStripButtons(t("Yeniden dene"), true);
+    showUpdateStrip(t(message), "error");
+  },
+  onFailedBefore(pendingVersion) {
+    // Yarım kalmış kurulumun sürümü "sunulan" sayılsın: "Sonra"ya basılırsa
+    // `skipVersion` bunu hatırlar ve aynı oturumdaki 3 sn'lik kontrol şeridi
+    // yeniden açmaz.
+    offeredVersion = pendingVersion;
+    setStripButtons(t("Yeniden dene"), true);
+    showUpdateStrip(t("Güncelleme tamamlanmadı — yeniden dene"), "error");
+  },
+};
+
+updateInstall.addEventListener("click", () => void installUpdate());
+updateLater.addEventListener("click", () => {
+  if (offeredVersion) skipVersion(offeredVersion);
+  hideUpdateStrip();
+});
+
+// ---------------------------------------------------------------------------
 // Baslat
 // ---------------------------------------------------------------------------
 
@@ -2039,6 +2121,16 @@ async function bootstrap() {
     // Ayar okunamazsa varsayılan dil (Türkçe) ile devam et.
   }
   applyLanguage(settings?.language ?? "tr");
+  // Açılışta sessiz güncelleme kontrolü (ayar açıksa) + yarım kalan kurulum.
+  if (settings?.updateCheck !== false) {
+    // Arayüz geri çağrısı içinde bir hata fırlarsa bu, yakalanmamış bir
+    // promise reddine dönüşmesin (harness/CI konsolu temiz kalsın).
+    setTimeout(
+      () => void checkForUpdate(updateHooks).catch(() => {}),
+      STARTUP_CHECK_DELAY_MS,
+    );
+  }
+  reportPendingFailure(updateHooks);
   urlInput.focus();
 
   if ("isTauri" in window) {

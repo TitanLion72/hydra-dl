@@ -110,36 +110,28 @@ kurulup** denenmeli — `tauri dev` yetmez (`docs/TRAPS.md`).
    0.3.9 toplu seçim + sanal liste (300 kayıtta DOM'da 14 satır) · 0.4.0 yt-dlp güncelleme
    (`GET /ytdlp/latest`, 30 dk önbellek) · 0.4.1 ayar yedekleme (token varsayılan dışa
    yazılmaz, içe aktarma birleştirir) · 0.5.0 TR/EN yerelleştirme (envanter 293/293).
-4. **Dayanıklılık testleri — 1. dilim (0.6.0) BİTTİ.** Bitiş doğrulaması saf
-   `model::verify_parts`'a çıkarıldı (parça indeksi + boyut, bilinmeyen boyut atlanır) ve
-   manager onu kullanıyor. Yeni testler: kopan bağlantı (sunucu gövdeyi yarıda keser →
-   tekrar dene + kaldığı yerden devam → dosya birebir), eksik parçada hedef dosya
-   **oluşmaz**, birleştirme hatasında `.hydra-tmp` artığı kalmaz (gerçek sızıntıydı,
-   düzeltildi). `cargo test` 164.
-5. **Dayanıklılık — 2. dilim BİTTİ.** Disk dolu / yazma hatası testi (G/Ç hatası yeniden
-   denenmez, panik yok — regresyon kilidi). `tools/soak.mjs`: N eşzamanlı indirme, her
-   dosya farklı desen+boyut, sha256 birebir; 20 dosya / 122 MB / 1.1 sn. Test artıkları
-   artık geçmişte birikmiyor (e2e + soak kendi kayıtlarını siler, kullanıcınınkine
-   dokunmaz). `cargo test` 165.
-6. **HLS/DASH parça dayanıklılığı (0.6.2) — BİTTİ.** `engine/fetch.rs` ortak segment
-   yoluna yeniden deneme eklendi: geçici hata (ağ, gövde kesintisi, 5xx, 429) → 4 denemeye
-   kadar üstel geri çekilme (200/400/800 ms); kalıcı hata (404/403, sınır aşımı) hemen
-   döner. Önceden HLS'te tek parça hatası tüm indirmeyi öldürüyordu. `is_transient` saf +
-   testli; uçtan uca test: 503×2 → parça indi. `cargo test` 167.
-7. **Yeniden başlatma tutarlılığı (0.6.3) — BİTTİ.** Çoklu yarım indirme testi: açılışta
-   yalnız `downloading` olanlar kuyruğa döner, `paused`/`queued` dokunulmaz, indirilen bayt
-   ve segment ilerlemesi korunur, hiçbiri sahte `completed` olmaz. Ayrıca kaydet/yükle
-   döngüsü idempotent (her açılışta durum daha fazla bozulmaz). `cargo test` 169.
-8. **Askıda kalan sunucu (0.6.4–0.6.7) — BİTTİ, canlı doğrulandı.** Sunucu bağlanıp gövde
-   göndermezse indirme **sonsuza kadar asılı kalıyordu** (testte 136 sn). Sınırlar: yanıt
-   başlıkları 30 sn, gövde sessizliği 30 sn, **probe da zaman aşımlı** (probe hiç sınırsızdı;
-   canlı ölçümün uzamasının sebebi). Askıda kalmada **tekrar denenmez** (30 sn sessizlik
-   anlık blip değildir; mesaj: "sunucu yanıt vermedi, tekrar denenmedi"). `tools/hang-check.mjs`
-   gerçek asılı sunucuyu senaryolaştırır. `cargo test` 172.
-9. **v1.0 sırada:** otomatik güncelleme (imzalı manifest, anahtar kullanıcıda) → kod
-   imzalı NSIS.
-10. Küçükler: `ringbuf` muafiyeti `librqbit-utp` 0.4.9+/0.5.2+ çıkınca kalkar; torrent proxy
-    desteği librqbit proxy kazanınca `proxyUrl`'e bağlanır.
+4. **Dayanıklılık 1 (0.6.0) BİTTİ.** `model::verify_parts` saf (parça indeksi + boyut);
+   kopan bağlantı testi (tekrar dene → kaldığı yerden devam → dosya birebir), eksik
+   parçada hedef dosya **oluşmaz**, `.hydra-tmp` artığı kalmaz (gerçek sızıntıydı).
+5. **Dayanıklılık 2–5 (0.6.1–0.6.7) — BİTTİ, canlı doğrulandı.** Disk dolu (yeniden
+   deneme yok, panik yok) · `tools/soak.mjs` (20 dosya/122 MB sha256) · HLS/DASH parça
+   retry (geçici 4 deneme; 404 hemen döner) · yeniden başlatma tutarlılığı (ilerleme
+   korunur, idempotent) · askıda sunucu (yanıt 30 sn + gövde sessizliği 30 sn + **probe
+   da sınırlı**; tekrar denenmez). `tools/hang-check.mjs` canlı kanıt: 136 sn asılma →
+   62 sn'de net hata, kalıntı yok.
+6. **Otomatik güncelleme — kod BİTTİ, yayın kullanıcıda.** `tauri-plugin-updater`
+   2.14.1; `Settings.updateCheck` (varsayılan açık, masaüstü + telefon anahtarı); açılışta
+   sessiz kontrol (3 sn, kapalıysa hiç ağ yok); "v… hazır · Güncelle / Sonra" şeridi
+   (indiriliyor %, kuruluyor, hata + yeniden dene, yarım kurulum kırmızı şerit); "Sonra"
+   sürümü hatırlar; kurulum öncesi temiz kapanış (duraklat → `Queued` → açılışta devam),
+   başarısız kurulumda `cancel_shutdown` kuyruğu geri açar; `tools/release.mjs`
+   (tek komut, `--dry-run` doğrulandı: 3 dosya, exe+`.sig`+`latest.json`, `%20`'li URL).
+   **Kalan (kullanıcı):** `npx tauri signer generate -w %USERPROFILE%\.tauri\hydra-dl-updater.key`
+   → pubkey'i `tauri.conf.json → plugins.updater.pubkey`'e koy → 0.8.0 yayınla + elle kur →
+   0.8.1 yayınla + canlı E2E. `cargo test` 178.
+7. **Sonra:** kod imzalı NSIS; Linux/macOS deneysel.
+8. Küçükler: `ringbuf` muafiyeti `librqbit-utp` 0.4.9+/0.5.2+ çıkınca kalkar; torrent proxy
+   desteği librqbit proxy kazanınca `proxyUrl`'e bağlanır.
 
 ## Oturum kesilirse ilk komut
 

@@ -11,3 +11,4 @@ desktop.ini
 .playwright-mcp/
 tools/ui-harness/artifacts/
 build/
+.superpowers/

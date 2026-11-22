@@ -47,6 +47,9 @@ pub struct Settings {
     /// Arayuz dili: `tr` (varsayilan) veya `en`.
     #[serde(default)]
     pub language: String,
+    /// Acilista yeni surum var mi diye sessizce kontrol et.
+    #[serde(default = "default_true")]
+    pub update_check: bool,
 }
 
 impl Default for Settings {
@@ -71,6 +74,7 @@ impl Default for Settings {
             notify_on_finish: true,
             proxy_url: String::new(),
             language: "tr".into(),
+            update_check: true,
         }
     }
 }
@@ -291,6 +295,10 @@ pub fn verify_download_dir(next: &Settings, previous: &Settings) -> (Settings, V
 
 fn default_version() -> u32 {
     STATE_VERSION
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug)]
@@ -656,6 +664,36 @@ mod tests {
         let store = Store::load(dir.path());
         assert_eq!(store.settings.max_concurrent, 4);
         assert_eq!(store.settings.language, "tr");
+    }
+
+    #[test]
+    fn guncelleme_kontrolu_varsayilan_acik() {
+        assert!(Settings::default().update_check, "varsayilan acik olmali");
+    }
+
+    #[test]
+    fn eski_ayar_dosyasinda_guncelleme_kontrolu_acik() {
+        // `updateCheck` alani olmayan eski downloads.json okunabilmeli.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("downloads.json"),
+            r#"{"version":1,"settings":{"maxConcurrent":4},"items":[]}"#,
+        )
+        .unwrap();
+        let store = Store::load(dir.path());
+        assert!(store.settings.update_check, "eski dosyada varsayilan acik");
+    }
+
+    #[test]
+    fn guncelleme_kontrolu_kapatilip_acilabilir() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::load(dir.path());
+        store.settings.update_check = false;
+        store.save().unwrap();
+        assert!(
+            !Store::load(dir.path()).settings.update_check,
+            "kapali kalici"
+        );
     }
 
     // --- ayarların dışa/içe aktarımı ---------------------------------------
