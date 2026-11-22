@@ -1,7 +1,7 @@
 # AGENTS.md — hydra-dl
 
 Kısa, güncel ve bağlayıcı. Uzun anlatım `docs/`, durum `HANDOFF.md`, yol haritası `PLAN.md`.
-Üst klasör kuralları için `..\AGENTS.md` geçerli (Türkçe yollar, `npm.cmd`, PS 5.1 tuzakları).
+Üst klasör kuralları: `..\AGENTS.md` (Türkçe yollar, `npm.cmd`, PS 5.1 tuzakları).
 
 ## Komutlar
 
@@ -30,9 +30,9 @@ node tools/release.mjs <x.y.z>                        # yayınla (anahtar parola
 node tools/net-capture-check.mjs                      # eklenti ağ yakalama (gerçek tarayıcı)
 ```
 
-**Bitiş tanımı:** `cargo test` + `cargo clippy -D warnings` + `cargo fmt --check` +
-`npm run build` + `npm run test:security` yeşil. Ağ/indirme davranışına dokunduysan
-`tools/e2e.mjs` de koşar. Biri kırmızıysa iş bitmedi.
+**Bitiş tanımı:** `cargo test` + `clippy -D warnings` + `fmt --check` + `npm run build` +
+`test:security` + `test:i18n` + `test:updater` + `ui-harness` yeşil. Ağ/indirme davranışına
+dokunduysan `tools/e2e.mjs` de koşar. Biri kırmızıysa iş bitmedi.
 
 ## Mimari (tek cümlede her dosya)
 
@@ -57,11 +57,12 @@ node tools/net-capture-check.mjs                      # eklenti ağ yakalama (ge
 | `src/i18n.ts` | masaüstü i18n köprüsü → `webapp/i18n.js` |
 | `webapp/i18n.js` | **yerelleştirme motoru (tek kaynak, saf)**: `t`/`tt`, `localizeDom`; `i18n-en.js` sözlük, `i18n.d.ts` tipler |
 | `src/virtual.ts` | **sanal liste matematiği** (saf): satır ofsetleri, görünen pencere, kaydırma kırpma |
+| `src/updater.ts` | güncelleme çalışma zamanı; `updater-logic.ts` saf kararlar (atlanan/bekleyen sürüm) |
 | `webapp/` | telefonda çalışan statik arayüz (derleme yok, SSE) |
-| `webapp/links.js` | **toplu içe aktarma ayrıştırıcısı** (saf): satır/virgül, `<sarmal>`, noktalama, `magnet`, yinelenen eleme, 500 sınırı |
-| `extension/` | Chrome/Edge MV3: panel, avcı modu, **ağdan medya yakalama**; **tek kaynak**, `tools/build-extension.mjs` üretir |
-| `extension/netlog.js` | **medya isteği sınıflandırıcı** (saf): m3u8/mpd/mp4/ses; segment/medya-dışı elenir |
-| `tools/` | e2e, soak, hang-check, UI harness, güvenlik/hijyen denetimleri |
+| `webapp/links.js` | **toplu içe aktarma ayrıştırıcısı** (saf): satır/virgül, `<sarmal>`, `magnet`, yinelenen eleme, 500 sınırı |
+| `extension/` | Chrome/Edge MV3: panel, avcı modu, **ağdan medya yakalama**; `build-extension.mjs` üretir |
+| `extension/netlog.js` | **medya isteği sınıflandırıcı** (saf): m3u8/mpd/mp4/ses; segment elenir |
+| `tools/` | e2e, soak, hang-check, release, UI harness, güvenlik/hijyen denetimleri |
 | `docs/API.md` | **API sözleşmesi — kırıcı değişiklik önce buraya** |
 
 ## Değişmezler (bozulursa indirmeler bozulur)
@@ -92,6 +93,10 @@ node tools/net-capture-check.mjs                      # eklenti ağ yakalama (ge
 14. **Yerelleştirme tek kaynak**: yeni metin ya mevcut Türkçe metni kullanır ya
     `webapp/i18n-en.js`'e anahtar ekler; `audit-i18n` kapsamı zorlar. Varsayılan **Türkçe**,
     dil değişimi sayfa yenilemez (SSE kopmasın).
+15. **Güncelleme**: imza `pubkey` ile doğrulanmadan hiçbir ikili çalıştırılmaz; özel anahtar
+    repoya/CI'ya girmez; onaysız kurulum yok; kurulum öncesi kapanış indirmeleri `Queued`
+    bırakır (kullanıcının `Paused`'ına dokunmaz); başarısız kurulum `cancel_shutdown` ile
+    kuyruğu geri açar.
 
 ## Güvenlik değişmezleri (ihlal = merge yok)
 
@@ -101,7 +106,7 @@ Açık kaynak ve **LAN'a açılan HTTP sunucusu**: aşağıdakiler pazarlık kon
 1. **Varsayılan reddet.** Yeni HTTP yolu **otomatik** token korumasına girer (`needs_token`).
    Serbest bırakma yalnız `/health` + gerçek statik dosya için, açıkça. "İzinli prefix
    listesi" **yasak** — bir kez `/torrent/files` ve `/notify/test` bu yüzden korumasız
-   kaldı. Yeni yol eklerken `token_varsayilan_olarak_her_yolu_korur` testine ekle.
+   kaldı. Yeni yolu `token_varsayilan_olarak_her_yolu_korur` testine ekle.
 2. **Kullanıcı girdisinden dosya yolu kurma.** `Path::join` yetmez (Windows'ta `C:/…` kökü
    ezer). Her yerde `resolve_static_path` deseni: `..`, `\`, sürücü öneki, UNC reddedilir +
    `canonicalize` ile kök altı doğrulanır. Testsiz kabul edilmez.
@@ -120,29 +125,27 @@ Açık kaynak ve **LAN'a açılan HTTP sunucusu**: aşağıdakiler pazarlık kon
 
 - **Commit/push yalnız kayda değer gelişmede.** Çalışan, doğrulanmış bir dilim bitince
   tek anlamlı commit.
-- **Proje dizininden çıkma.** Komutlar `hydra-dl/` içinde; `..\` altındaki diğer projelere
-  dokunma, onları commit etme.
+- **Proje dizininden çıkma.** Komutlar `hydra-dl/` içinde; `..\` altındaki projelere dokunma.
 - **Workspace şişmesin.** `target/`, `node_modules/`, `dist/`, loglar, ekran görüntüleri
   repoya girmez. Geçici çıktı `%TEMP%` altına; `git status` temiz okunmalı.
 - **AGENTS/PLAN/HANDOFF güncel ve kısa** (150 satırı geçmesin; uzun kısım `docs/`a).
   Yeni oturum → önce `HANDOFF.md` oku; bitince 10 satır yaz.
-- **Lisans AGPL-3.0-or-later.** "Ticari kullanılamaz" yazma; ticari kullanım serbest,
-  kapalı dağıtım yasak.
+- **Lisans AGPL-3.0-or-later.** Ticari kullanım serbest, kapalı dağıtım yasak.
 - **Yasal sınır**: DRM kırma, ödeme duvarı/reklam atlatma, kaynak gizleme yok.
 - **Arayüz Türkçe, kod İngilizce.** Kullanıcıya görünen her metin Türkçe ve doğru yazım.
 
 ## Tuzaklar (özet — ayrıntı `docs/TRAPS.md`)
 
 - `npm.ps1` engelli → `npm.cmd`. `.ps1` ASCII; UTF-8 kaynak `write`/`edit` ile.
-- Disk dolunca derleme garip düşer (`failed to build archive`, `no space on device`);
-  `hygiene --clean` + `cargo clean`. Sunucu kesintisi sonrası bozuk PDB/incremental
-  görülebilir → `target\debug\deps\hydra_dl-*` ve `target\debug\incremental` sil.
+- Disk dolu → garip derleme hataları; `hygiene --clean` + `cargo clean`. Sunucu kesintisi
+  sonrası bozuk PDB/incremental → `target\debug\deps\hydra_dl-*` + `incremental` sil.
 - `setup()` ana thread'de: orada `tokio::spawn` **yasak** → süreç sessizce kapanır.
-- `panic = "abort"`: panic tüm süreci öldürür; yeni bağımlılık eklerken stderr'i yakala.
+- `panic = "abort"`: panic tüm süreci öldürür; yeni bağımlılıkta stderr'i yakala.
 - Vite 1420 `strictPort`; yakalama 6712 (loopback), web 6790 (LAN).
 - Paketlenen `webapp/` ayrı test edilmeli; `tauri dev` yeşilken NSIS bozuk olabilir.
 - Eklenti `HX.api.` kullanır (`compat.js` ilk yüklenir); `chrome.*` callback ekleme.
-- `build/extensions/*` üretilen çıktı; kaynağı `extension/`.
+- `build/extensions/*` üretilen çıktı; kaynağı `extension/`. Windows'ta `.cmd` için
+  `spawn(..., { shell: true })` şart (`npm.cmd`, EINVAL).
 
 ## Yeni özellik akışı
 
