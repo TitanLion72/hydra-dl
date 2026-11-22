@@ -25,6 +25,8 @@ node tools/test-i18n.mjs                              # i18n motoru + envanter t
 node tools/audit-i18n.mjs                             # eksik/tekrar çeviri denetimi
 node tools/soak.mjs --capture-port 6712 --count 10    # eşzamanlı indirme (uygulama açıkken)
 node tools/hang-check.mjs                             # askıda sunucu → zaman aşımı (uygulama açıkken)
+node tools/release.mjs <x.y.z> --dry-run              # yayın planı (hiçbir şeyi değiştirmez)
+node tools/release.mjs <x.y.z>                        # yayınla (anahtar parolası sorulur)
 node tools/net-capture-check.mjs                      # eklenti ağ yakalama (gerçek tarayıcı)
 ```
 
