@@ -327,6 +327,10 @@ export const EN = {
   "Hız limiti (KB/sn)": "Speed limit (KB/s)",
   "Bildirim göster": "Show notifications",
   "Güncellemeleri otomatik kontrol et": "Check for updates automatically",
+  "Panodaki bağlantıyı otomatik yakala": "Grab links from the clipboard automatically",
+  "pano izleme": "clipboard watch",
+  "Masaüstü uygulamasında bir bağlantı kopyaladığında adres alanı kendiliğinden dolar. Varsayılan kapalı.":
+    "In the desktop app, the address field fills itself when you copy a link. Off by default.",
   "Açılışta yeni sürüm var mı diye sessizce bakar. Kapalıysa hiçbir ağ isteği gitmez.":
     "Silently checks for a new version at startup. When off, no network request is made.",
   "Yarım kalanları sürdür": "Resume unfinished",

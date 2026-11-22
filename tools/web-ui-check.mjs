@@ -264,6 +264,7 @@ async function mockApi(
         autoResume: true,
         notifyOnFinish: true,
         updateCheck: true,
+        clipboardWatch: false,
         proxyUrl: "",
         webToken: "",
         webTls: false,

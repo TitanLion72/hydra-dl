@@ -50,6 +50,9 @@ pub struct Settings {
     /// Acilista yeni surum var mi diye sessizce kontrol et.
     #[serde(default = "default_true")]
     pub update_check: bool,
+    /// Panodaki baglanti kopyalaninca adres alanini doldur. Gizlilik: varsayilan kapali.
+    #[serde(default)]
+    pub clipboard_watch: bool,
 }
 
 impl Default for Settings {
@@ -75,6 +78,7 @@ impl Default for Settings {
             proxy_url: String::new(),
             language: "tr".into(),
             update_check: true,
+            clipboard_watch: false,
         }
     }
 }
@@ -682,6 +686,23 @@ mod tests {
         .unwrap();
         let store = Store::load(dir.path());
         assert!(store.settings.update_check, "eski dosyada varsayilan acik");
+        assert!(
+            !store.settings.clipboard_watch,
+            "pano izleme varsayilan kapali (gizlilik)"
+        );
+    }
+
+    #[test]
+    fn pano_izleme_kalicidir() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::load(dir.path());
+        assert!(!store.settings.clipboard_watch, "varsayilan kapali");
+        store.settings.clipboard_watch = true;
+        store.save().unwrap();
+        assert!(
+            Store::load(dir.path()).settings.clipboard_watch,
+            "acildiginda kalici"
+        );
     }
 
     #[test]

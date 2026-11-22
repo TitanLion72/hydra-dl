@@ -19,6 +19,7 @@ import {
   type YtdlpUpdateCheck,
 } from "./api";
 import { MAX_LINKS, parseLinkList } from "./links";
+import { pickClipboardLink, shouldFillLink } from "./clipboard-watch";
 import { localizeDom, normalizeLanguage, setLanguage, t, tt } from "./i18n";
 import {
   checkForUpdate,
@@ -1456,6 +1457,7 @@ const setSpeed = $<HTMLInputElement>("#set-speed");
 const setAutoResume = $<HTMLInputElement>("#set-autoresume");
 const setNotify = $<HTMLInputElement>("#set-notify");
 const setUpdateCheck = $<HTMLInputElement>("#set-update-check");
+const setClipboardWatch = $<HTMLInputElement>("#set-clipboard-watch");
 const setProxy = $<HTMLInputElement>("#set-proxy");
 const setCapture = $<HTMLInputElement>("#set-capture");
 const setCapturePort = $<HTMLInputElement>("#set-capture-port");
@@ -1488,6 +1490,7 @@ function bindSettingsForm(source: Settings, appInfo: AppInfo | null) {
   setAutoResume.checked = source.autoResume;
   setNotify.checked = source.notifyOnFinish;
   setUpdateCheck.checked = source.updateCheck !== false;
+  setClipboardWatch.checked = Boolean(source.clipboardWatch);
   setProxy.value = source.proxyUrl ?? "";
   setCapture.checked = source.captureEnabled;
   setCapturePort.value = String(source.capturePort);
@@ -1575,6 +1578,7 @@ async function saveSettings() {
     autoResume: setAutoResume.checked,
     notifyOnFinish: setNotify.checked,
     updateCheck: setUpdateCheck.checked,
+    clipboardWatch: setClipboardWatch.checked,
     proxyUrl: setProxy.value.trim(),
     captureEnabled: setCapture.checked,
     capturePort: clampNumber(setCapturePort.value, 1024, 65535, 6712),
@@ -1836,6 +1840,7 @@ const SETTING_LABELS: Record<string, string> = {
   torrentEnabled: "torrent",
   notifyOnFinish: "bildirimler",
   updateCheck: "güncelleme kontrolü",
+  clipboardWatch: "pano izleme",
   proxyUrl: "proxy",
   language: "dil",
 };
@@ -2025,6 +2030,58 @@ window.addEventListener("keydown", (event) => {
 });
 
 // ---------------------------------------------------------------------------
+// Pano izleme
+// ---------------------------------------------------------------------------
+
+/**
+ * Pano izleme: kullanıcı bir bağlantı kopyaladığında adres alanını doldurur.
+ *
+ * Gizlilik: varsayılan **kapalı** (ayar açık değilse hiç pano okunmaz).
+ * Pano yalnız pencere odaktayken okunur — arka planda çalışan bir uygulamanın
+ * kullanıcının kopyaladığı her şeyi görmesi doğru değil.
+ */
+function startClipboardWatch(enabled: boolean) {
+  if (!enabled) return;
+  let lastSeen: string | null = null;
+  let timer: number | null = null;
+
+  const poll = async () => {
+    if (document.hidden) return;
+    // Kullanıcı alana yazıyorsa dokunma: sürpriz metin değişimi en kötü deneyim.
+    if (document.activeElement === urlInput && urlInput.value.trim()) return;
+    let text = "";
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      return;
+    }
+    const picked = pickClipboardLink(text);
+    if (!shouldFillLink(picked, lastSeen, urlInput.value)) return;
+    lastSeen = picked;
+    urlInput.value = picked!;
+    urlInput.focus();
+    urlInput.select();
+  };
+
+  const start = () => {
+    if (timer !== null) return;
+    timer = window.setInterval(() => void poll(), 1500);
+  };
+  const stop = () => {
+    if (timer === null) return;
+    window.clearInterval(timer);
+    timer = null;
+  };
+
+  window.addEventListener("focus", () => {
+    void poll();
+    start();
+  });
+  window.addEventListener("blur", stop);
+  if (!document.hidden) start();
+}
+
+// ---------------------------------------------------------------------------
 // Güncelleme şeridi
 // ---------------------------------------------------------------------------
 
@@ -2131,6 +2188,7 @@ async function bootstrap() {
     );
   }
   reportPendingFailure(updateHooks);
+  startClipboardWatch(settings?.clipboardWatch === true);
   urlInput.focus();
 
   if ("isTauri" in window) {

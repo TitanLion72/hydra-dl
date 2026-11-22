@@ -29,6 +29,7 @@ const SETTINGS = {
   torrentEnabled: true,
   notifyOnFinish: true,
   updateCheck: true,
+  clipboardWatch: false,
   proxyUrl: "",
   language: "tr",
 };

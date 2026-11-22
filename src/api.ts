@@ -113,6 +113,8 @@ export interface Settings {
   language: string;
   /** Açılışta otomatik güncelleme kontrolü. */
   updateCheck: boolean;
+  /** Panodaki bağlantıyı adres alanına otomatik doldur (varsayılan kapalı). */
+  clipboardWatch: boolean;
 }
 
 export interface CaptureStatus {

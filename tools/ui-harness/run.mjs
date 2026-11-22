@@ -461,8 +461,13 @@ export async function check() {
       (await page.locator("#set-update-check").isChecked()) === true,
       "#set-update-check varsayilan acik",
     );
+    check(
+      (await page.locator("#set-clipboard-watch").isChecked()) === false,
+      "#set-clipboard-watch varsayilan kapali",
+    );
     // Masaustu girdisi opacity:0/pointer-events:none; sarmalayan etiket tiklanir.
     await page.locator("label.switch:has(#set-update-check)").click();
+    await page.locator("label.switch:has(#set-clipboard-watch)").click();
     check(
       (await page.locator("#set-update-check").isChecked()) === false,
       "#set-update-check etiketle kapatildi",
@@ -525,6 +530,7 @@ export async function check() {
     check(saved.webEnabled === expected.webEnabled, "kaydetme dogru web ayariyla mock'a gitti");
     check(saved.notifyOnFinish === expected.notifyOnFinish, "kaydetme bildirim ayarini korudu");
     check(saved.updateCheck === false, "kaydetme guncelleme kontrolunu kapali gonderdi");
+    check(saved.clipboardWatch === true, "kaydetme pano izlemeyi acti");
     check(saved.torrentEnabled === expected.torrentEnabled, "kaydetme torrent ayarini korudu");
     await page.waitForSelector("#settings-drawer", { state: "hidden", timeout: 10_000 });
     ok("ayarlar kaydedildikten sonra cekmece kapandi");
