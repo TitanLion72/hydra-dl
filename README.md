@@ -228,9 +228,10 @@ Yerel HTTP sözleşmesi: [`docs/API.md`](docs/API.md).
 
 - Kimlik doğrulamalı / çerez gerektiren indirmeler eklentiyle aktarılabilir (çerez
   `Cookie` başlığı olarak gider); HLS'te de kullanılır.
-- HLS'te **canlı akış** (`#EXT-X-ENDLIST` yok) ve `EXT-X-BYTERANGE` henüz desteklenmez.
-  DASH (`.mpd`) **yerleşik** indirilir (SegmentTemplate/List/Base, BaseURL zinciri); ses ve
-  video ayrı akışlardaysa iki dosya iner, birleştirme (ffmpeg) sende.
+- HLS'te **canlı akış** (`#EXT-X-ENDLIST` yok) ve `EXT-X-BYTERANGE` desteklenir: canlı
+  akışta playlist yoklanır, yeni segmentler geldikçe indirilir (ENDLIST, iptal veya 6 saat
+  sınırına kadar). DASH (`.mpd`) **yerleşik** indirilir (SegmentTemplate/List/Base, BaseURL
+  zinciri); ses ve video ayrı akışlardaysa iki dosya iner, birleştirme (ffmpeg) sende.
 - Yakalama sunucusu yalnız `127.0.0.1` dinler ve CORS'a açıktır; yerel makinedeki herhangi
   bir sayfa indirme ekleyebilir. Güvenilmeyen makinelerde ayarlardan kapatın.
 - Hız limiti kaba bir global bütçedir; bağlantı başına adil paylaşım yapmaz.

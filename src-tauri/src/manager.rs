@@ -992,12 +992,8 @@ pub async fn add(
 
     let (filename, total_bytes, resumable, mime, kind) = if use_hls {
         let probe = crate::engine::hls::probe_playlist(&state.http(), url, headers).await?;
-        if probe.live {
-            return Err(
-                "Bu bir canlı akış (#EXT-X-ENDLIST yok). Canlı yayın kaydı henüz desteklenmiyor."
-                    .into(),
-            );
-        }
+        // Canlı akış desteklenir: indirme, ENDLIST görülene (ya da kullanıcı
+        // iptal edene) kadar playlist'i yoklayıp yeni segmentleri ekler.
         let base = options
             .filename
             .clone()

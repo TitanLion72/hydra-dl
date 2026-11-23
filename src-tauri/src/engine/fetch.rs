@@ -82,6 +82,26 @@ pub(crate) async fn fetch_range(
     with_retry(|| fetch_inner(client, url, headers, Some(range), limit)).await
 }
 
+/// `start` ofsetinden `length` baytlik dilim ister (BYTERANGE icin).
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn fetch_range_end(
+    client: &Client,
+    url: &str,
+    headers: RequestHeaders<'_>,
+    start: u64,
+    length: u64,
+    limit: Option<u64>,
+) -> Result<Vec<u8>, String> {
+    let mut bytes = fetch_range(client, url, headers, (start, Some(length)), limit).await?;
+    // Sunucu fazla bayt dondururse kirp: birlesen dosya bozulmasin.
+    if let Ok(len) = usize::try_from(length) {
+        if bytes.len() > len {
+            bytes.truncate(len);
+        }
+    }
+    Ok(bytes)
+}
+
 async fn fetch_inner(
     client: &Client,
     url: &str,

@@ -1,12 +1,15 @@
 //! HLS (`.m3u8`) indirme — yt-dlp olmadan.
 //!
 //! Kapsam bilinçli olarak dar tutuldu:
-//! - **VOD medya playlist'i** (segment listesi) indirilir; canlı akış desteklenmez.
+//! - **VOD medya playlist'i** (segment listesi) indirilir.
+//! - **Canlı akış** (ENDLIST yok) desteklenir: playlist yoklanır, yeni segmentler
+//!   geldikçe indirilir (ENDLIST / iptal / 6 saat sınırı).
 //! - Master playlist verilirse en yüksek bant genişlikli varyant seçilir.
 //! - `EXT-X-KEY` ile **AES-128** şifre çözme yapılır (standart HLS şifrelemesi).
 //! - `SAMPLE-AES` / FairPlay / Widevine gibi **DRM yöntemleri reddedilir** — bu proje
 //!   DRM kırmaz (bkz. README "Yasal not").
-//! - `EXT-X-BYTERANGE` desteklenmez (nadir; açık hata verilir).
+//! - `EXT-X-BYTERANGE` desteklenir: aynı dosyadan dilimler `Range` ile istenir ve
+//!   offset verilmezse önceki parçanın bitişinden devam edilir.
 //!
 //! Her segment `parts/<id>/seg-00001.part` olarak yazılır. Dosya varsa segment
 //! bitmiş sayılır: duraklatma/devam ve süreç yeniden başlaması bu sayede çalışır.
@@ -36,6 +39,9 @@ pub struct HlsKey {
 pub struct HlsSegment {
     pub url: String,
     pub key: Option<HlsKey>,
+    /// `EXT-X-BYTERANGE:<uzunluk>[@<baslangic>]` — ayni dosyadan bir dilim.
+    /// `(offset, length)`. Yoksa segment dosyanin tamamidir.
+    pub range: Option<(u64, u64)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -169,6 +175,12 @@ pub fn parse_playlist(text: &str, base: &str) -> Result<ParsedPlaylist, String> 
     let mut init: Option<String> = None;
     let mut ended = false;
     let mut pending_duration = false;
+    // `EXT-X-BYTERANGE` bir sonraki segment satirina uygulanir: (acik offset?, uzunluk).
+    let mut pending_range: Option<(Option<u64>, u64)> = None;
+    // Offset verilmemis BYTERANGE onceki parcanin bitisinden devam eder; bu yalniz
+    // ayni dosya icinde anlamlidir, dosya degisince sifirlanir.
+    let mut previous_end: u64 = 0;
+    let mut previous_url: Option<String> = None;
 
     for line in text.lines() {
         let line = line.trim();
@@ -189,8 +201,11 @@ pub fn parse_playlist(text: &str, base: &str) -> Result<ParsedPlaylist, String> 
             }
             continue;
         }
-        if line.starts_with("#EXT-X-BYTERANGE") {
-            return Err("Bu akış EXT-X-BYTERANGE kullanıyor; henüz desteklenmiyor.".into());
+        if let Some(rest) = line.strip_prefix("#EXT-X-BYTERANGE:") {
+            // `<uzunluk>[@<baslangic>]`; baslangic yoksa onceki segmentin
+            // bitisinden devam eder (RFC 8216 §4.3.2.2).
+            pending_range = parse_byterange(rest);
+            continue;
         }
         if line == "#EXT-X-ENDLIST" {
             ended = true;
@@ -211,9 +226,32 @@ pub fn parse_playlist(text: &str, base: &str) -> Result<ParsedPlaylist, String> 
         let Some(url) = resolve(base, line) else {
             continue;
         };
+        // Offset verilmemis BYTERANGE: onceki segmentin bitisinden devam
+        // (yalniz ayni URL icinde; farkli dosyaya gecince bastan).
+        let range = pending_range.take().map(|(offset, length)| {
+            let start = match offset {
+                Some(value) => value,
+                None => {
+                    if previous_url.as_deref() == Some(url.as_str()) {
+                        previous_end
+                    } else {
+                        0
+                    }
+                }
+            };
+            (start, length)
+        });
+        if let Some((offset, length)) = range {
+            previous_end = offset.saturating_add(length);
+            previous_url = Some(url.clone());
+        } else {
+            previous_url = None;
+            previous_end = 0;
+        }
         segments.push(HlsSegment {
             url,
             key: key.clone(),
+            range,
         });
     }
 
@@ -225,6 +263,24 @@ pub fn parse_playlist(text: &str, base: &str) -> Result<ParsedPlaylist, String> 
         init,
         live: !ended,
     }))
+}
+
+/// `"<uzunluk>[@<baslangic>]"` → `(acik offset?, uzunluk)`. Bozuksa `None`.
+fn parse_byterange(text: &str) -> Option<(Option<u64>, u64)> {
+    let raw = text.trim();
+    let (length_text, offset_text) = match raw.split_once('@') {
+        Some((len, offset)) => (len, Some(offset)),
+        None => (raw, None),
+    };
+    let length: u64 = length_text.trim().parse().ok()?;
+    if length == 0 {
+        return None;
+    }
+    let offset = match offset_text {
+        Some(value) => Some(value.trim().parse::<u64>().ok()?),
+        None => None,
+    };
+    Some((offset, length))
 }
 
 /// AES-128-CBC + PKCS7 şifre çözme.
@@ -367,138 +423,165 @@ pub async fn download_playlist(
     let playlist = media.ok_or_else(|| {
         HlsError::Message("Playlist varyantı çözülemedi (iç içe master listesi).".into())
     })?;
-    if playlist.live {
-        return Err(HlsError::Message(
-            "Bu bir canlı akış (#EXT-X-ENDLIST yok); canlı kayıt henüz desteklenmiyor.".into(),
-        ));
-    }
 
-    // Şifreleme anahtarlarını bir kez çek (aynı URI tekrar indirilmesin).
-    let mut keys: std::collections::HashMap<String, Vec<u8>> = std::collections::HashMap::new();
-    for segment in &playlist.segments {
-        let Some(key) = &segment.key else { continue };
-        if keys.contains_key(&key.uri) {
-            continue;
-        }
-        let bytes = fetch_bytes(client, &key.uri, headers, Some(1024))
-            .await
-            .map_err(HlsError::Message)?;
-        if bytes.len() != 16 {
-            return Err(HlsError::Message(format!(
-                "AES anahtarı 16 bayt olmalı, {} geldi",
-                bytes.len()
-            )));
-        }
-        keys.insert(key.uri.clone(), bytes);
-    }
-
-    // fMP4 init parçası (varsa) ilk sıraya yazılır.
-    if let Some(init) = &playlist.init {
-        let target = parts_dir.join("seg-init.part");
-        let bytes = fetch_bytes(client, init, headers, Some(32 * 1024 * 1024))
-            .await
-            .map_err(HlsError::Message)?;
-        tokio::fs::write(&target, &bytes)
-            .await
-            .map_err(|e| HlsError::Message(format!("init yazılamadı: {e}")))?;
-    }
-
-    let jobs: Vec<SegmentJob> = playlist
-        .segments
-        .iter()
-        .enumerate()
-        .map(|(index, segment)| SegmentJob {
-            index,
-            iv: segment
-                .key
-                .as_ref()
-                .and_then(|key| key.iv)
-                .unwrap_or_else(|| iv_from_sequence(index as u64)),
-            segment: segment.clone(),
-        })
-        .collect();
-
-    let total = jobs.len();
-    let done = Arc::new(AtomicU64::new(0));
-    let written = Arc::new(AtomicU64::new(0));
-    let on_progress = Arc::new(on_progress);
-    // Biten segment sayısı için ilerleme: diskteki mevcut dosyalar da sayılır.
-    let already: usize = {
-        let mut count = 0;
-        for job in &jobs {
-            if tokio::fs::metadata(part_path(parts_dir, job.index))
-                .await
-                .map(|m| m.len() > 0)
-                .unwrap_or(false)
-            {
-                count += 1;
+    // Canlı akış: playlist'i yoklayıp yeni segmentleri geldikçe indir.
+    // (`#EXT-X-ENDLIST` görülünce ya da kullanıcı iptal edince durur.)
+    let total = if playlist.live {
+        download_live(
+            client,
+            &playlist_url,
+            headers,
+            parts_dir,
+            cancel,
+            limiter,
+            &on_progress,
+        )
+        .await?
+    } else {
+        // Şifreleme anahtarlarını bir kez çek (aynı URI tekrar indirilmesin).
+        let mut keys: std::collections::HashMap<String, Vec<u8>> = std::collections::HashMap::new();
+        for segment in &playlist.segments {
+            let Some(key) = &segment.key else { continue };
+            if keys.contains_key(&key.uri) {
+                continue;
             }
-        }
-        count
-    };
-    on_progress(already, total, 0);
-    done.store(already as u64, Ordering::Relaxed);
-
-    let outcome = futures_util::stream::iter(jobs.into_iter().map(|job| {
-        let client = client.clone();
-        let parts_dir = parts_dir.to_path_buf();
-        let cancel: &CancelToken = cancel;
-        let limiter: &RateLimiter = limiter;
-        let done = done.clone();
-        let written = written.clone();
-        let on_progress = on_progress.clone();
-        let keys = keys.clone();
-        async move {
-            if cancel.is_cancelled() {
-                return Err(HlsError::Cancelled);
-            }
-            let target = part_path(&parts_dir, job.index);
-            if tokio::fs::metadata(&target)
-                .await
-                .map(|m| m.len() > 0)
-                .unwrap_or(false)
-            {
-                return Ok(());
-            }
-            let raw = fetch_bytes(&client, &job.segment.url, headers, Some(256 * 1024 * 1024))
+            let bytes = fetch_bytes(client, &key.uri, headers, Some(1024))
                 .await
                 .map_err(HlsError::Message)?;
-            limiter.consume(raw.len() as u64).await;
-            let plain = match &job.segment.key {
-                Some(key) => {
-                    let material = keys
-                        .get(&key.uri)
-                        .ok_or_else(|| HlsError::Message("anahtar bulunamadı".to_string()))?;
-                    decrypt_aes128(&raw, material, &job.iv).map_err(HlsError::Message)?
-                }
-                None => raw,
-            };
-            if cancel.is_cancelled() {
-                return Err(HlsError::Cancelled);
+            if bytes.len() != 16 {
+                return Err(HlsError::Message(format!(
+                    "AES anahtarı 16 bayt olmalı, {} geldi",
+                    bytes.len()
+                )));
             }
-            // Yarım dosya "tamam" sayılmasın: önce geçici ada yaz, sonra taşı.
-            let temp = target.with_extension("tmp");
-            tokio::fs::write(&temp, &plain)
-                .await
-                .map_err(|e| HlsError::Message(format!("segment yazılamadı: {e}")))?;
-            tokio::fs::rename(&temp, &target)
-                .await
-                .map_err(|e| HlsError::Message(format!("segment taşınamadı: {e}")))?;
-            let finished = done.fetch_add(1, Ordering::Relaxed) as usize + 1;
-            let so_far =
-                written.fetch_add(plain.len() as u64, Ordering::Relaxed) + plain.len() as u64;
-            on_progress(finished, total, so_far);
-            Ok::<(), HlsError>(())
+            keys.insert(key.uri.clone(), bytes);
         }
-    }))
-    .buffer_unordered(SEGMENT_CONCURRENCY)
-    .collect::<Vec<_>>();
 
-    for result in outcome.await {
-        result?;
-    }
+        // fMP4 init parçası (varsa) ilk sıraya yazılır.
+        if let Some(init) = &playlist.init {
+            let target = parts_dir.join("seg-init.part");
+            let bytes = fetch_bytes(client, init, headers, Some(32 * 1024 * 1024))
+                .await
+                .map_err(HlsError::Message)?;
+            tokio::fs::write(&target, &bytes)
+                .await
+                .map_err(|e| HlsError::Message(format!("init yazılamadı: {e}")))?;
+        }
 
-    // Sıralı birleştirme.
+        let jobs: Vec<SegmentJob> = playlist
+            .segments
+            .iter()
+            .enumerate()
+            .map(|(index, segment)| SegmentJob {
+                index,
+                iv: segment
+                    .key
+                    .as_ref()
+                    .and_then(|key| key.iv)
+                    .unwrap_or_else(|| iv_from_sequence(index as u64)),
+                segment: segment.clone(),
+            })
+            .collect();
+
+        let total = jobs.len();
+        let done = Arc::new(AtomicU64::new(0));
+        let written = Arc::new(AtomicU64::new(0));
+        let on_progress = Arc::new(on_progress);
+        // Biten segment sayısı için ilerleme: diskteki mevcut dosyalar da sayılır.
+        let already: usize = {
+            let mut count = 0;
+            for job in &jobs {
+                if tokio::fs::metadata(part_path(parts_dir, job.index))
+                    .await
+                    .map(|m| m.len() > 0)
+                    .unwrap_or(false)
+                {
+                    count += 1;
+                }
+            }
+            count
+        };
+        on_progress(already, total, 0);
+        done.store(already as u64, Ordering::Relaxed);
+
+        let outcome = futures_util::stream::iter(jobs.into_iter().map(|job| {
+            let client = client.clone();
+            let parts_dir = parts_dir.to_path_buf();
+            let cancel: &CancelToken = cancel;
+            let limiter: &RateLimiter = limiter;
+            let done = done.clone();
+            let written = written.clone();
+            let on_progress = on_progress.clone();
+            let keys = keys.clone();
+            async move {
+                if cancel.is_cancelled() {
+                    return Err(HlsError::Cancelled);
+                }
+                let target = part_path(&parts_dir, job.index);
+                if tokio::fs::metadata(&target)
+                    .await
+                    .map(|m| m.len() > 0)
+                    .unwrap_or(false)
+                {
+                    return Ok(());
+                }
+                // BYTERANGE varsa ayni dosyadan yalniz o dilim istenir.
+                let raw = match job.segment.range {
+                    Some((offset, length)) => crate::engine::fetch::fetch_range_end(
+                        &client,
+                        &job.segment.url,
+                        headers,
+                        offset,
+                        length,
+                        Some(256 * 1024 * 1024),
+                    )
+                    .await
+                    .map_err(HlsError::Message)?,
+                    None => {
+                        fetch_bytes(&client, &job.segment.url, headers, Some(256 * 1024 * 1024))
+                            .await
+                            .map_err(HlsError::Message)?
+                    }
+                };
+                limiter.consume(raw.len() as u64).await;
+                let plain = match &job.segment.key {
+                    Some(key) => {
+                        let material = keys
+                            .get(&key.uri)
+                            .ok_or_else(|| HlsError::Message("anahtar bulunamadı".to_string()))?;
+                        decrypt_aes128(&raw, material, &job.iv).map_err(HlsError::Message)?
+                    }
+                    None => raw,
+                };
+                if cancel.is_cancelled() {
+                    return Err(HlsError::Cancelled);
+                }
+                // Yarım dosya "tamam" sayılmasın: önce geçici ada yaz, sonra taşı.
+                let temp = target.with_extension("tmp");
+                tokio::fs::write(&temp, &plain)
+                    .await
+                    .map_err(|e| HlsError::Message(format!("segment yazılamadı: {e}")))?;
+                tokio::fs::rename(&temp, &target)
+                    .await
+                    .map_err(|e| HlsError::Message(format!("segment taşınamadı: {e}")))?;
+                let finished = done.fetch_add(1, Ordering::Relaxed) as usize + 1;
+                let so_far =
+                    written.fetch_add(plain.len() as u64, Ordering::Relaxed) + plain.len() as u64;
+                on_progress(finished, total, so_far);
+                Ok::<(), HlsError>(())
+            }
+        }))
+        .buffer_unordered(SEGMENT_CONCURRENCY)
+        .collect::<Vec<_>>();
+
+        for result in outcome.await {
+            result?;
+        }
+
+        total
+    };
+
+    // Sıralı birleştirme (VOD ve canlı akış için ortak).
     let mut total_bytes = 0u64;
     let mut file = tokio::fs::File::create(parts_dir.join("hls.part"))
         .await
@@ -530,6 +613,136 @@ pub async fn download_playlist(
     Ok(total_bytes)
 }
 
+/// Tek bir segmenti indirir, sifresini cozer (VOD ve canli akis ortak).
+async fn fetch_segment_plain(
+    client: &Client,
+    segment: &HlsSegment,
+    headers: RequestHeaders<'_>,
+    keys: &std::collections::HashMap<String, Vec<u8>>,
+    index: usize,
+) -> Result<Vec<u8>, HlsError> {
+    let raw = match segment.range {
+        Some((offset, length)) => crate::engine::fetch::fetch_range_end(
+            client,
+            &segment.url,
+            headers,
+            offset,
+            length,
+            Some(256 * 1024 * 1024),
+        )
+        .await
+        .map_err(HlsError::Message)?,
+        None => fetch_bytes(client, &segment.url, headers, Some(256 * 1024 * 1024))
+            .await
+            .map_err(HlsError::Message)?,
+    };
+    match &segment.key {
+        Some(key) => {
+            let material = keys
+                .get(&key.uri)
+                .ok_or_else(|| HlsError::Message("anahtar bulunamadı".to_string()))?;
+            let iv = key.iv.unwrap_or_else(|| iv_from_sequence(index as u64));
+            decrypt_aes128(&raw, material, &iv).map_err(HlsError::Message)
+        }
+        None => Ok(raw),
+    }
+}
+
+/// Canli akis: playlist'i yoklar, yeni segmentleri geldikce indirir.
+///
+/// Durma kosullari: ENDLIST goruldu, kullanici iptal etti, ya da guvenlik
+/// siniri (6 saat / 20 000 segment) asildi. Donen deger yazilan segment sayisi.
+#[allow(clippy::too_many_arguments)]
+async fn download_live(
+    client: &Client,
+    playlist_url: &str,
+    headers: RequestHeaders<'_>,
+    parts_dir: &Path,
+    cancel: &CancelToken,
+    limiter: &RateLimiter,
+    on_progress: &(impl Fn(usize, usize, u64) + Send + Sync),
+) -> Result<usize, HlsError> {
+    /// Yoklama araligi: segment suresi genelde 2-6 sn; 2 sn iyi bir denge.
+    const POLL_INTERVAL: Duration = Duration::from_secs(2);
+    /// Canli kaydin guvenlik siniri: 6 saat.
+    const MAX_LIVE_SECONDS: u64 = 6 * 3600;
+    // Ayni segment tekrar indirilmesin: (url, aralik) kumesi.
+    let mut seen: std::collections::HashSet<(String, Option<(u64, u64)>)> =
+        std::collections::HashSet::new();
+    let mut keys: std::collections::HashMap<String, Vec<u8>> = std::collections::HashMap::new();
+    let mut index = 0usize;
+    let mut written_bytes = 0u64;
+    let started = std::time::Instant::now();
+
+    loop {
+        if cancel.is_cancelled() {
+            return Err(HlsError::Cancelled);
+        }
+        if started.elapsed().as_secs() > MAX_LIVE_SECONDS {
+            return Err(HlsError::Message(
+                "Canlı kayıt süresi sınırına ulaşıldı (6 saat).".into(),
+            ));
+        }
+
+        let bytes = fetch_bytes(client, playlist_url, headers, Some(8 * 1024 * 1024))
+            .await
+            .map_err(HlsError::Message)?;
+        let text = String::from_utf8_lossy(&bytes).to_string();
+        let ParsedPlaylist::Media(list) =
+            parse_playlist(&text, playlist_url).map_err(HlsError::Message)?
+        else {
+            tokio::time::sleep(POLL_INTERVAL).await;
+            continue;
+        };
+
+        for segment in &list.segments {
+            let key = (segment.url.clone(), segment.range);
+            if !seen.insert(key) {
+                continue;
+            }
+            if let Some(k) = &segment.key {
+                if !keys.contains_key(&k.uri) {
+                    let material = fetch_bytes(client, &k.uri, headers, Some(1024))
+                        .await
+                        .map_err(HlsError::Message)?;
+                    if material.len() != 16 {
+                        return Err(HlsError::Message(format!(
+                            "AES anahtarı 16 bayt olmalı, {} geldi",
+                            material.len()
+                        )));
+                    }
+                    keys.insert(k.uri.clone(), material);
+                }
+            }
+            let plain = fetch_segment_plain(client, segment, headers, &keys, index).await?;
+            limiter.consume(plain.len() as u64).await;
+            if cancel.is_cancelled() {
+                return Err(HlsError::Cancelled);
+            }
+            let target = part_path(parts_dir, index);
+            let temp = target.with_extension("tmp");
+            tokio::fs::write(&temp, &plain)
+                .await
+                .map_err(|e| HlsError::Message(format!("segment yazılamadı: {e}")))?;
+            tokio::fs::rename(&temp, &target)
+                .await
+                .map_err(|e| HlsError::Message(format!("segment taşınamadı: {e}")))?;
+            index += 1;
+            written_bytes += plain.len() as u64;
+            // Toplam bilinmiyor (canli): 0 gec, arayuz yuzde yerine bayt gosterir.
+            on_progress(index, 0, written_bytes);
+            if index >= 20_000 {
+                return Ok(index);
+            }
+        }
+
+        if !list.live {
+            return Ok(index);
+        }
+        tokio::time::sleep(POLL_INTERVAL).await;
+    }
+}
+
 /// HLS indirmesi için zaman aşımı tanımlı istemci (segmentler kısa sürer).
 #[allow(dead_code)] // arayüz/ileride kullanım için sabit; şimdilik bilgi amaçlı.
 pub fn segment_timeout() -> Duration {
@@ -539,6 +752,88 @@ pub fn segment_timeout() -> Duration {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Canlı akış: playlist her istekte büyür, bitince ENDLIST gelir.
+    /// İndirme yeni segmentleri bir kez almalı ve sırayla birleştirmeli.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn canli_akis_yeni_segmentleri_indirir() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let hits = Arc::new(AtomicUsize::new(0));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let hits_server = hits.clone();
+
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let hits = hits_server.clone();
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 2048];
+                    let n = socket.read(&mut buf).await.unwrap_or(0);
+                    let request = String::from_utf8_lossy(&buf[..n]).to_string();
+                    let path = request.split_whitespace().nth(1).unwrap_or("/").to_string();
+
+                    let (body, content_type) = if path.ends_with(".m3u8") {
+                        let round = hits.fetch_add(1, Ordering::SeqCst) + 1;
+                        // Tur 1: seg1, Tur 2: seg1+seg2, Tur 3: seg1..seg3 + ENDLIST
+                        let mut text = String::from("#EXTM3U\n#EXT-X-VERSION:3\n");
+                        for index in 1..=round.min(3) {
+                            text.push_str(&format!("#EXTINF:2.0,\nhttp://{addr}/seg{index}.ts\n"));
+                        }
+                        if round >= 3 {
+                            text.push_str("#EXT-X-ENDLIST\n");
+                        }
+                        (text, "application/vnd.apple.mpegurl")
+                    } else {
+                        // Segment gövdesi: adından türetilmiş sabit 16 bayt.
+                        let index = path
+                            .trim_start_matches("/seg")
+                            .trim_end_matches(".ts")
+                            .parse::<u8>()
+                            .unwrap_or(0);
+                        (String::from_utf8(vec![index; 16]).unwrap(), "video/mp2t")
+                    };
+
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        body.len()
+                    );
+                    let _ = socket.write_all(response.as_bytes()).await;
+                    let _ = socket.write_all(body.as_bytes()).await;
+                    let _ = socket.shutdown().await;
+                });
+            }
+        });
+
+        let playlist_url = format!("http://{addr}/live.m3u8");
+        let client = crate::engine::http::build_client();
+        let dir = tempfile::tempdir().unwrap();
+        let parts = dir.path().join("parts");
+        let cancel = CancelToken::new();
+        let limiter = RateLimiter::new(0);
+
+        let bytes = download_playlist(
+            &client,
+            &playlist_url,
+            RequestHeaders::default(),
+            &parts,
+            &cancel,
+            &limiter,
+            |_done, _total, _bytes| {},
+        )
+        .await
+        .expect("canli akis indirilmeli");
+
+        // 3 segment x 16 bayt; ayni segment iki kez indirilmemeli.
+        assert_eq!(bytes, 48, "uc segment birlesmeli, tekrarsiz");
+        let merged = tokio::fs::read(parts.join("hls.part")).await.unwrap();
+        assert_eq!(merged.len(), 48);
+        assert_eq!(&merged[0..16], &vec![1u8; 16][..], "sira korunmali (seg1)");
+        assert_eq!(&merged[16..32], &vec![2u8; 16][..], "sira korunmali (seg2)");
+        assert_eq!(&merged[32..48], &vec![3u8; 16][..], "sira korunmali (seg3)");
+        assert!(hits.load(Ordering::SeqCst) >= 3, "playlist yoklanmali");
+    }
 
     const MASTER: &str = "#EXTM3U\n\
 #EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360\n\
@@ -635,10 +930,48 @@ a.ts\n\
     }
 
     #[test]
-    fn byterange_desteklenmiyor() {
-        let text = "#EXTM3U\n#EXT-X-BYTERANGE:1000@0\n#EXTINF:6,\na.ts\n#EXT-X-ENDLIST\n";
-        let err = parse_playlist(text, "https://x/y.m3u8").unwrap_err();
-        assert!(err.contains("BYTERANGE"));
+    fn byterange_parcalanir() {
+        // Ayni dosyadan uc bolum: ikisinde offset acik, ucuncude devam eder.
+        let text = "#EXTM3U\n\
+#EXT-X-BYTERANGE:1000@0\n\
+#EXTINF:6,\n\
+a.ts\n\
+#EXT-X-BYTERANGE:2000@1000\n\
+#EXTINF:6,\n\
+a.ts\n\
+#EXT-X-BYTERANGE:500\n\
+#EXTINF:6,\n\
+a.ts\n\
+#EXT-X-ENDLIST\n";
+        let ParsedPlaylist::Media(list) = parse_playlist(text, "https://x/y.m3u8").unwrap() else {
+            panic!("medya listesi bekleniyordu");
+        };
+        assert_eq!(list.segments.len(), 3);
+        assert_eq!(list.segments[0].range, Some((0, 1000)));
+        assert_eq!(list.segments[1].range, Some((1000, 2000)));
+        assert_eq!(
+            list.segments[2].range,
+            Some((3000, 500)),
+            "offset yoksa onceki parcanin bitisinden devam eder"
+        );
+    }
+
+    #[test]
+    fn byterange_olmayan_segmentte_aralik_yok() {
+        let text = "#EXTM3U\n#EXTINF:6,\na.ts\n#EXT-X-ENDLIST\n";
+        let ParsedPlaylist::Media(list) = parse_playlist(text, "https://x/y.m3u8").unwrap() else {
+            panic!("medya listesi bekleniyordu");
+        };
+        assert_eq!(list.segments[0].range, None);
+    }
+
+    #[test]
+    fn byterange_bozuk_deger_yok_sayilir() {
+        let text = "#EXTM3U\n#EXT-X-BYTERANGE:abc\n#EXTINF:6,\na.ts\n#EXT-X-ENDLIST\n";
+        let ParsedPlaylist::Media(list) = parse_playlist(text, "https://x/y.m3u8").unwrap() else {
+            panic!("medya listesi bekleniyordu");
+        };
+        assert_eq!(list.segments[0].range, None, "bozuk deger aralik uretmez");
     }
 
     #[test]
