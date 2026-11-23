@@ -53,6 +53,12 @@ pub struct Settings {
     /// Panodaki baglanti kopyalaninca adres alanini doldur. Gizlilik: varsayilan kapali.
     #[serde(default)]
     pub clipboard_watch: bool,
+    /// Zamanlanmis indirme penceresi baslangici (`"HH:MM"`, bos = kisit yok).
+    #[serde(default)]
+    pub schedule_start: String,
+    /// Zamanlanmis indirme penceresi bitisi (`"HH:MM"`, bos = kisit yok).
+    #[serde(default)]
+    pub schedule_end: String,
 }
 
 impl Default for Settings {
@@ -79,6 +85,8 @@ impl Default for Settings {
             language: "tr".into(),
             update_check: true,
             clipboard_watch: false,
+            schedule_start: String::new(),
+            schedule_end: String::new(),
         }
     }
 }
@@ -118,6 +126,14 @@ impl Settings {
             "en" => "en".to_string(),
             _ => "tr".to_string(),
         };
+        // Zaman penceresi: gecersiz deger temizlenir (kuyruk kilitlenmesin).
+        self.schedule_start = crate::schedule::normalize_clock(&self.schedule_start);
+        self.schedule_end = crate::schedule::normalize_clock(&self.schedule_end);
+        if !crate::schedule::window_valid(&self.schedule_start, &self.schedule_end) {
+            // Yarim/ayni uclu pencere anlamsiz: ikisini de temizle.
+            self.schedule_start.clear();
+            self.schedule_end.clear();
+        }
     }
 
     pub fn speed_limit_bytes(&self) -> u64 {

@@ -30,6 +30,8 @@ const SETTINGS = {
   notifyOnFinish: true,
   updateCheck: true,
   clipboardWatch: false,
+  scheduleStart: "",
+  scheduleEnd: "",
   proxyUrl: "",
   language: "tr",
 };

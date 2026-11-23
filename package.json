@@ -19,6 +19,8 @@
     "test:virtual": "node tools/test-virtual.mjs",
     "test:i18n": "node tools/test-i18n.mjs && node tools/audit-i18n.mjs",
     "test:updater": "node tools/test-updater.mjs",
+    "test:schedule": "node tools/test-schedule.mjs",
+    "test:clipboard": "node tools/test-clipboard.mjs",
     "test:security": "node tools/security-check.mjs",
     "test:net": "node tools/build-extension.mjs && node tools/net-capture-check.mjs",
     "hygiene": "node tools/hygiene.mjs"

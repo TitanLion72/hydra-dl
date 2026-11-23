@@ -1093,6 +1093,18 @@ svg {
   border-color: rgba(34, 211, 238, 0.45);
 }
 
+/* Zamanlanmis indirme: iki saat alani yan yana. */
+.schedule-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.schedule-row input {
+  flex: 1;
+  min-width: 0;
+}
+
 .field input[readonly] {
   color: var(--muted-2);
 }

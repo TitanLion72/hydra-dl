@@ -465,6 +465,13 @@ export async function check() {
       (await page.locator("#set-clipboard-watch").isChecked()) === false,
       "#set-clipboard-watch varsayilan kapali",
     );
+    check(
+      (await page.locator("#set-schedule-start").inputValue()) === "",
+      "#set-schedule-start bos geliyor (kisit yok)",
+    );
+    console.log(
+      `[debug] after fill: start=${JSON.stringify(await page.locator("#set-schedule-start").inputValue())} end=${JSON.stringify(await page.locator("#set-schedule-end").inputValue())}`,
+    );
     // Masaustu girdisi opacity:0/pointer-events:none; sarmalayan etiket tiklanir.
     await page.locator("label.switch:has(#set-update-check)").click();
     await page.locator("label.switch:has(#set-clipboard-watch)").click();
@@ -523,6 +530,21 @@ export async function check() {
     );
     ok("dil secimi aninda uygulaniyor");
 
+    console.log(
+    );
+    // Ayar formu asenkron dolar; gec gelen yanit alanlari sifirlamasin diye
+    // istek sayaci sabitlenene kadar bekle, sonra doldur.
+    await page.waitForFunction(
+      () =>
+        new Promise((resolve) => {
+          const first = window.__hydraCalls.getSettings;
+          setTimeout(() => resolve(window.__hydraCalls.getSettings === first), 400);
+        }),
+      null,
+      { timeout: 15_000 },
+    );
+    await page.locator("#set-schedule-start").fill("02:00");
+    await page.locator("#set-schedule-end").fill("06:00");
     await page.click("#save-settings");
     await page.waitForFunction(() => window.__hydraCalls.saveSettings.length > 0, null, { timeout: 10_000 });
     const saved = await page.evaluate(() => window.__hydraCalls.saveSettings[0]);
@@ -531,6 +553,10 @@ export async function check() {
     check(saved.notifyOnFinish === expected.notifyOnFinish, "kaydetme bildirim ayarini korudu");
     check(saved.updateCheck === false, "kaydetme guncelleme kontrolunu kapali gonderdi");
     check(saved.clipboardWatch === true, "kaydetme pano izlemeyi acti");
+    check(
+      saved.scheduleStart === "02:00" && saved.scheduleEnd === "06:00",
+      `kaydetme indirme saatlerini gonderdi (${saved.scheduleStart}-${saved.scheduleEnd})`,
+    );
     check(saved.torrentEnabled === expected.torrentEnabled, "kaydetme torrent ayarini korudu");
     await page.waitForSelector("#settings-drawer", { state: "hidden", timeout: 10_000 });
     ok("ayarlar kaydedildikten sonra cekmece kapandi");

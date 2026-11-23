@@ -115,6 +115,10 @@ export interface Settings {
   updateCheck: boolean;
   /** Panodaki bağlantıyı adres alanına otomatik doldur (varsayılan kapalı). */
   clipboardWatch: boolean;
+  /** Zamanlanmış indirme başlangıcı `"HH:MM"` (boş = kısıt yok). */
+  scheduleStart: string;
+  /** Zamanlanmış indirme bitişi `"HH:MM"` (boş = kısıt yok). */
+  scheduleEnd: string;
 }
 
 export interface CaptureStatus {

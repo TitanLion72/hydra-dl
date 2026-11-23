@@ -302,7 +302,32 @@ fn now_ts() -> i64 {
 /// ile terfi arasında yarış kalmaz. Kapanışta duraklatma yuva boşaltır;
 /// burada engellenmezse kuyruk terfi eder, indirme başlar ve kurulum onu keser.
 fn take_queued_for_schedule(store: &mut Store, limit: usize, shutting_down: bool) -> Vec<String> {
+    // Yerel saat: kullanici "02:00" derken kendi saatini kasteder.
+    let minute = {
+        use chrono::Timelike;
+        let now = chrono::Local::now();
+        now.hour() * 60 + now.minute()
+    };
+    take_queued_for_schedule_at(store, limit, shutting_down, minute)
+}
+
+/// `take_queued_for_schedule`'in saf çekirdeği: zaman penceresi verilen dakikaya
+/// göre değerlendirilir (testler saati enjekte eder).
+fn take_queued_for_schedule_at(
+    store: &mut Store,
+    limit: usize,
+    shutting_down: bool,
+    minute_of_day: u32,
+) -> Vec<String> {
     if shutting_down {
+        return Vec::new();
+    }
+    // Zaman penceresi disinda: bekleyenler `Queued` kalir, calisanlar durdurulmaz.
+    if !crate::schedule::in_window(
+        minute_of_day,
+        &store.settings.schedule_start,
+        &store.settings.schedule_end,
+    ) {
         return Vec::new();
     }
     store.take_queued(limit)
@@ -1932,6 +1957,50 @@ mod tests {
         assert_eq!(
             take_queued_for_schedule(&mut store, 4, false),
             vec!["b".to_string()]
+        );
+    }
+
+    /// Zaman penceresi disinda kuyruk terfi etmez; icinde eder.
+    ///
+    /// Kullanici "yalniz 02:00-06:00 arasi indir" der. Pencere disinda bekleyen
+    /// isler `Queued` kalir; pencere acilinca (ticker) kendiliginden baslar.
+    #[test]
+    fn zaman_penceresi_kuyrugu_kapilar() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::load(dir.path());
+        let mut queued = sample("b");
+        queued.status = Status::Queued;
+        store.items = vec![queued];
+        store.settings.schedule_start = "02:00".into();
+        store.settings.schedule_end = "06:00".into();
+
+        // Pencere disi (01:00 = 60): terfi yok.
+        assert!(
+            take_queued_for_schedule_at(&mut store, 4, false, 60).is_empty(),
+            "pencere disinda kuyruk bekler"
+        );
+        assert_eq!(store.items[0].status, Status::Queued);
+
+        // Pencere ici (03:00 = 180): terfi var.
+        assert_eq!(
+            take_queued_for_schedule_at(&mut store, 4, false, 180),
+            vec!["b".to_string()]
+        );
+    }
+
+    /// Pencere bos birakilirsa (varsayilan) kuyruk her zaman acik.
+    #[test]
+    fn pencere_yoksa_kuyruk_hep_acik() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::load(dir.path());
+        let mut queued = sample("b");
+        queued.status = Status::Queued;
+        store.items = vec![queued];
+
+        assert_eq!(
+            take_queued_for_schedule_at(&mut store, 4, false, 60),
+            vec!["b".to_string()],
+            "pencere tanimsizsa her saat calisir"
         );
     }
 

@@ -79,6 +79,8 @@ const els = {
   setNotify: $("#setNotify"),
   setUpdateCheck: $("#setUpdateCheck"),
   setClipboardWatch: $("#setClipboardWatch"),
+  setScheduleStart: $("#setScheduleStart"),
+  setScheduleEnd: $("#setScheduleEnd"),
   setProxy: $("#setProxy"),
   setLanguage: $("#setLanguage"),
   setCapture: $("#setCapture"),
@@ -1410,6 +1412,8 @@ function applySettings(settings) {
   if (els.setNotify) els.setNotify.checked = data.notifyOnFinish !== false;
   if (els.setUpdateCheck) els.setUpdateCheck.checked = data.updateCheck !== false;
   if (els.setClipboardWatch) els.setClipboardWatch.checked = Boolean(data.clipboardWatch);
+  if (els.setScheduleStart) els.setScheduleStart.value = data.scheduleStart || "";
+  if (els.setScheduleEnd) els.setScheduleEnd.value = data.scheduleEnd || "";
   if (els.setProxy) els.setProxy.value = data.proxyUrl || "";
   if (els.setLanguage) els.setLanguage.value = normalizeLanguage(data.language);
   applyLanguage(data.language);
@@ -1705,6 +1709,8 @@ async function saveSettings() {
   if (els.setNotify) next.notifyOnFinish = els.setNotify.checked;
   if (els.setUpdateCheck) next.updateCheck = els.setUpdateCheck.checked;
   if (els.setClipboardWatch) next.clipboardWatch = els.setClipboardWatch.checked;
+  if (els.setScheduleStart) next.scheduleStart = els.setScheduleStart.value || "";
+  if (els.setScheduleEnd) next.scheduleEnd = els.setScheduleEnd.value || "";
   if (els.setProxy) next.proxyUrl = els.setProxy.value.trim();
   if (els.setLanguage) next.language = normalizeLanguage(els.setLanguage.value);
   if (Object.prototype.hasOwnProperty.call(next, "webToken")) {

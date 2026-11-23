@@ -171,6 +171,15 @@
             <span class="track"></span>
             <span>Panodaki bağlantıyı otomatik yakala</span>
           </label>
+          <label class="field">
+            <span>İndirme saatleri (boş = her zaman)</span>
+            <span class="schedule-row">
+              <input id="set-schedule-start" type="time" />
+              <span>—</span>
+              <input id="set-schedule-end" type="time" />
+            </span>
+            <span class="field-help">Bu saatler dışında yeni indirme başlamaz; sürenler durmaz. Gece yarısını aşan aralık desteklenir (23:00 — 05:00).</span>
+          </label>
           <button class="ghost small" id="notify-test" type="button">Test bildirimi</button>
           <label class="field">
             <span>Proxy (isteğe bağlı)</span>

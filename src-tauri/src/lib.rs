@@ -5,6 +5,7 @@ mod engine;
 mod extract;
 mod manager;
 mod model;
+mod schedule;
 mod store;
 mod tls;
 mod torrent;

@@ -331,6 +331,12 @@ export const EN = {
   "pano izleme": "clipboard watch",
   "Masaüstü uygulamasında bir bağlantı kopyaladığında adres alanı kendiliğinden dolar. Varsayılan kapalı.":
     "In the desktop app, the address field fills itself when you copy a link. Off by default.",
+  "İndirme saatleri (boş = her zaman)": "Download hours (empty = always)",
+  "Bu saatler dışında yeni indirme başlamaz; sürenler durmaz. Gece yarısını aşan aralık desteklenir (23:00 — 05:00).":
+    "No new download starts outside these hours; running ones keep going. Overnight ranges are supported (23:00 — 05:00).",
+  "Bu saatler dışında yeni indirme başlamaz; sürenler durmaz.":
+    "No new download starts outside these hours; running ones keep going.",
+  "indirme saatleri": "download hours",
   "Açılışta yeni sürüm var mı diye sessizce bakar. Kapalıysa hiçbir ağ isteği gitmez.":
     "Silently checks for a new version at startup. When off, no network request is made.",
   "Yarım kalanları sürdür": "Resume unfinished",

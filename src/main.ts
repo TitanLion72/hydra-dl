@@ -1458,6 +1458,8 @@ const setAutoResume = $<HTMLInputElement>("#set-autoresume");
 const setNotify = $<HTMLInputElement>("#set-notify");
 const setUpdateCheck = $<HTMLInputElement>("#set-update-check");
 const setClipboardWatch = $<HTMLInputElement>("#set-clipboard-watch");
+const setScheduleStart = $<HTMLInputElement>("#set-schedule-start");
+const setScheduleEnd = $<HTMLInputElement>("#set-schedule-end");
 const setProxy = $<HTMLInputElement>("#set-proxy");
 const setCapture = $<HTMLInputElement>("#set-capture");
 const setCapturePort = $<HTMLInputElement>("#set-capture-port");
@@ -1491,6 +1493,8 @@ function bindSettingsForm(source: Settings, appInfo: AppInfo | null) {
   setNotify.checked = source.notifyOnFinish;
   setUpdateCheck.checked = source.updateCheck !== false;
   setClipboardWatch.checked = Boolean(source.clipboardWatch);
+  setScheduleStart.value = source.scheduleStart ?? "";
+  setScheduleEnd.value = source.scheduleEnd ?? "";
   setProxy.value = source.proxyUrl ?? "";
   setCapture.checked = source.captureEnabled;
   setCapturePort.value = String(source.capturePort);
@@ -1579,6 +1583,8 @@ async function saveSettings() {
     notifyOnFinish: setNotify.checked,
     updateCheck: setUpdateCheck.checked,
     clipboardWatch: setClipboardWatch.checked,
+    scheduleStart: setScheduleStart.value.trim(),
+    scheduleEnd: setScheduleEnd.value.trim(),
     proxyUrl: setProxy.value.trim(),
     captureEnabled: setCapture.checked,
     capturePort: clampNumber(setCapturePort.value, 1024, 65535, 6712),
