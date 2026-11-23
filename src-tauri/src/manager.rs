@@ -339,6 +339,8 @@ pub fn schedule(state: &Arc<AppState>) {
         let mut store = state.store.lock().unwrap();
         let max = store.settings.max_concurrent;
         let running = store.running_count();
+        // Hiz butcesi acik indirmelere bolunur: tek indirme tum limiti yemesin.
+        state.limiter().set_active(running.max(1));
         if running >= max {
             return;
         }
