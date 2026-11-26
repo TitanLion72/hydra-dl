@@ -127,11 +127,16 @@ kurulup** denenmeli — `tauri dev` yetmez (`docs/TRAPS.md`).
    başarısız kurulumda `cancel_shutdown` kuyruğu geri açar; `tools/release.mjs`
    (tek komut, `--dry-run` doğrulandı: 3 dosya, exe+`.sig`+`latest.json`, `%20`'li URL).
    **Kalan (kullanıcı):** `npx tauri signer generate -w %USERPROFILE%\.tauri\hydra-dl-updater.key`
-   → pubkey'i `tauri.conf.json → plugins.updater.pubkey`'e koy → 0.8.0 yayınla + elle kur →
-   0.8.1 yayınla + canlı E2E. `cargo test` 178.
-7. **Sonra:** kod imzalı NSIS; Linux/macOS deneysel.
-8. Küçükler: `ringbuf` muafiyeti `librqbit-utp` 0.4.9+/0.5.2+ çıkınca kalkar; torrent proxy
-   desteği librqbit proxy kazanınca `proxyUrl`'e bağlanır.
+   → 0.8.0 yayınla + elle kur → 0.8.1 yayınla + canlı E2E. (`release.mjs` pubkey'i
+   `.pub` dosyasından okuyup `tauri.conf.json`'a **geçici** yazar; elle düzenleme yok.)
+7. **0.7.0 dilimi BİTTİ** (kullanıcı isteğiyle sıradaki tüm işler):
+   pano izleme (varsayılan kapalı, yalnız odaktayken, kullanıcının yazdığını ezmez) ·
+   zamanlanmış indirme penceresi (`02:00–06:00`, gece yarısını aşar, çalışanı durdurmaz) ·
+   adil hız paylaşımı (bütçe açık indirmelere bölünür, alt sınır 1 KB/s) ·
+   **HLS canlı akış kaydı + `EXT-X-BYTERANGE`** · kod imzalı NSIS iskeleti
+   (`tools/nsis-sign.mjs`, sertifikasız derleme aynen çalışır). `cargo test` 191.
+8. **Sonra:** kod imzalama sertifikası (senin kararın, ücretli); Linux/macOS deneysel.
+9. Küçükler: `ringbuf` muafiyeti `librqbit-utp` 0.4.9+/0.5.2+ çıkınca kalkar.
 
 ## Oturum kesilirse ilk komut
 

@@ -99,6 +99,24 @@ görür, kimse indirmez) ya da düzeltilmiş sürümü **daha yüksek** numarayl
 updater yalnız yukarı gider. Kullanıcı tarafında ayarlar `downloads.json`'da olduğu için
 önceki NSIS elle kurulabilir.
 
+## Kod imzalama (opsiyonel, sertifika gerekir)
+
+Kurulum paketi kodla imzalanabilir; SmartScreen uyarısını azaltır. Sertifika **yoksa
+derleme aynen çalışır** (imzasız). `bundle.windows.signCommand` → `tools/nsis-sign.mjs`.
+
+```powershell
+node tools/nsis-sign.mjs --check     # hazir mi? (sertifika + signtool)
+```
+
+| Değişken | Anlamı |
+|---|---|
+| `HYDRA_SIGN_PFX` / `HYDRA_SIGN_PFX_PASS` | `.pfx` dosyası ve parolası |
+| `HYDRA_SIGN_THUMBPRINT` | Sertifika deposundaki sertifikanın parmak izi (40 hex) |
+| `HYDRA_SIGN_TIMESTAMP` | Zaman damgası sunucusu (varsayılan DigiCert) |
+
+Kurallar: parola komut satırına yazılmaz (ortam değişkeni), sertifika repoya girmez,
+imza başarısızsa **derleme başarısız olur** (sessizce imzasız paket üretilmez).
+
 **Sessiz başarısız kurulum:** kurulum tamamlanmazsa sonraki açılışta kırmızı şerit
 "güncelleme tamamlanmadı" gösterir; işaret `localStorage`'da tutulur, başarılı yükseltmede
 temizlenir.

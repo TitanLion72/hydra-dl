@@ -187,6 +187,38 @@ async function notesFor(version, previousTag) {
   return [`Hydra DL v${version}`, "", ...lines.map((line) => `- ${line}`)].join("\n");
 }
 
+/**
+ * `tauri.conf.json`'a updater yapilandirmasini gecici olarak enjekte eder.
+ *
+ * Neden: `createUpdaterArtifacts` acikken Tauri `plugins.updater.pubkey` ister;
+ * pubkey ise ancak anahtar uretildikten sonra bilinir. Kullaniciyi JSON elle
+ * duzenlemeye zorlamak yerine release araci anahtarin `.pub` dosyasindan okur,
+ * derleme boyunca yapilandirmayi yazar ve sonunda **aynen geri koyar**.
+ * Boylece anahtarsiz gelistirici derlemeleri eskisi gibi calisir.
+ */
+async function withUpdaterConfig(keyPubPath, run) {
+  const configPath = path.join(ROOT, "src-tauri", "tauri.conf.json");
+  const original = await readFile(configPath, "utf8");
+  const pubkey = (await readFile(keyPubPath, "utf8")).trim();
+  if (!pubkey) throw new Error(`public key bos: ${keyPubPath}`);
+  const config = JSON.parse(original);
+  config.bundle = config.bundle ?? {};
+  config.bundle.createUpdaterArtifacts = true;
+  config.plugins = config.plugins ?? {};
+  config.plugins.updater = {
+    pubkey,
+    endpoints: [`https://github.com/${REPO}/releases/latest/download/latest.json`],
+  };
+  await writeFile(configPath, JSON.stringify(config, null, 2) + "\n", "utf8");
+  try {
+    return await run();
+  } finally {
+    // Basarisiz derlemede bile yapilandirma geri gelir: anahtarsiz `tauri build`
+    // calismaya devam eder.
+    await writeFile(configPath, original, "utf8");
+  }
+}
+
 async function main() {
   const dryRun = flag("dry-run");
   const version = firstPositional();
@@ -294,10 +326,16 @@ async function main() {
 
   // --- 5. Imzali paket ------------------------------------------------------
   console.log("[release] derleme: npm run tauri build (imzali)");
-  await runStream(NPM, ["run", "tauri", "build"], {
-    TAURI_SIGNING_PRIVATE_KEY: keyContents,
-    TAURI_SIGNING_PRIVATE_KEY_PASSWORD: password,
-  });
+  const keyPubPath = `${keyPath}.pub`;
+  if (!(await exists(keyPubPath))) {
+    throw new Error(`public key bulunamadi: ${keyPubPath} (anahtar uretilirken olusur)`);
+  }
+  await withUpdaterConfig(keyPubPath, () =>
+    runStream(NPM, ["run", "tauri", "build"], {
+      TAURI_SIGNING_PRIVATE_KEY: keyContents,
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: password,
+    }),
+  );
   if (!(await exists(exePath))) throw new Error(`kurulum paketi bulunamadi: ${exePath}`);
   if (!(await exists(sigPath))) {
     throw new Error(

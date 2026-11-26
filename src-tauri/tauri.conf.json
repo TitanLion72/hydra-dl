@@ -34,7 +34,9 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "createUpdaterArtifacts": true,
+    "windows": {
+      "signCommand": "node ../tools/nsis-sign.mjs %1"
+    },
     "resources": {
       "../webapp": "webapp"
     },

@@ -15,24 +15,21 @@ cargo test  --manifest-path src-tauri\Cargo.toml
 node tools/e2e.mjs --capture-port 6712 --dir "$env:TEMP\hydra-e2e"   # uygulama açıkken
 node tools/web-smoke.mjs --port 6790                                 # web API'si (opsiyonel)
 node tools/web-ui-check.mjs                                          # web (telefon) arayüzü (mock API)
-node tools/security-check.mjs                                        # sır/yol/XSS taraması
-node tools/hygiene.mjs                                               # depo/disk sağlığı (uyarı varsa 1)
-node tools/build-extension.mjs                                       # eklenti paketleri
-node tools/ui-harness/run.mjs                                        # masaüstü UI (mock API)
-node tools/test-links.mjs                             # toplu içe aktarma ayrıştırıcısı
-node tools/test-virtual.mjs                           # sanal liste yerleşimi
-node tools/test-i18n.mjs                              # i18n motoru + envanter tamlığı
-node tools/audit-i18n.mjs                             # eksik/tekrar çeviri denetimi
+node tools/security-check.mjs                        # sır/yol/XSS taraması
+node tools/hygiene.mjs                               # depo/disk sağlığı
+node tools/build-extension.mjs                       # eklenti paketleri
+node tools/ui-harness/run.mjs                        # masaüstü UI (mock API)
+node tools/test-links.mjs · test-virtual.mjs · test-i18n.mjs · audit-i18n.mjs · test-schedule.mjs
 node tools/soak.mjs --capture-port 6712 --count 10    # eşzamanlı indirme (uygulama açıkken)
 node tools/hang-check.mjs                             # askıda sunucu → zaman aşımı (uygulama açıkken)
-node tools/release.mjs <x.y.z> --dry-run              # yayın planı (hiçbir şeyi değiştirmez)
-node tools/release.mjs <x.y.z>                        # yayınla (anahtar parolası sorulur)
-node tools/net-capture-check.mjs                      # eklenti ağ yakalama (gerçek tarayıcı)
+node tools/release.mjs <x.y.z> [--dry-run]            # yayınla (anahtar parolası sorulur)
+node tools/nsis-sign.mjs --check                      # kod imzalama hazır mı? (sertifika opsiyonel)
+node tools/net-capture-check.mjs                     # eklenti ağ yakalama
 ```
 
 **Bitiş tanımı:** `cargo test` + `clippy -D warnings` + `fmt --check` + `npm run build` +
-`test:security` + `test:i18n` + `test:updater` + `ui-harness` yeşil. Ağ/indirme davranışına
-dokunduysan `tools/e2e.mjs` de koşar. Biri kırmızıysa iş bitmedi.
+`test:security` + `test:i18n` + `test:updater` + `ui-harness` yeşil; ağ/indirmeye dokunduysan
+`tools/e2e.mjs` de. Biri kırmızıysa iş bitmedi.
 
 ## Mimari (tek cümlede her dosya)
 
@@ -54,8 +51,7 @@ dokunduysan `tools/e2e.mjs` de koşar. Biri kırmızıysa iş bitmedi.
 | `src-tauri/src/capture.rs` | aynı yönlendiriciyi `127.0.0.1:6712`'de açar (eklenti) |
 | `src-tauri/src/commands.rs` | Tauri komut yüzeyi |
 | `src/` | masaüstü arayüzü (vanilla TS); durum yalnız `downloads:changed` |
-| `src/i18n.ts` | masaüstü i18n köprüsü → `webapp/i18n.js` |
-| `webapp/i18n.js` | **yerelleştirme motoru (tek kaynak, saf)**: `t`/`tt`, `localizeDom`; `i18n-en.js` sözlük, `i18n.d.ts` tipler |
+| `webapp/i18n.js` | **yerelleştirme motoru (tek kaynak, saf)**: `t`/`tt`, `localizeDom`; `i18n-en.js` sözlük, `i18n.d.ts` tipler, `src/i18n.ts` köprü |
 | `src/virtual.ts` | **sanal liste matematiği** (saf): satır ofsetleri, görünen pencere, kaydırma kırpma |
 | `src/updater.ts` | güncelleme çalışma zamanı; `updater-logic.ts` saf kararlar (atlanan/bekleyen sürüm) |
 | `webapp/` | telefonda çalışan statik arayüz (derleme yok, SSE) |
@@ -144,11 +140,11 @@ Açık kaynak ve **LAN'a açılan HTTP sunucusu**: aşağıdakiler pazarlık kon
 - Vite 1420 `strictPort`; yakalama 6712 (loopback), web 6790 (LAN).
 - Paketlenen `webapp/` ayrı test edilmeli; `tauri dev` yeşilken NSIS bozuk olabilir.
 - Eklenti `HX.api.` kullanır (`compat.js` ilk yüklenir); `chrome.*` callback ekleme.
-- `build/extensions/*` üretilen çıktı; kaynağı `extension/`. Windows'ta `.cmd` için
-  `spawn(..., { shell: true })` şart (`npm.cmd`, EINVAL).
+- `build/extensions/*` üretilen çıktı; kaynağı `extension/`. `.cmd` için
+  `spawn(..., { shell: true })` şart; `signCommand` **`src-tauri/` içinden** çalışır.
 
 ## Yeni özellik akışı
 
-Saf mantıksa `model`/`util`/`extract` içinde **önce test**; ağ katmanı `engine`/`torrent`/
-`ytdlp`; komut+olay `manager`/`commands`; API sözleşmesi `docs/API.md` + `web.rs`;
-arayüzler `src/`, `webapp/`, `extension/`; doğrula (üç komut + e2e), sonra `HANDOFF.md`.
+Saf mantıksa `model`/`util`/`extract` içinde **önce test**; ağ katmanı `engine`/`torrent`/`ytdlp`;
+komut+olay `manager`/`commands`; API sözleşmesi `docs/API.md` + `web.rs`; arayüzler `src/`,
+`webapp/`, `extension/`; doğrula (üç komut + e2e), sonra `HANDOFF.md`.
